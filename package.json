@@ -1,0 +1,24 @@
+{
+  "name": "project-atlas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "snapshot": "node scripts/build-snapshot.mjs",
+    "dev": "npm run snapshot && vite",
+    "build": "npm run snapshot && tsc -b && vite build",
+    "preview": "vite preview",
+    "host": "node scripts/atlas-host.mjs"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.2"
+  }
+}
