@@ -1,0 +1,421 @@
+{
+  "focus": [
+    "elizabet",
+    "otlichniy-ulov",
+    "quench_my_sorrows",
+    "telegram-proxy-stack",
+    "esp",
+    "codex-orchestrator",
+    "system-bootstrap",
+    "codesight",
+    "OpenHarness"
+  ],
+  "projects": {
+    "elizabet": {
+      "title": "Elizabeth",
+      "domain": "product",
+      "summary": "Local-first продукт с письмами, чатами, галереей, картой памяти и несколькими runtime-режимами.",
+      "position": { "x": 14, "y": 8 },
+      "tags": ["React", "Fastify", "Prisma", "Dexie", "Docker"],
+      "related": ["telegram-proxy-stack", "codesight", "codex-orchestrator"],
+      "services": [
+        { "name": "api", "stack": "Fastify", "status": "ok", "version": "prod-ready" },
+        { "name": "web", "stack": "React 19", "status": "ok", "version": "route-based" },
+        { "name": "db", "stack": "Prisma", "status": "ok", "version": "sqlite/dev" },
+        { "name": "sync", "stack": "room-aware", "status": "attention", "version": "docs drift" }
+      ],
+      "commands": {
+        "dev": "npm run dev:all",
+        "test": "npm run test && (cd server && npm run test)",
+        "deploy": "npm run deploy:prod"
+      },
+      "deploy": {
+        "surface": "deployuser@178.236.253.46:333 / apps/elizabet",
+        "environment": "prod",
+        "status": "attention",
+        "note": "Release flow идёт через develop -> master, а продовый деплой использует SSH port 333."
+      },
+      "docs": [
+        { "label": "Карта системы", "path": "/home/goringich/Desktop/server/elizabet/docs/system-map.md" },
+        { "label": "Admin console", "path": "/home/goringich/Desktop/server/elizabet/docs/admin-console.md" },
+        { "label": "Request checklist", "path": "/home/goringich/Desktop/server/elizabet/docs/request-checklist.md" }
+      ],
+      "riskNotes": [
+        "worktree грязный и ветка ahead 2",
+        "изменены auth / home / api client, нужен реальный smoke после следующего прохода"
+      ],
+      "release": { "label": "v1.25.0", "days": 7, "confidence": 78 },
+      "tasks": [
+        {
+          "title": "Дожать auth + home правки и прогнать prod smoke",
+          "status": "active",
+          "priority": "high",
+          "area": "release",
+          "note": "В worktree изменены routes, home/login и api client."
+        },
+        {
+          "title": "Свести docs/request-checklist, growth-playbook и progress.md",
+          "status": "review",
+          "priority": "medium",
+          "area": "docs",
+          "note": "Документация уже менялась в этой ветке и должна совпасть с runtime."
+        }
+      ]
+    },
+    "otlichniy-ulov": {
+      "title": "Отличный улов",
+      "domain": "product",
+      "summary": "Telegram-заказы, admin-web и admin-service с заказами, каталогами и операционной обработкой.",
+      "position": { "x": 36, "y": 12 },
+      "tags": ["Python", "Django", "PostgreSQL", "Admin UI"],
+      "related": ["quench_my_sorrows", "codesight", "esp"],
+      "services": [
+        { "name": "admin_service", "stack": "Python", "status": "ok", "version": "master" },
+        { "name": "admin_web", "stack": "React", "status": "ok", "version": "owner-scope" },
+        { "name": "worker", "stack": "Python", "status": "attention", "version": "legacy path" }
+      ],
+      "commands": {
+        "dev": "bash ./scripts/setup_python_envs.sh all",
+        "test": "bash scripts/run_checks.sh lint-python",
+        "deploy": "docker compose up -d --build"
+      },
+      "deploy": {
+        "surface": "docker compose / local services",
+        "environment": "staging",
+        "status": "attention",
+        "note": "Есть критичный слой around reparsing existing orders и legacy worker behavior."
+      },
+      "docs": [
+        { "label": "README", "path": "/home/goringich/Desktop/otlichniy-ulov/README.md" }
+      ],
+      "riskNotes": [
+        "много операционной логики завязано на legacy worker и reparsing",
+        "нужна уверенность, что catalog flags влияют не только на создание заказа"
+      ],
+      "release": { "label": "v2.1.0", "days": 21, "confidence": 64 },
+      "tasks": [
+        {
+          "title": "Добить reparse / no_pickup поведение на существующих заказах",
+          "status": "active",
+          "priority": "high",
+          "area": "ops",
+          "note": "Это уже отдельный исторический узкий риск по проекту."
+        },
+        {
+          "title": "Проверить owner-scope сценарии в админке после reorder keys",
+          "status": "planned",
+          "priority": "medium",
+          "area": "ui",
+          "note": "Последний коммит трогал именно эту область."
+        }
+      ]
+    },
+    "quench_my_sorrows": {
+      "title": "Quench My Sorrows",
+      "domain": "product",
+      "summary": "Next.js + Keystatic проект с контентом, CMS, Telegram review queue и локальной публикацией.",
+      "position": { "x": 60, "y": 10 },
+      "tags": ["Next.js", "Keystatic", "React", "Docker"],
+      "related": ["codesight", "OpenHarness", "otlichniy-ulov"],
+      "services": [
+        { "name": "web", "stack": "Next 16", "status": "ok", "version": "standalone" },
+        { "name": "cms", "stack": "Keystatic", "status": "attention", "version": "content review" },
+        { "name": "telegram bridge", "stack": "Python", "status": "ok", "version": "queue wired" }
+      ],
+      "commands": {
+        "dev": "npm run dev",
+        "test": "npm run test",
+        "deploy": "npm run deploy"
+      },
+      "deploy": {
+        "surface": "deployuser@178.236.253.46:333 / quench-my-sorrows-temp",
+        "environment": "prod",
+        "status": "attention",
+        "note": "Worktree ahead 2 и большой незакоммиченный слой вокруг страниц и CMS."
+      },
+      "docs": [
+        { "label": "README", "path": "/home/goringich/Desktop/quench_my_sorrows/README.md" },
+        { "label": "CMS ops", "path": "/home/goringich/Desktop/quench_my_sorrows/docs/run-and-cms-tasks.md" }
+      ],
+      "riskNotes": [
+        "очень большой dirty layer, включая app/, content/ и components/",
+        "нужна живая проверка content pipeline после Telegram review queue bridge"
+      ],
+      "release": { "label": "v1.3.0", "days": 28, "confidence": 58 },
+      "tasks": [
+        {
+          "title": "Проверить Telegram review queue и CMS path end-to-end",
+          "status": "active",
+          "priority": "medium",
+          "area": "content",
+          "note": "Последний коммит завёл orchestrator bridge."
+        },
+        {
+          "title": "Свести новые страницы и media assets к одному release cut",
+          "status": "review",
+          "priority": "medium",
+          "area": "release",
+          "note": "В worktree много новых PNG и новых страниц."
+        }
+      ]
+    },
+    "telegram-proxy-stack": {
+      "title": "VPN family / Telegram proxy stack",
+      "domain": "infra",
+      "summary": "Серверный бот, shared admin UI для семьи VPN, bootstrap scripts и runtime alerts.",
+      "position": { "x": 35, "y": 44 },
+      "tags": ["Python", "Nginx", "WireGuard", "Bot"],
+      "related": ["system-bootstrap", "codex-orchestrator", "elizabet"],
+      "services": [
+        { "name": "bot", "stack": "Python", "status": "ok", "version": "live" },
+        { "name": "vpn-admin", "stack": "webapp", "status": "ok", "version": "shared UI" },
+        { "name": "bootstrap", "stack": "bash", "status": "ok", "version": "family runtime" }
+      ],
+      "commands": {
+        "deploy": "scripts/deploy_server_release.sh",
+        "test": "python3 -m unittest discover -s tests -p 'test_telegram_proxy_bot.py' -v"
+      },
+      "deploy": {
+        "surface": "father 194.58.33.193 / uncle Lesha 2.27.18.110",
+        "environment": "prod",
+        "status": "ok",
+        "note": "Обе runtime-ветки уже сведены в общую UI-family линию."
+      },
+      "docs": [
+        { "label": "README", "path": "/home/goringich/Desktop/server/telegram-proxy-stack/README.md" },
+        { "label": "Family runtime note", "path": "/home/goringich/Desktop/Obsidian/Системы/Мой сервер/telegram-proxy-stack/Семейство VPN runtime и bootstrap Codex 2026-05-11.md" }
+      ],
+      "riskNotes": [
+        "нужно беречь единый shared UI path для отца и дяди Леши",
+        "не подменять WG full-tunnel AllowedIPs на route soup"
+      ],
+      "release": { "label": "family-bootstrap", "days": 9, "confidence": 85 },
+      "tasks": [
+        {
+          "title": "Допаковать 1-command bootstrap для новых серверов семейства",
+          "status": "review",
+          "priority": "medium",
+          "area": "ops",
+          "note": "Это уже важное UX-правило для этой линии."
+        },
+        {
+          "title": "Owner Windows runtime alerts уже live",
+          "status": "done",
+          "priority": "medium",
+          "area": "ops",
+          "note": "Фикс и deploy уже были доведены."
+        }
+      ]
+    },
+    "esp": {
+      "title": "ESP32-P4 / stepper remote",
+      "domain": "embedded",
+      "summary": "Проект с ESP-Hosted, stepper-remote frontend/backend и реальным железом в проверочном цикле.",
+      "position": { "x": 52, "y": 46 },
+      "tags": ["C/C++", "ESP-IDF", "React", "MQTT"],
+      "related": ["otlichniy-ulov", "codex-orchestrator"],
+      "services": [
+        { "name": "firmware", "stack": "ESP-IDF", "status": "attention", "version": "board-gated" },
+        { "name": "stepper frontend", "stack": "React", "status": "ok", "version": "vite" },
+        { "name": "backend", "stack": "Node", "status": "attention", "version": "real-board required" }
+      ],
+      "commands": {
+        "dev": "cd stepper-remote/frontend && npm run dev",
+        "build": "idf.py build",
+        "test": "python scripts/esp_uart_test.py"
+      },
+      "deploy": {
+        "surface": "ttyUSB0 / real board / local web runtime",
+        "environment": "device",
+        "status": "attention",
+        "note": "Нельзя считать сделанным без живого flash / UART / HTTP цикла."
+      },
+      "docs": [
+        { "label": "stepper-remote README", "path": "/home/goringich/esp/stepper-remote/README.md" }
+      ],
+      "riskNotes": [
+        "в этом проекте нет суррогатной верификации: только real board",
+        "backend tooling должен ходить в /home/goringich/esp, а не в старый hello_world_p4"
+      ],
+      "release": { "label": "hw-loop", "days": 14, "confidence": 44 },
+      "tasks": [
+        {
+          "title": "Прогнать stepper-remote и плату end-to-end",
+          "status": "blocked",
+          "priority": "high",
+          "area": "hardware",
+          "note": "Состояние должно быть подтверждено на реальной плате."
+        }
+      ]
+    },
+    "codex-orchestrator": {
+      "title": "Codex orchestrator",
+      "domain": "local-ai",
+      "summary": "Очереди, orchestration, GPU-only policy и glue между агентами и локальной машиной.",
+      "position": { "x": 72, "y": 41 },
+      "tags": ["Python", "FastAPI", "Queues", "Agents"],
+      "related": ["system-bootstrap", "OpenHarness", "codesight", "telegram-proxy-stack"],
+      "services": [
+        { "name": "queue", "stack": "Python", "status": "ok", "version": "active" },
+        { "name": "prompts", "stack": "local files", "status": "attention", "version": "freshness matters" },
+        { "name": "bridge", "stack": "codex/openclaw", "status": "attention", "version": "new Atlas hook" }
+      ],
+      "commands": {
+        "test": "python -m unittest discover -s tests",
+        "dev": "python -m codex_orchestrator"
+      },
+      "deploy": {
+        "surface": "local machine runtime",
+        "environment": "host",
+        "status": "attention",
+        "note": "Новый дашборд должен стать ещё одной обзорной surface, а не отдельным миром."
+      },
+      "docs": [
+        { "label": "README", "path": "/home/goringich/codex-orchestrator/README.md" },
+        { "label": "Manager prompt", "path": "/home/goringich/.config/codex-orchestrator/manager-prompt.txt" }
+      ],
+      "riskNotes": [
+        "грязный worktree и policy-level требования по GPU-only UI",
+        "нужна аккуратная интеграция с существующим orchestration flow"
+      ],
+      "release": { "label": "v0.4.0", "days": 14, "confidence": 67 },
+      "tasks": [
+        {
+          "title": "Привязать Project Atlas как новый snapshot surface",
+          "status": "planned",
+          "priority": "high",
+          "area": "integration",
+          "note": "Нужно, чтобы карта проектов не жила отдельно от orchestration."
+        },
+        {
+          "title": "GPU-only desktop policy уже зафиксирован в коде",
+          "status": "done",
+          "priority": "medium",
+          "area": "platform",
+          "note": "Последний коммит именно об этом."
+        }
+      ]
+    },
+    "system-bootstrap": {
+      "title": "System bootstrap",
+      "domain": "system",
+      "summary": "Канонический snapshot слоя машины: local AI stack, restore-path, inventory и bootstrap docs.",
+      "position": { "x": 24, "y": 74 },
+      "tags": ["Shell", "Ansible", "Docs", "Bootstrap"],
+      "related": ["codex-orchestrator", "OpenHarness", "telegram-proxy-stack"],
+      "services": [
+        { "name": "inventory", "stack": "markdown/json", "status": "ok", "version": "canonical" },
+        { "name": "restore path", "stack": "scripts", "status": "attention", "version": "dirty branch" },
+        { "name": "local-ai snapshot", "stack": "docs", "status": "ok", "version": "live" }
+      ],
+      "commands": {
+        "test": "~/__home_organized/scripts/system-issues-report.sh --compact"
+      },
+      "deploy": {
+        "surface": "host filesystem",
+        "environment": "machine",
+        "status": "attention",
+        "note": "Ветка snapshot имеет большой dirty слой и требует аккуратного разруливания."
+      },
+      "docs": [
+        { "label": "repo-inventory", "path": "/home/goringich/system-bootstrap/docs/repo-inventory.md" },
+        { "label": "local-ai stack", "path": "/home/goringich/system-bootstrap/docs/local-ai-stack/README.md" }
+      ],
+      "riskNotes": [
+        "198 dirty paths в snapshot-ветке",
+        "это база для machine inventory, а не мусорный буфер"
+      ],
+      "release": { "label": "snapshot-cut", "days": 9, "confidence": 52 },
+      "tasks": [
+        {
+          "title": "Разгрести dirty snapshot branch и пересобрать inventory",
+          "status": "active",
+          "priority": "medium",
+          "area": "system",
+          "note": "Большой объём грязи прямо сейчас мешает чистому baseline."
+        }
+      ]
+    },
+    "codesight": {
+      "title": "codesight",
+      "domain": "tooling",
+      "summary": "AST / knowledge mapping engine, который уже умеет сканировать репы и может усилить Atlas.",
+      "position": { "x": 46, "y": 76 },
+      "tags": ["TypeScript", "AST", "Wiki", "MCP"],
+      "related": ["OpenHarness", "codex-orchestrator", "elizabet", "quench_my_sorrows"],
+      "services": [
+        { "name": "scanner", "stack": "TypeScript", "status": "ok", "version": "1.12.0" },
+        { "name": "wiki", "stack": "markdown", "status": "ok", "version": "knowledge mode" },
+        { "name": "mcp tools", "stack": "CLI", "status": "ok", "version": "13 tools" }
+      ],
+      "commands": {
+        "dev": "pnpm dev",
+        "test": "pnpm test",
+        "build": "pnpm build"
+      },
+      "deploy": {
+        "surface": "npm package / local CLI",
+        "environment": "tooling",
+        "status": "ok",
+        "note": "Подходит как engine для будущей глубокой визуализации проекта."
+      },
+      "docs": [
+        { "label": "README", "path": "/home/goringich/Desktop/codesight/README.md" }
+      ],
+      "riskNotes": [
+        "локальная ветка ahead 1",
+        "нужно решать, насколько глубоко Atlas будет встраивать codesight output"
+      ],
+      "release": { "label": "v0.9.0", "days": 10, "confidence": 80 },
+      "tasks": [
+        {
+          "title": "Протащить knowledge/wiki layer в Project Atlas detail view",
+          "status": "planned",
+          "priority": "low",
+          "area": "visualization",
+          "note": "Это лучший кандидат для глубокой проектной интроспекции."
+        }
+      ]
+    },
+    "OpenHarness": {
+      "title": "OpenHarness",
+      "domain": "local-ai",
+      "summary": "Открытая agent-инфраструктура и хороший источник UX-паттернов для многослойных операторских экранов.",
+      "position": { "x": 68, "y": 74 },
+      "tags": ["Python", "Agents", "CLI", "React TUI"],
+      "related": ["codesight", "codex-orchestrator", "system-bootstrap"],
+      "services": [
+        { "name": "core harness", "stack": "Python", "status": "ok", "version": "main" },
+        { "name": "ohmo", "stack": "agent app", "status": "ok", "version": "personal agent" },
+        { "name": "autopilot-dashboard", "stack": "Vite", "status": "attention", "version": "idea source" }
+      ],
+      "commands": {
+        "test": "pytest",
+        "dev": "oh --dry-run"
+      },
+      "deploy": {
+        "surface": "local harness runtime",
+        "environment": "agent",
+        "status": "ok",
+        "note": "Используется как reference-pattern, а не как target repo для Atlas."
+      },
+      "docs": [
+        { "label": "README", "path": "/home/goringich/OpenHarness/README.md" }
+      ],
+      "riskNotes": [
+        "нельзя смешать Atlas с upstream-репой без чётких границ",
+        "autopilot-dashboard здесь лишь стартовая оболочка, не финальная архитектура"
+      ],
+      "release": { "label": "upstream-watch", "days": 18, "confidence": 61 },
+      "tasks": [
+        {
+          "title": "Забрать лучшие operator UX-паттерны без форка всей платформы",
+          "status": "planned",
+          "priority": "low",
+          "area": "product",
+          "note": "Полезно как reference, не как host-repo."
+        }
+      ]
+    }
+  }
+}

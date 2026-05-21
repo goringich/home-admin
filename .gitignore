@@ -1,0 +1,5 @@
+node_modules
+dist
+public/snapshot.json
+desktop-check.png
+mobile-check.png
