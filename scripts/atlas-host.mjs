@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { getRemoteState, runRemoteAction } from "./remote-control.mjs";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const distDir = path.join(rootDir, "dist");
@@ -35,6 +36,13 @@ function refreshSnapshot() {
     cwd: rootDir,
     stdio: "ignore",
   });
+}
+
+function loadSnapshotData() {
+  if (!fs.existsSync(snapshotPath)) {
+    refreshSnapshot();
+  }
+  return JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
 }
 
 function normalizeOpenTarget(target) {
@@ -86,6 +94,53 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/local-codex-lab") {
+    try {
+      const snapshot = loadSnapshotData();
+      sendJson(res, 200, { ok: true, data: snapshot.localCodexLab ?? null });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/goal-capsules") {
+    try {
+      const snapshot = loadSnapshotData();
+      sendJson(res, 200, { ok: true, data: snapshot.localCodexLab?.goalCapsules ?? [] });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/token-efficiency") {
+    try {
+      const snapshot = loadSnapshotData();
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          tokenEfficiency: snapshot.localCodexLab?.tokenEfficiency ?? null,
+          retrievalPolicy: snapshot.localCodexLab?.retrievalPolicy ?? null,
+          runSummaries: snapshot.localCodexLab?.runSummaries ?? [],
+        },
+      });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/openclaw-reliability") {
+    try {
+      const snapshot = loadSnapshotData();
+      sendJson(res, 200, { ok: true, data: snapshot.localCodexLab?.openclawReliability ?? null });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/open") {
     let body = "";
     req.on("data", (chunk) => {
@@ -96,6 +151,35 @@ const server = http.createServer((req, res) => {
         const payload = JSON.parse(body || "{}");
         const target = openTarget(payload.target);
         sendJson(res, 200, { ok: true, target });
+      } catch (error) {
+        send(res, 400, `${error instanceof Error ? error.message : String(error)}\n`);
+      }
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/remote/state") {
+    try {
+      sendJson(res, 200, { ok: true, state: getRemoteState() });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/remote/action") {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => {
+      try {
+        const payload = JSON.parse(body || "{}");
+        const action = typeof payload.action === "string" ? payload.action.trim() : "";
+        if (!action) {
+          throw new Error("action is required");
+        }
+        sendJson(res, 200, runRemoteAction(action));
       } catch (error) {
         send(res, 400, `${error instanceof Error ? error.message : String(error)}\n`);
       }

@@ -147,4 +147,92 @@ export interface Snapshot {
     timestamp: number;
     branch: string;
   }>;
+  localCodexLab: LocalCodexLab;
+}
+
+export interface SourceMeta {
+  path: string;
+  generatedAt?: string;
+  modifiedAt?: string;
+  modifiedAtMs?: number;
+}
+
+export interface LocalCodexGoalCapsule {
+  goalId: string;
+  status: string;
+  objective: string;
+  nextAction: string;
+  latestRunSummary: string;
+  recommendedContextBudget: string;
+  remainingGaps: string[];
+  knownBlockers: string[];
+  lastUsefulCommits: string[];
+  sourceNotes: string[];
+  source: SourceMeta;
+}
+
+export interface LocalCodexRunSummary {
+  runId: string;
+  goalId: string;
+  task: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  reposTouched: string[];
+  verification: string[];
+  commits: string[];
+  whatRemains: string[];
+  nextAction: string;
+  source: SourceMeta;
+}
+
+export interface LocalCodexLab {
+  generatedAt: string;
+  hostHealth: string;
+  source: SourceMeta;
+  modelRouting: {
+    fast: string;
+    balanced: string;
+    planning: string;
+    embedding: string;
+    source: SourceMeta;
+  };
+  retrievalPolicy: {
+    priorityOrder: string[];
+    denylistedClasses: string[];
+    denylistedFiles: number;
+    source: SourceMeta;
+  };
+  tokenEfficiency: {
+    filesScanned: number;
+    longGoalRuns: number;
+    bridgeNoiseFiles: number;
+    repeatedHealthGateCount: number;
+    filesWithNoAssistantReply: number;
+    source: SourceMeta;
+  };
+  openclawReliability: {
+    warningCount: number;
+    status: string;
+    classifications: Record<string, number>;
+    recommendedActions: string[];
+    source: SourceMeta;
+  };
+  repoIntel: {
+    targetCount: number;
+    safeTargets: string[];
+    targets: Array<{
+      repoId: string;
+      title: string;
+      path: string;
+      dirtyCount: number;
+      ahead: number;
+      symbolCount: number;
+      testCount: number;
+      dependencyManifestCount: number;
+      source: SourceMeta;
+    }>;
+    source: SourceMeta;
+  };
+  goalCapsules: LocalCodexGoalCapsule[];
+  runSummaries: LocalCodexRunSummary[];
 }

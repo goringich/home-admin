@@ -1105,6 +1105,119 @@ a {
   line-height: 1.5;
 }
 
+.local-codex-lab {
+  padding: 0 0 26px;
+}
+
+.local-codex-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  padding: 0 28px 22px;
+}
+
+.codex-lab-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 0 28px 22px;
+}
+
+.lab-detail-grid {
+  padding: 0 28px;
+}
+
+.source-footnote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.source-footnote code {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--code-bg);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.class-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.class-row,
+.repo-intel-row,
+.goal-capsule-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.class-row span,
+.repo-intel-meta span,
+.goal-capsule-meta span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.repo-intel-list,
+.goal-capsule-list {
+  display: grid;
+  gap: 14px;
+}
+
+.repo-intel-row {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.repo-intel-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.repo-intel-row p,
+.goal-capsule-objective,
+.run-summary-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.repo-intel-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.goal-capsule-card,
+.run-summary-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--line);
+}
+
+.goal-capsule-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.goal-capsule-objective {
+  line-height: 1.5;
+}
+
+.compact-note-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+
 
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -1203,6 +1316,10 @@ a {
 }
 
 @media (max-width: 1280px) {
+  .codex-lab-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .map-layout,
   .lower-grid,
   .topbar,
@@ -1236,6 +1353,10 @@ a {
 }
 
 @media (max-width: 840px) {
+  .codex-lab-grid {
+    grid-template-columns: 1fr;
+  }
+
   .atlas-shell {
     grid-template-columns: 1fr;
   }
@@ -1264,7 +1385,10 @@ a {
   .detail-grid,
   .task-columns,
   .release-radar .radar-body,
-  .registry-table {
+  .registry-table,
+  .codex-lab-grid,
+  .local-codex-metrics,
+  .lab-detail-grid {
     padding-left: 18px;
     padding-right: 18px;
   }

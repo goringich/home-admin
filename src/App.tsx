@@ -3,9 +3,13 @@ import "./index.css";
 import type {
   DetailTab,
   HealthTone,
+  LocalCodexGoalCapsule,
+  LocalCodexLab,
+  LocalCodexRunSummary,
   ProjectDomain,
   ProjectRecord,
   Snapshot,
+  SourceMeta,
   TaskItem,
   TaskStatus,
 } from "./types";
@@ -59,6 +63,67 @@ const HEALTH_LABELS: Record<HealthTone, string> = {
 const DEFAULT_THEME: ThemeMode = "dark";
 const THEME_STORAGE_KEY = "project-atlas-theme";
 
+type RemoteControlState = {
+  generatedAt: string;
+  access: {
+    atlasTunnel: string;
+    sshLan: string;
+    sshTailscale: string;
+    vncTunnel: string;
+    wol: string;
+    lanIp: string;
+    tailscaleIp: string;
+    yadroIp: string;
+    wolMac: string;
+  };
+  monitor: {
+    name: string;
+    width: number;
+    height: number;
+    scale: number;
+    refreshRate: number;
+    modeLabel: string;
+    nativeMode: string;
+    remoteSafeMode: string;
+    remoteSafeActive: boolean;
+  } | null;
+  services: {
+    atlas: string;
+    devApi: string;
+    devTunnel: string;
+    wayvnc: string;
+  };
+  wayvnc: {
+    active: boolean;
+    process: string;
+    listen: string;
+  };
+  wakeOnLan: {
+    interface: string;
+    wakeMode: string;
+    wakeupState: string;
+  };
+  notes: string[];
+};
+
+const REMOTE_ALTERNATIVES = [
+  {
+    name: "Sunshine + Moonlight",
+    href: "https://docs.lizardbyte.dev/projects/sunshine/latest/",
+    note: "Лучший вариант для full desktop, когда нужен адаптивный поток под экран клиента, а не тупой стрим ultrawide 1:1.",
+  },
+  {
+    name: "RustDesk",
+    href: "https://rustdesk.com/",
+    note: "Самый простой cross-platform fallback, если нужен привычный remote desktop без отдельной VNC-сборки.",
+  },
+  {
+    name: "Apache Guacamole",
+    href: "https://guacamole.apache.org/",
+    note: "Чистый browser gateway для SSH/VNC. Удобен без клиента, но для насыщенного GUI уступает нативному стриму.",
+  },
+];
+
 function fmtRelative(dateMs?: number | null) {
   if (!dateMs) {
     return "нет данных";
@@ -76,6 +141,28 @@ function toneClass(tone: HealthTone | string) {
   if (tone === "attention") return "tone-attention";
   if (tone === "risk") return "tone-risk";
   return "tone-muted";
+}
+
+function serviceToneClass(state: string) {
+  if (state === "active") return "tone-ok";
+  if (state === "activating" || state === "reloading") return "tone-attention";
+  if (state === "failed" || state === "inactive") return "tone-risk";
+  return "tone-muted";
+}
+
+function goalToneClass(status: string) {
+  if (status === "derived") return "tone-muted";
+  if (status === "blocked") return "tone-risk";
+  if (status === "active" || status === "usage_limited") return "tone-attention";
+  return "tone-ok";
+}
+
+function compactPath(target: string) {
+  return target.replace("/home/goringich/", "~/");
+}
+
+function sourceAge(source: SourceMeta) {
+  return source.modifiedAtMs ? fmtRelative(source.modifiedAtMs) : "нет данных";
 }
 
 function taskPriorityClass(priority: TaskItem["priority"]) {
@@ -250,6 +337,396 @@ function QuickActionRow(props: {
         ) : null}
       </div>
     </div>
+  );
+}
+
+function RemoteOpsPanel(props: {
+  state: RemoteControlState | null;
+  busy: boolean;
+  onAction: (action: string) => void;
+  onCopy: (label: string, value: string) => void;
+  onRefresh: () => void;
+}) {
+  if (!props.state) {
+    return (
+      <section className="remote-ops panel">
+        <div className="panel-head">
+          <div>
+            <div className="section-kicker">Remote ops</div>
+            <h3>Удалённое управление этой машиной</h3>
+          </div>
+        </div>
+        <div className="boot-state remote-loading">Собираю live remote state…</div>
+      </section>
+    );
+  }
+
+  const { access, monitor, services, wayvnc, wakeOnLan, notes } = props.state;
+
+  return (
+    <section className="remote-ops panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Remote ops</div>
+          <h3>Удалённое управление этой машиной</h3>
+        </div>
+        <div className="panel-hint">обновлено {fmtRelative(new Date(props.state.generatedAt).getTime())}</div>
+      </div>
+
+      <div className="remote-ops-grid">
+        <div className="remote-ops-main">
+          <div className="remote-service-grid">
+            <article className="remote-service-card">
+              <span>Atlas host</span>
+              <strong>{services.atlas}</strong>
+              <p>локальный control plane на `127.0.0.1:4174`</p>
+              <span className={`health-pill ${serviceToneClass(services.atlas)}`}>{services.atlas}</span>
+            </article>
+            <article className="remote-service-card">
+              <span>Dev API</span>
+              <strong>{services.devApi}</strong>
+              <p>launcher/runtime bridge для Codex и OpenClaw</p>
+              <span className={`health-pill ${serviceToneClass(services.devApi)}`}>{services.devApi}</span>
+            </article>
+            <article className="remote-service-card">
+              <span>Dev tunnel</span>
+              <strong>{services.devTunnel}</strong>
+              <p>старый reverse SSH bridge, сейчас отдельная зона риска</p>
+              <span className={`health-pill ${serviceToneClass(services.devTunnel)}`}>{services.devTunnel}</span>
+            </article>
+            <article className="remote-service-card">
+              <span>wayvnc</span>
+              <strong>{services.wayvnc}</strong>
+              <p>{wayvnc.active ? `слушает ${wayvnc.listen}` : "fallback desktop stream выключен"}</p>
+              <span className={`health-pill ${serviceToneClass(services.wayvnc)}`}>{services.wayvnc}</span>
+            </article>
+          </div>
+
+          <div className="remote-actions">
+            <button className="primary-button" type="button" disabled={props.busy} onClick={() => props.onAction("remote_safe_on")}>
+              Remote-safe {monitor?.remoteSafeMode || "1080p"}
+            </button>
+            <button className="ghost-button" type="button" disabled={props.busy} onClick={() => props.onAction("remote_safe_off")}>
+              Вернуть {monitor?.nativeMode || "native"}
+            </button>
+            <button className="ghost-button" type="button" disabled={props.busy} onClick={() => props.onAction("wayvnc_start")}>
+              Поднять wayvnc
+            </button>
+            <button className="ghost-button" type="button" disabled={props.busy} onClick={() => props.onAction("wayvnc_stop")}>
+              Остановить wayvnc
+            </button>
+            <button className="ghost-button" type="button" disabled={props.busy} onClick={() => props.onAction("dev_bridge_restart")}>
+              Перезапустить dev tunnel
+            </button>
+            <button className="ghost-button" type="button" disabled={props.busy} onClick={props.onRefresh}>
+              Обновить remote state
+            </button>
+          </div>
+
+          <div className="remote-command-stack">
+            <QuickActionRow label="Atlas tunnel" value={access.atlasTunnel} onCopy={() => props.onCopy("Atlas tunnel", access.atlasTunnel)} />
+            {access.sshTailscale ? (
+              <QuickActionRow label="SSH over Tailscale" value={access.sshTailscale} onCopy={() => props.onCopy("SSH Tailscale", access.sshTailscale)} />
+            ) : null}
+            {access.sshLan ? (
+              <QuickActionRow label="SSH over LAN" value={access.sshLan} onCopy={() => props.onCopy("SSH LAN", access.sshLan)} />
+            ) : null}
+            <QuickActionRow label="VNC tunnel" value={access.vncTunnel} onCopy={() => props.onCopy("VNC tunnel", access.vncTunnel)} />
+            {access.wol ? <QuickActionRow label="Wake-on-LAN" value={access.wol} onCopy={() => props.onCopy("Wake-on-LAN", access.wol)} /> : null}
+          </div>
+        </div>
+
+        <aside className="remote-sidecar">
+          <section className="rail-card">
+            <div className="rail-title">Монитор</div>
+            <div className="system-grid">
+              <div>
+                <span>screen</span>
+                <strong>{monitor?.name || "n/a"}</strong>
+              </div>
+              <div>
+                <span>mode</span>
+                <strong>{monitor?.modeLabel || "n/a"}</strong>
+              </div>
+              <div>
+                <span>scale</span>
+                <strong>{monitor ? `${monitor.scale.toFixed(2)}x` : "n/a"}</strong>
+              </div>
+              <div>
+                <span>remote-safe</span>
+                <strong>{monitor?.remoteSafeActive ? "ON" : "OFF"}</strong>
+              </div>
+            </div>
+            <p className="system-note">
+              {monitor?.remoteSafeActive
+                ? "Сейчас экран уже в laptop-friendly режиме."
+                : "Для мелких ноутбуков сначала переключайся в remote-safe mode, потом уже цепляй full desktop."}
+            </p>
+          </section>
+
+          <section className="rail-card">
+            <div className="rail-title">Сеть и WOL</div>
+            <div className="system-grid">
+              <div>
+                <span>tailscale</span>
+                <strong>{access.tailscaleIp || "n/a"}</strong>
+              </div>
+              <div>
+                <span>lan</span>
+                <strong>{access.lanIp || "n/a"}</strong>
+              </div>
+              <div>
+                <span>wake</span>
+                <strong>{wakeOnLan.wakeMode || "n/a"}</strong>
+              </div>
+              <div>
+                <span>iface</span>
+                <strong>{wakeOnLan.interface}</strong>
+              </div>
+            </div>
+            <p className="system-note">MAC {access.wolMac || "unknown"} · wakeup {wakeOnLan.wakeupState || "unknown"}.</p>
+          </section>
+
+          <section className="rail-card">
+            <div className="rail-title">Если нужен аналог</div>
+            <div className="alt-tool-list">
+              {REMOTE_ALTERNATIVES.map((item) => (
+                <article key={item.name} className="alt-tool-card">
+                  <strong>{item.name}</strong>
+                  <p>{item.note}</p>
+                  <a href={item.href} target="_blank" rel="noreferrer">
+                    docs
+                  </a>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="rail-card">
+            <div className="rail-title">Операционный контур</div>
+            <div className="remote-note-list">
+              {notes.map((item) => (
+                <p key={item}>{item}</p>
+              ))}
+            </div>
+          </section>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function SourceFootnote(props: {
+  source: SourceMeta;
+  label: string;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  if (!props.source.path) {
+    return <div className="source-footnote">Источник не найден</div>;
+  }
+
+  return (
+    <div className="source-footnote">
+      <span>{props.label}</span>
+      <button type="button" className="ghost-action" onClick={() => props.onOpen(props.label, props.source.path)}>
+        source
+      </button>
+      <button type="button" className="ghost-action" onClick={() => props.onCopy(props.label, props.source.path)}>
+        copy
+      </button>
+      <code>{compactPath(props.source.path)}</code>
+      <span>{sourceAge(props.source)}</span>
+    </div>
+  );
+}
+
+function GoalCapsuleCard(props: {
+  capsule: LocalCodexGoalCapsule;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  return (
+    <article className="goal-capsule-card">
+      <div className="goal-capsule-head">
+        <div>
+          <div className="detail-card-title">{props.capsule.goalId}</div>
+          <strong>{props.capsule.status}</strong>
+        </div>
+        <span className={`health-pill ${goalToneClass(props.capsule.status)}`}>{props.capsule.status}</span>
+      </div>
+      <p className="goal-capsule-objective">{props.capsule.objective}</p>
+      <div className="goal-capsule-meta">
+        <span>next: {props.capsule.nextAction}</span>
+        <span>summary: {props.capsule.latestRunSummary || "n/a"}</span>
+        <span>budget: {props.capsule.recommendedContextBudget || "n/a"}</span>
+      </div>
+      {props.capsule.remainingGaps.length > 0 ? (
+        <ul className="note-list compact-note-list">
+          {props.capsule.remainingGaps.slice(0, 2).map((gap) => (
+            <li key={gap}>{gap}</li>
+          ))}
+        </ul>
+      ) : null}
+      <SourceFootnote source={props.capsule.source} label={`goal ${props.capsule.goalId}`} onOpen={props.onOpen} onCopy={props.onCopy} />
+    </article>
+  );
+}
+
+function RunSummaryCard(props: {
+  summary: LocalCodexRunSummary;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  return (
+    <article className="run-summary-card">
+      <div className="goal-capsule-head">
+        <div>
+          <div className="detail-card-title">{props.summary.runId}</div>
+          <strong>{props.summary.task}</strong>
+        </div>
+        <span className="chip chip-subtle">{props.summary.goalId || "ungrouped"}</span>
+      </div>
+      <div className="goal-capsule-meta">
+        <span>repos {props.summary.reposTouched.length}</span>
+        <span>verification {props.summary.verification.length}</span>
+        <span>commits {props.summary.commits.length}</span>
+      </div>
+      <p className="goal-capsule-objective">{props.summary.nextAction}</p>
+      {props.summary.whatRemains.length > 0 ? (
+        <ul className="note-list compact-note-list">
+          {props.summary.whatRemains.slice(0, 2).map((gap) => (
+            <li key={gap}>{gap}</li>
+          ))}
+        </ul>
+      ) : null}
+      <SourceFootnote source={props.summary.source} label={`run ${props.summary.runId}`} onOpen={props.onOpen} onCopy={props.onCopy} />
+    </article>
+  );
+}
+
+function LocalCodexLabPanel(props: {
+  lab: LocalCodexLab;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const orderedClassifications = Object.entries(props.lab.openclawReliability.classifications).sort((left, right) => right[1] - left[1]);
+
+  return (
+    <section className="local-codex-lab panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Local Codex Lab</div>
+          <h3>AI Mission Control</h3>
+        </div>
+        <div className="panel-hint">
+          host {props.lab.hostHealth} · updated {fmtRelative(new Date(props.lab.generatedAt).getTime())}
+        </div>
+      </div>
+
+      <div className="local-codex-metrics">
+        <MetricCard label="Goal capsules" value={props.lab.goalCapsules.length} detail={`run summaries ${props.lab.runSummaries.length}`} />
+        <MetricCard label="Token waste" value={props.lab.tokenEfficiency.filesScanned} detail={`health repeats ${props.lab.tokenEfficiency.repeatedHealthGateCount}`} />
+        <MetricCard label="Denylist" value={props.lab.retrievalPolicy.denylistedFiles} detail={props.lab.retrievalPolicy.denylistedClasses.join(" · ")} />
+        <MetricCard label="OpenClaw warns" value={props.lab.openclawReliability.warningCount} detail={props.lab.openclawReliability.status} />
+        <MetricCard label="Repo-intel" value={props.lab.repoIntel.targetCount} detail={props.lab.repoIntel.safeTargets.join(" · ")} />
+      </div>
+
+      <div className="codex-lab-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Model routing baseline</div>
+          <div className="class-grid">
+            <div className="class-row"><span>fast</span><strong>{props.lab.modelRouting.fast}</strong></div>
+            <div className="class-row"><span>balanced</span><strong>{props.lab.modelRouting.balanced}</strong></div>
+            <div className="class-row"><span>planning</span><strong>{props.lab.modelRouting.planning}</strong></div>
+            <div className="class-row"><span>embedding</span><strong>{props.lab.modelRouting.embedding}</strong></div>
+          </div>
+          <SourceFootnote source={props.lab.modelRouting.source} label="model routing" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Retrieval policy</div>
+          <ul className="note-list compact-note-list">
+            {props.lab.retrievalPolicy.priorityOrder.slice(0, 4).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <div className="goal-capsule-meta">
+            <span>denylisted {props.lab.retrievalPolicy.denylistedFiles}</span>
+            <span>{props.lab.retrievalPolicy.denylistedClasses.join(" · ")}</span>
+          </div>
+          <SourceFootnote source={props.lab.retrievalPolicy.source} label="retrieval policy" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Token-efficiency audit</div>
+          <div className="class-grid">
+            <div className="class-row"><span>files scanned</span><strong>{props.lab.tokenEfficiency.filesScanned}</strong></div>
+            <div className="class-row"><span>long goal runs</span><strong>{props.lab.tokenEfficiency.longGoalRuns}</strong></div>
+            <div className="class-row"><span>bridge noise</span><strong>{props.lab.tokenEfficiency.bridgeNoiseFiles}</strong></div>
+            <div className="class-row"><span>no reply</span><strong>{props.lab.tokenEfficiency.filesWithNoAssistantReply}</strong></div>
+          </div>
+          <SourceFootnote source={props.lab.tokenEfficiency.source} label="token waste metrics" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">OpenClaw reliability classes</div>
+          <div className="class-grid">
+            {orderedClassifications.slice(0, 5).map(([name, count]) => (
+              <div key={name} className="class-row">
+                <span>{name}</span>
+                <strong>{count}</strong>
+              </div>
+            ))}
+          </div>
+          <ul className="note-list compact-note-list">
+            {props.lab.openclawReliability.recommendedActions.slice(0, 2).map((action) => (
+              <li key={action}>{action}</li>
+            ))}
+          </ul>
+          <SourceFootnote source={props.lab.openclawReliability.source} label="openclaw reliability" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Repo-intel freshness</div>
+          <div className="repo-intel-list">
+            {props.lab.repoIntel.targets.map((target) => (
+              <div key={target.repoId} className="repo-intel-row">
+                <div>
+                  <strong>{target.title}</strong>
+                  <p>{compactPath(target.path)}</p>
+                </div>
+                <div className="repo-intel-meta">
+                  <span>dirty {target.dirtyCount}</span>
+                  <span>ahead {target.ahead}</span>
+                  <span>symbols {target.symbolCount}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <SourceFootnote source={props.lab.repoIntel.source} label="repo intel" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+
+      <div className="detail-grid lab-detail-grid">
+        <div className="detail-card detail-card-wide">
+          <div className="detail-card-title">Active goal capsules</div>
+          <div className="goal-capsule-list">
+            {props.lab.goalCapsules.map((capsule) => (
+              <GoalCapsuleCard key={capsule.goalId} capsule={capsule} onOpen={props.onOpen} onCopy={props.onCopy} />
+            ))}
+          </div>
+        </div>
+        <div className="detail-card detail-card-wide">
+          <div className="detail-card-title">Run summaries</div>
+          <div className="goal-capsule-list">
+            {props.lab.runSummaries.map((summary) => (
+              <RunSummaryCard key={summary.runId} summary={summary} onOpen={props.onOpen} onCopy={props.onCopy} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -765,6 +1242,8 @@ function RegistryTable(props: {
 
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [remoteState, setRemoteState] = useState<RemoteControlState | null>(null);
+  const [remoteBusy, setRemoteBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [domainFilter, setDomainFilter] = useState<ProjectDomain | "all">("all");
   const [selectedId, setSelectedId] = useState("");
@@ -808,8 +1287,55 @@ export function App() {
       });
   };
 
+  const refreshRemoteState = (announce = false) => {
+    setRemoteBusy(true);
+    fetch("./api/remote/state", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`remote: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data: { state?: RemoteControlState }) => {
+        if (data.state) {
+          setRemoteState(data.state);
+          if (announce) {
+            setNotice("Remote state обновлён");
+          }
+        }
+      })
+      .catch((reason) => setNotice(`Не удалось обновить remote state: ${String(reason)}`))
+      .finally(() => setRemoteBusy(false));
+  };
+
+  const runRemoteAction = (action: string) => {
+    setRemoteBusy(true);
+    fetch("./api/remote/action", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ action }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`remote action: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data: { message?: string; state?: RemoteControlState }) => {
+        if (data.state) {
+          setRemoteState(data.state);
+        }
+        setNotice(data.message || `Action done: ${action}`);
+      })
+      .catch((reason) => setNotice(`Не удалось выполнить remote action: ${String(reason)}`))
+      .finally(() => setRemoteBusy(false));
+  };
+
   useEffect(() => {
     refreshSnapshot();
+    refreshRemoteState();
   }, []);
 
   useEffect(() => {
@@ -1070,6 +1596,16 @@ export function App() {
               detail={snapshot.system.topIssue}
             />
           </section>
+
+          <LocalCodexLabPanel lab={snapshot.localCodexLab} onOpen={open} onCopy={copy} />
+
+          <RemoteOpsPanel
+            state={remoteState}
+            busy={remoteBusy}
+            onAction={runRemoteAction}
+            onCopy={copy}
+            onRefresh={() => refreshRemoteState(true)}
+          />
 
           <div className="map-layout">
             <div className="map-column">

@@ -8,6 +8,9 @@ const rootDir = path.join(home, "Desktop", "project-atlas");
 const inventoryPath = path.join(home, "system-bootstrap", "docs", "repo-inventory.md");
 const overridesPath = path.join(rootDir, "data", "project-overrides.json");
 const outputPath = path.join(rootDir, "public", "snapshot.json");
+const canonicalLocalCodexRuntime = path.join(home, "__home_organized", "runtime", "local-codex-stack");
+const legacyLocalCodexRuntime = path.join(home, "__home_organized", "local-codex-stack", "runtime", "local-codex-stack");
+const localCodexAtlasPath = path.join(home, "__home_organized", "local-codex-stack", "atlas", "local-codex-lab.json");
 
 const overrides = JSON.parse(fs.readFileSync(overridesPath, "utf8"));
 
@@ -37,6 +40,71 @@ function readText(targetPath) {
   } catch {
     return "";
   }
+}
+
+function pickExistingPath(paths) {
+  return paths.find((targetPath) => fileExists(targetPath)) || "";
+}
+
+function readJsonFirst(paths, fallback = null) {
+  for (const targetPath of paths) {
+    if (!fileExists(targetPath)) {
+      continue;
+    }
+    try {
+      return { path: targetPath, payload: JSON.parse(fs.readFileSync(targetPath, "utf8")) };
+    } catch {
+      continue;
+    }
+  }
+  return { path: "", payload: fallback };
+}
+
+function readJsonlFirst(paths) {
+  for (const targetPath of paths) {
+    if (!fileExists(targetPath)) {
+      continue;
+    }
+    try {
+      const payload = fs
+        .readFileSync(targetPath, "utf8")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      return { path: targetPath, payload };
+    } catch {
+      continue;
+    }
+  }
+  return { path: "", payload: [] };
+}
+
+function statMeta(targetPath, generatedAt = "") {
+  if (!targetPath || !fileExists(targetPath)) {
+    return {
+      path: targetPath || "",
+      generatedAt: generatedAt || "",
+      modifiedAt: "",
+      modifiedAtMs: 0,
+    };
+  }
+
+  const stats = fs.statSync(targetPath);
+  return {
+    path: targetPath,
+    generatedAt: generatedAt || "",
+    modifiedAt: new Date(stats.mtimeMs).toISOString(),
+    modifiedAtMs: stats.mtimeMs,
+  };
+}
+
+function goalStatusRank(status) {
+  if (status === "active") return 0;
+  if (status === "usage_limited") return 1;
+  if (status === "blocked") return 2;
+  if (status === "derived") return 3;
+  return 4;
 }
 
 function parseInventory(markdown) {
@@ -339,6 +407,153 @@ function summarizeRepo(repoEntry) {
   };
 }
 
+function buildLocalCodexLab() {
+  const lab = readJsonFirst([localCodexAtlasPath], {});
+  const retrievalPolicy = readJsonFirst(
+    [
+      path.join(canonicalLocalCodexRuntime, "retrieval-policy.json"),
+      path.join(legacyLocalCodexRuntime, "retrieval-policy.json"),
+    ],
+    {},
+  );
+  const tokenWaste = readJsonFirst(
+    [
+      path.join(canonicalLocalCodexRuntime, "conversation-mining", "token-waste-metrics.json"),
+      path.join(legacyLocalCodexRuntime, "conversation-mining", "token-waste-metrics.json"),
+    ],
+    {},
+  );
+  const openclawReliability = readJsonFirst(
+    [
+      path.join(canonicalLocalCodexRuntime, "openclaw-reliability.json"),
+      path.join(legacyLocalCodexRuntime, "openclaw-reliability.json"),
+    ],
+    {},
+  );
+  const repoIntel = readJsonFirst(
+    [
+      path.join(canonicalLocalCodexRuntime, "repo-intel", "index.json"),
+      path.join(legacyLocalCodexRuntime, "repo-intel", "index.json"),
+    ],
+    {},
+  );
+  const runSummaries = readJsonlFirst(
+    [
+      path.join(canonicalLocalCodexRuntime, "run-summaries.jsonl"),
+      path.join(legacyLocalCodexRuntime, "run-summaries.jsonl"),
+    ],
+  );
+
+  const goalsRoot = pickExistingPath([
+    path.join(canonicalLocalCodexRuntime, "goals"),
+    path.join(legacyLocalCodexRuntime, "goals"),
+  ]);
+  const goalCapsules = goalsRoot
+    ? fs
+        .readdirSync(goalsRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => path.join(goalsRoot, entry.name, "goal-capsule.json"))
+        .filter((targetPath) => fileExists(targetPath))
+        .map((targetPath) => {
+          const payload = JSON.parse(fs.readFileSync(targetPath, "utf8"));
+          return {
+            goalId: payload.goal_id,
+            status: payload.status,
+            objective: payload.objective,
+            nextAction: payload.next_action,
+            latestRunSummary: payload.latest_run_summary || "",
+            recommendedContextBudget: payload.recommended_context_budget || "",
+            remainingGaps: payload.remaining_gaps || [],
+            knownBlockers: payload.known_blockers || [],
+            lastUsefulCommits: payload.last_useful_commits || [],
+            sourceNotes: payload.source_notes || [],
+            source: statMeta(targetPath, payload.generated_at || ""),
+          };
+        })
+        .sort((left, right) => {
+          const rankDelta = goalStatusRank(left.status) - goalStatusRank(right.status);
+          if (rankDelta !== 0) {
+            return rankDelta;
+          }
+          return left.goalId.localeCompare(right.goalId);
+        })
+    : [];
+
+  const runSummarySource = statMeta(runSummaries.path, "");
+  const summarizedRuns = runSummaries.payload
+    .slice()
+    .sort((left, right) => String(right.finished_at || right.started_at || "").localeCompare(String(left.finished_at || left.started_at || "")))
+    .slice(0, 6)
+    .map((entry) => ({
+      runId: entry.run_id,
+      goalId: entry.goal_id || "",
+      task: entry.task || "",
+      startedAt: entry.started_at || null,
+      finishedAt: entry.finished_at || null,
+      reposTouched: entry.repos_touched || [],
+      verification: entry.verification || [],
+      commits: entry.commits || [],
+      whatRemains: entry.what_remains || [],
+      nextAction: entry.next_action || "",
+      source: runSummarySource,
+    }));
+
+  return {
+    generatedAt: lab.payload?.generated_at || new Date().toISOString(),
+    hostHealth: lab.payload?.host_health || "unknown",
+    source: statMeta(lab.path, lab.payload?.generated_at || ""),
+    modelRouting: {
+      fast: lab.payload?.fast_model || "unknown",
+      balanced: lab.payload?.balanced_model || "unknown",
+      planning: lab.payload?.planning_model || "unknown",
+      embedding: lab.payload?.embedding_model || "unknown",
+      source: statMeta(lab.path, lab.payload?.generated_at || ""),
+    },
+    retrievalPolicy: {
+      priorityOrder: retrievalPolicy.payload?.priority_order || [],
+      denylistedClasses: retrievalPolicy.payload?.ordinary_retrieval_rules?.denylisted_classes || [],
+      denylistedFiles: Number(retrievalPolicy.payload?.stats?.denylisted_files || 0),
+      source: statMeta(retrievalPolicy.path, retrievalPolicy.payload?.generated_at || ""),
+    },
+    tokenEfficiency: {
+      filesScanned: Number(tokenWaste.payload?.number_of_codex_conversation_files_scanned || 0),
+      longGoalRuns: Number(tokenWaste.payload?.number_of_long_goal_runs || 0),
+      bridgeNoiseFiles: Number(tokenWaste.payload?.number_of_bridge_smoke_no_answer_files || 0),
+      repeatedHealthGateCount: Number(tokenWaste.payload?.repeated_health_gate_count || 0),
+      filesWithNoAssistantReply: Number(tokenWaste.payload?.files_with_no_assistant_reply || 0),
+      source: statMeta(tokenWaste.path, tokenWaste.payload?.generated_at || ""),
+    },
+    openclawReliability: {
+      warningCount: Number(openclawReliability.payload?.summary?.warning_count || 0),
+      status: openclawReliability.payload?.summary?.status || "unknown",
+      classifications: openclawReliability.payload?.summary?.classifications || {},
+      recommendedActions: openclawReliability.payload?.recommended_actions || [],
+      source: statMeta(
+        openclawReliability.path,
+        openclawReliability.payload?.generated_at || "",
+      ),
+    },
+    repoIntel: {
+      targetCount: Number(repoIntel.payload?.target_count || 0),
+      safeTargets: repoIntel.payload?.safe_targets || [],
+      targets: (repoIntel.payload?.targets || []).map((entry) => ({
+        repoId: entry.repo_id,
+        title: entry.title,
+        path: entry.path,
+        dirtyCount: Number(entry.git?.dirty_count || 0),
+        ahead: Number(entry.git?.ahead || 0),
+        symbolCount: Number(entry.symbol_count || 0),
+        testCount: Number(entry.test_count || 0),
+        dependencyManifestCount: Number(entry.dependency_manifest_count || 0),
+        source: statMeta(path.join(entry.canonical_dir || "", "repo-summary.json"), entry.generated_at || ""),
+      })),
+      source: statMeta(repoIntel.path, repoIntel.payload?.generated_at || ""),
+    },
+    goalCapsules,
+    runSummaries: summarizedRuns,
+  };
+}
+
 function systemSnapshot() {
   const issues = run("bash", ["-lc", `${home}/__home_organized/scripts/system-issues-report.sh --compact`]);
   const running = run("systemctl", ["is-system-running"]);
@@ -423,6 +638,7 @@ const blockedTasks = tasks.filter((task) => task.status === "blocked").length;
 const activeTasks = tasks.filter((task) => task.status === "active").length;
 const reviewTasks = tasks.filter((task) => task.status === "review").length;
 const system = systemSnapshot();
+const localCodexLab = buildLocalCodexLab();
 
 const snapshot = {
   generatedAt: new Date().toISOString(),
@@ -443,6 +659,7 @@ const snapshot = {
   projects,
   tasks,
   recentCommits,
+  localCodexLab,
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
