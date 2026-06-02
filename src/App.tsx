@@ -14,16 +14,13 @@ import type {
   TaskStatus,
 } from "./types";
 
-type ThemeMode = "light" | "dark";
-
 const NAV_ITEMS = [
-  "Обзор",
-  "Проекты",
-  "Граф",
-  "Задачи",
-  "Деплой",
-  "Аналитика",
-  "Риски",
+  { id: "command-deck", label: "Command Deck" },
+  { id: "local-codex", label: "Codex Lab" },
+  { id: "reliability", label: "Reliability" },
+  { id: "remote-ops", label: "Remote Ops" },
+  { id: "project-map", label: "Projects" },
+  { id: "registry", label: "Registry" },
 ];
 
 const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [
@@ -60,8 +57,47 @@ const HEALTH_LABELS: Record<HealthTone, string> = {
   unknown: "Неизвестно",
 };
 
-const DEFAULT_THEME: ThemeMode = "dark";
-const THEME_STORAGE_KEY = "project-atlas-theme";
+type FallbackReadinessState =
+  | "not-ready"
+  | "partial"
+  | "ready-for-safe-tasks"
+  | "ready-with-review"
+  | "blocked-by-host-health";
+
+type MissionState = {
+  activeGoal: LocalCodexGoalCapsule | null;
+  nextAction: string;
+  tokenLabel: string;
+  tokenTone: HealthTone;
+  tokenDetail: string;
+  openclawLabel: string;
+  openclawTone: HealthTone;
+  openclawDetail: string;
+  fallbackState: FallbackReadinessState;
+  fallbackTone: HealthTone;
+  fallbackLabel: string;
+  fallbackSummary: string;
+  biggestRisk: string;
+  biggestRiskTone: HealthTone;
+  localAiSummary: string;
+  safeTaskAnswer: string;
+  dominantFailure: string;
+  riskItems: string[];
+  planner: string;
+  coder: string;
+  reviewer: string;
+  sandboxStatus: string;
+  repoIntelStatus: string;
+  benchmarkStatus: string;
+  escalationPacketStatus: string;
+  nextFallbackStep: string;
+};
+
+const DEFAULT_THEME = "dark";
+
+if (typeof document !== "undefined") {
+  document.documentElement.dataset.theme = DEFAULT_THEME;
+}
 
 type RemoteControlState = {
   generatedAt: string;
@@ -137,6 +173,7 @@ function fmtRelative(dateMs?: number | null) {
 }
 
 function toneClass(tone: HealthTone | string) {
+  if (tone.startsWith("tone-")) return tone;
   if (tone === "ok") return "tone-ok";
   if (tone === "attention") return "tone-attention";
   if (tone === "risk") return "tone-risk";
@@ -161,6 +198,15 @@ function compactPath(target: string) {
   return target.replace("/home/goringich/", "~/");
 }
 
+function compactObjective(value: string, limit = 180) {
+  const singleLine = value.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= limit) {
+    return singleLine;
+  }
+  const shortened = singleLine.slice(0, limit);
+  return `${shortened.slice(0, shortened.lastIndexOf(" "))}...`;
+}
+
 function sourceAge(source: SourceMeta) {
   return source.modifiedAtMs ? fmtRelative(source.modifiedAtMs) : "нет данных";
 }
@@ -169,6 +215,138 @@ function taskPriorityClass(priority: TaskItem["priority"]) {
   if (priority === "high") return "priority-high";
   if (priority === "medium") return "priority-medium";
   return "priority-low";
+}
+
+function statusToneForReadiness(state: FallbackReadinessState): HealthTone {
+  if (state === "blocked-by-host-health") return "risk";
+  if (state === "partial" || state === "not-ready") return "attention";
+  return "ok";
+}
+
+function topReliabilityClass(classifications: Record<string, number>) {
+  return Object.entries(classifications)
+    .filter(([name, count]) => count > 0 && name !== "completed" && name !== "partial")
+    .sort((left, right) => right[1] - left[1])[0];
+}
+
+function deriveMissionState(snapshot: Snapshot): MissionState {
+  const lab = snapshot.localCodexLab;
+  const activeGoal =
+    lab.goalCapsules.find((capsule) => capsule.status === "active" || capsule.status === "usage_limited") ??
+    lab.goalCapsules.find((capsule) => capsule.status !== "derived") ??
+    lab.goalCapsules[0] ??
+    null;
+  const dominantFailure = topReliabilityClass(lab.openclawReliability.classifications);
+  const tokenPressure =
+    lab.tokenEfficiency.repeatedHealthGateCount +
+    lab.tokenEfficiency.filesWithNoAssistantReply +
+    lab.tokenEfficiency.bridgeNoiseFiles;
+  let tokenTone: HealthTone = "ok";
+  let tokenLabel = "compact-path-on";
+  let tokenDetail = `${lab.retrievalPolicy.denylistedFiles} denylisted · ${lab.tokenEfficiency.longGoalRuns} long runs`;
+
+  if (tokenPressure >= 280) {
+    tokenTone = "risk";
+    tokenLabel = "waste-high";
+    tokenDetail = `${lab.tokenEfficiency.repeatedHealthGateCount} repeated health gates · ${lab.tokenEfficiency.filesWithNoAssistantReply} no-reply files`;
+  } else if (tokenPressure >= 170) {
+    tokenTone = "attention";
+    tokenLabel = "improving";
+    tokenDetail = `${lab.tokenEfficiency.bridgeNoiseFiles} bridge-noise files · denylist is active`;
+  }
+
+  let openclawTone: HealthTone = "ok";
+  let openclawLabel = "stable";
+  let openclawDetail = `${lab.openclawReliability.warningCount} warnings`;
+
+  if (lab.openclawReliability.warningCount >= 10) {
+    openclawTone = "risk";
+    openclawLabel = "warning-heavy";
+    openclawDetail = dominantFailure ? `${dominantFailure[0]} dominates (${dominantFailure[1]})` : openclawDetail;
+  } else if (lab.openclawReliability.warningCount > 0) {
+    openclawTone = "attention";
+    openclawLabel = "needs-review";
+    openclawDetail = dominantFailure ? `${dominantFailure[0]} ${dominantFailure[1]}` : openclawDetail;
+  }
+
+  const hostBlocked = snapshot.system.safeMode || snapshot.system.overall !== "ok" || lab.hostHealth !== "ok";
+  let fallbackState: FallbackReadinessState = "not-ready";
+  let fallbackLabel = "not-ready";
+  let fallbackSummary = "Local fallback still lacks a trustworthy host and review path.";
+
+  if (hostBlocked) {
+    fallbackState = "blocked-by-host-health";
+    fallbackLabel = "blocked-by-host-health";
+    fallbackSummary = "Local fallback is intentionally limited while the host remains degraded.";
+  } else if (lab.repoIntel.targetCount >= 3 && lab.openclawReliability.warningCount === 0) {
+    fallbackState = "ready-for-safe-tasks";
+    fallbackLabel = "ready-for-safe-tasks";
+    fallbackSummary = "Compact artifacts and repo intel are ready for bounded local tasks.";
+  } else if (lab.repoIntel.targetCount >= 3) {
+    fallbackState = "ready-with-review";
+    fallbackLabel = "ready-with-review";
+    fallbackSummary = "The local stack can assist on safe work, but human or Codex review is still required.";
+  } else if (lab.repoIntel.targetCount > 0) {
+    fallbackState = "partial";
+    fallbackLabel = "partial";
+    fallbackSummary = "Some fallback surfaces are wired, but the role split is still incomplete.";
+  }
+
+  const fallbackTone = statusToneForReadiness(fallbackState);
+  const biggestRisk = hostBlocked
+    ? snapshot.system.topIssue
+    : lab.openclawReliability.warningCount > 0
+      ? `OpenClaw trust surface is still broader than the tracked target policy.`
+      : `Repo-intel and run-summary surfaces still need a tighter local worker loop.`;
+
+  const riskItems = [
+    activeGoal?.knownBlockers[0] || "",
+    lab.openclawReliability.recommendedActions[0] || "",
+    snapshot.system.topIssue || "",
+  ].filter(Boolean);
+
+  return {
+    activeGoal,
+    nextAction:
+      activeGoal?.nextAction ||
+      lab.runSummaries[0]?.nextAction ||
+      "Refresh local artifacts and verify the next bounded task.",
+    tokenLabel,
+    tokenTone,
+    tokenDetail,
+    openclawLabel,
+    openclawTone,
+    openclawDetail,
+    fallbackState,
+    fallbackTone,
+    fallbackLabel,
+    fallbackSummary,
+    biggestRisk,
+    biggestRiskTone: hostBlocked || lab.openclawReliability.warningCount >= 10 ? "risk" : "attention",
+    localAiSummary: hostBlocked
+      ? "Host degraded, GPU path is live, but autonomy claims stay conservative."
+      : "Local AI runtime is available for bounded support work.",
+    safeTaskAnswer:
+      fallbackState === "ready-for-safe-tasks" || fallbackState === "ready-with-review"
+        ? "Да, для bounded задач с review."
+        : "Пока нет, только частичный или blocked fallback.",
+    dominantFailure: dominantFailure ? `${dominantFailure[0]} (${dominantFailure[1]})` : "none",
+    riskItems,
+    planner: lab.modelRouting.planning || "missing",
+    coder: lab.modelRouting.balanced || "missing",
+    reviewer: "manual review / Codex escalation",
+    sandboxStatus: hostBlocked ? "degraded host; no broader autonomy" : "bounded-only",
+    repoIntelStatus: `${lab.repoIntel.targetCount} safe targets indexed`,
+    benchmarkStatus:
+      lab.repoIntel.targetCount > 0 ? "baseline routing only; no live benchmark panel yet" : "missing",
+    escalationPacketStatus:
+      lab.goalCapsules.length > 0 && lab.runSummaries.length > 0
+        ? "goal capsules + run summaries available"
+        : "missing",
+    nextFallbackStep: hostBlocked
+      ? "Clear host degradation, then verify planner -> coder -> review on a safe Atlas task."
+      : activeGoal?.nextAction || "Verify a bounded local worker flow with repo intel attached.",
+  };
 }
 
 function miniSparkline(values: number[]) {
@@ -199,6 +377,10 @@ function MetricCard(props: { label: string; value: string | number; detail: stri
       <div className="metric-detail">{props.detail}</div>
     </article>
   );
+}
+
+function StatusBadge(props: { label: string; tone: HealthTone | string }) {
+  return <span className={`health-pill ${toneClass(props.tone)}`}>{props.label}</span>;
 }
 
 function ProjectNode(props: {
@@ -538,6 +720,299 @@ function SourceFootnote(props: {
       <code>{compactPath(props.source.path)}</code>
       <span>{sourceAge(props.source)}</span>
     </div>
+  );
+}
+
+function CommandDeckPanel(props: {
+  snapshot: Snapshot;
+  mission: MissionState;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const { mission, snapshot } = props;
+
+  return (
+    <section id="command-deck" className="command-deck panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Mission Control</div>
+          <h3>Command Deck</h3>
+          <p>Первый экран должен отвечать, что делать дальше, насколько надёжен локальный стек и где самый большой риск.</p>
+        </div>
+        <StatusBadge label={mission.fallbackLabel} tone={mission.fallbackTone} />
+      </div>
+
+      <div className="command-deck-grid">
+        <div className="command-deck-main">
+          <article className="answer-card answer-card-lead">
+            <div className="answer-card-head">
+              <div>
+                <div className="answer-label">Current active goal</div>
+                <h2>{mission.activeGoal ? compactObjective(mission.activeGoal.objective) : "Goal capsule missing"}</h2>
+              </div>
+              {mission.activeGoal ? <StatusBadge label={mission.activeGoal.status} tone={goalToneClass(mission.activeGoal.status)} /> : null}
+            </div>
+            <p>{mission.localAiSummary}</p>
+            <div className="answer-action-row">
+              <MetricCard label="Next exact action" value="Now" detail={mission.nextAction} />
+              <MetricCard label="Can local handle safe tasks?" value={mission.safeTaskAnswer} detail={mission.fallbackSummary} />
+            </div>
+            {mission.activeGoal ? (
+              <SourceFootnote
+                source={mission.activeGoal.source}
+                label={`goal ${mission.activeGoal.goalId}`}
+                onOpen={props.onOpen}
+                onCopy={props.onCopy}
+              />
+            ) : (
+              <SourceFootnote
+                source={snapshot.localCodexLab.source}
+                label="local codex lab"
+                onOpen={props.onOpen}
+                onCopy={props.onCopy}
+              />
+            )}
+          </article>
+
+          <div className="answer-grid">
+            <article className="answer-card">
+              <div className="answer-label">Is local AI healthy?</div>
+              <div className="answer-value">
+                <StatusBadge label={snapshot.localCodexLab.hostHealth} tone={snapshot.system.overall === "ok" ? "ok" : "risk"} />
+              </div>
+              <p>{mission.localAiSummary}</p>
+            </article>
+
+            <article className="answer-card">
+              <div className="answer-label">Is Codex wasting tokens?</div>
+              <div className="answer-value">
+                <StatusBadge label={mission.tokenLabel} tone={mission.tokenTone} />
+              </div>
+              <p>{mission.tokenDetail}</p>
+            </article>
+
+            <article className="answer-card">
+              <div className="answer-label">Is OpenClaw reliable right now?</div>
+              <div className="answer-value">
+                <StatusBadge label={mission.openclawLabel} tone={mission.openclawTone} />
+              </div>
+              <p>{mission.openclawDetail}</p>
+            </article>
+
+            <article className="answer-card">
+              <div className="answer-label">Biggest risk</div>
+              <div className="answer-value">
+                <StatusBadge label={snapshot.system.systemStatus} tone={mission.biggestRiskTone} />
+              </div>
+              <p>{mission.biggestRisk}</p>
+            </article>
+          </div>
+        </div>
+
+        <aside className="command-deck-rail">
+          <article className="rail-card">
+            <div className="rail-title">Fallback readiness</div>
+            <div className="rail-hero-number rail-hero-status">{mission.fallbackLabel}</div>
+            <p>{mission.fallbackSummary}</p>
+            <SourceFootnote source={snapshot.localCodexLab.source} label="fallback source" onOpen={props.onOpen} onCopy={props.onCopy} />
+          </article>
+
+          <article className="rail-card">
+            <div className="rail-title">Risk rail</div>
+            <div className="risk-list">
+              {mission.riskItems.map((item) => (
+                <article key={item} className="risk-item">
+                  <StatusBadge label="risk" tone="risk" />
+                  <p>{item}</p>
+                </article>
+              ))}
+            </div>
+          </article>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function TokenWastePanel(props: {
+  lab: LocalCodexLab;
+  mission: MissionState;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  return (
+    <section className="panel token-panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Token Efficiency</div>
+          <h3>Context hygiene</h3>
+        </div>
+        <StatusBadge label={props.mission.tokenLabel} tone={props.mission.tokenTone} />
+      </div>
+
+      <div className="local-status-grid">
+        <MetricCard label="Files scanned" value={props.lab.tokenEfficiency.filesScanned} detail="conversation-mining scope" />
+        <MetricCard label="Repeated health gates" value={props.lab.tokenEfficiency.repeatedHealthGateCount} detail="prompt boilerplate pressure" />
+        <MetricCard label="No assistant reply" value={props.lab.tokenEfficiency.filesWithNoAssistantReply} detail="dead context by default" />
+        <MetricCard label="Denylisted files" value={props.lab.retrievalPolicy.denylistedFiles} detail={props.lab.retrievalPolicy.denylistedClasses.join(" · ")} />
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Retrieval order</div>
+          <ul className="note-list compact-note-list">
+            {props.lab.retrievalPolicy.priorityOrder.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <SourceFootnote source={props.lab.retrievalPolicy.source} label="retrieval policy" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Why this matters</div>
+          <ul className="note-list compact-note-list">
+            <li>Goal capsules and run summaries stay ahead of raw transcript history.</li>
+            <li>Health-gate repeats and no-reply files are visible as waste, not hidden noise.</li>
+            <li>Forensic transcript reads stay opt-in, not the default continuation path.</li>
+          </ul>
+          <SourceFootnote source={props.lab.tokenEfficiency.source} label="token metrics" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function OpenClawReliabilityPanel(props: {
+  lab: LocalCodexLab;
+  mission: MissionState;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const orderedClassifications = Object.entries(props.lab.openclawReliability.classifications)
+    .filter(([, count]) => count > 0)
+    .sort((left, right) => right[1] - left[1]);
+
+  return (
+    <section id="reliability" className="panel reliability-panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">OpenClaw Reliability</div>
+          <h3>Failure classes and next repair moves</h3>
+        </div>
+        <StatusBadge label={props.mission.openclawLabel} tone={props.mission.openclawTone} />
+      </div>
+
+      <div className="local-status-grid">
+        <MetricCard label="Warning count" value={props.lab.openclawReliability.warningCount} detail={props.lab.openclawReliability.status} />
+        <MetricCard label="Dominant class" value={props.mission.dominantFailure} detail="current leading failure signal" />
+        <MetricCard label="Goal capsules" value={props.lab.goalCapsules.length} detail="available escalation packets" />
+        <MetricCard label="Recent runs" value={props.lab.runSummaries.length} detail="latest bounded execution summaries" />
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Failure classes</div>
+          <div className="class-grid">
+            {orderedClassifications.slice(0, 6).map(([name, count]) => (
+              <div key={name} className="class-row">
+                <span>{name}</span>
+                <strong>{count}</strong>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Recommended actions</div>
+          <ul className="note-list compact-note-list">
+            {props.lab.openclawReliability.recommendedActions.map((action) => (
+              <li key={action}>{action}</li>
+            ))}
+          </ul>
+          <SourceFootnote source={props.lab.openclawReliability.source} label="openclaw reliability" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function LocalFallbackPanel(props: {
+  mission: MissionState;
+  source: SourceMeta;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  return (
+    <section className="panel fallback-panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Local Fallback Readiness</div>
+          <h3>Codex-limited mode readiness</h3>
+        </div>
+        <StatusBadge label={props.mission.fallbackLabel} tone={props.mission.fallbackTone} />
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Worker roles</div>
+          <div className="readiness-list">
+            <div className="readiness-row"><span>planner</span><strong>{props.mission.planner}</strong></div>
+            <div className="readiness-row"><span>coder</span><strong>{props.mission.coder}</strong></div>
+            <div className="readiness-row"><span>reviewer</span><strong>{props.mission.reviewer}</strong></div>
+            <div className="readiness-row"><span>sandbox</span><strong>{props.mission.sandboxStatus}</strong></div>
+          </div>
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Readiness checks</div>
+          <div className="readiness-list">
+            <div className="readiness-row"><span>repo-intel</span><strong>{props.mission.repoIntelStatus}</strong></div>
+            <div className="readiness-row"><span>benchmarks</span><strong>{props.mission.benchmarkStatus}</strong></div>
+            <div className="readiness-row"><span>escalation packet</span><strong>{props.mission.escalationPacketStatus}</strong></div>
+            <div className="readiness-row"><span>next step</span><strong>{props.mission.nextFallbackStep}</strong></div>
+          </div>
+          <SourceFootnote source={props.source} label="fallback source" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function TimelinePanel(props: {
+  runSummaries: LocalCodexRunSummary[];
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  return (
+    <section className="panel timeline-panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Recent Runs Timeline</div>
+          <h3>Последние bounded проходы</h3>
+        </div>
+      </div>
+
+      <div className="timeline-list">
+        {props.runSummaries.map((summary) => (
+          <article key={summary.runId} className="timeline-item">
+            <div className="timeline-marker" />
+            <div className="timeline-copy">
+              <div className="timeline-head">
+                <strong>{summary.task}</strong>
+                <span>{summary.goalId || "ungrouped"}</span>
+              </div>
+              <p>{summary.nextAction}</p>
+              <div className="goal-capsule-meta">
+                <span>repos {summary.reposTouched.length}</span>
+                <span>verification {summary.verification.length}</span>
+                <span>commits {summary.commits.length}</span>
+              </div>
+              <SourceFootnote source={summary.source} label={`run ${summary.runId}`} onOpen={props.onOpen} onCopy={props.onCopy} />
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -1244,20 +1719,13 @@ export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [remoteState, setRemoteState] = useState<RemoteControlState | null>(null);
   const [remoteBusy, setRemoteBusy] = useState(false);
+  const [activeNav, setActiveNav] = useState(NAV_ITEMS[0].id);
   const [query, setQuery] = useState("");
   const [domainFilter, setDomainFilter] = useState<ProjectDomain | "all">("all");
   const [selectedId, setSelectedId] = useState("");
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    if (typeof window === "undefined") {
-      return DEFAULT_THEME;
-    }
-
-    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return savedTheme === "light" || savedTheme === "dark" ? savedTheme : DEFAULT_THEME;
-  });
 
   const refreshSnapshot = (announce = false) => {
     fetch("./snapshot.json", { cache: "no-store" })
@@ -1344,11 +1812,6 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme]);
-
   const filteredProjects = useMemo(() => {
     if (!snapshot) return [];
     const lowerQuery = query.trim().toLowerCase();
@@ -1382,12 +1845,18 @@ export function App() {
     focusProjects[0] ??
     filteredProjects[0] ??
     null;
+  const mission = snapshot ? deriveMissionState(snapshot) : null;
 
   useEffect(() => {
     if (!selectedProject && focusProjects[0]) {
       setSelectedId(focusProjects[0].id);
     }
   }, [focusProjects, selectedProject]);
+
+  const jumpToSection = (sectionId: string) => {
+    setActiveNav(sectionId);
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const copy = (label: string, value: string) => {
     copyText(value)
@@ -1437,12 +1906,17 @@ export function App() {
             <div className="brand-name">PROJECT ATLAS</div>
             <div className="brand-subtitle">local-first command center</div>
           </div>
-        </div>
+          </div>
 
         <nav className="sidebar-nav">
           {NAV_ITEMS.map((item) => (
-            <button key={item} className={`nav-item ${item === "Обзор" ? "nav-item-active" : ""}`} type="button">
-              {item}
+            <button
+              key={item.id}
+              className={`nav-item ${item.id === activeNav ? "nav-item-active" : ""}`}
+              type="button"
+              onClick={() => jumpToSection(item.id)}
+            >
+              {item.label}
             </button>
           ))}
         </nav>
@@ -1501,17 +1975,17 @@ export function App() {
           </div>
 
           <div className="topbar-ribbon">
-            <span className="ribbon-pill">focus {selectedProject.title}</span>
+            <span className="ribbon-pill">goal {mission?.activeGoal?.goalId || "unknown"}</span>
             <span className={`ribbon-pill ${snapshot.system.safeMode ? "ribbon-pill-warn" : "ribbon-pill-ok"}`}>
               {snapshot.system.safeMode ? "safe mode" : "runtime normal"}
             </span>
-            <span className="ribbon-pill">velocity {snapshot.summary.weeklyVelocity}</span>
+            <span className={`ribbon-pill ${mission?.openclawTone === "risk" ? "ribbon-pill-warn" : ""}`}>
+              OpenClaw {mission?.openclawLabel || "unknown"}
+            </span>
+            <span className="ribbon-pill">tokens {mission?.tokenLabel || "unknown"}</span>
           </div>
 
           <div className="topbar-actions">
-            <button className="ghost-button theme-button" type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-              {theme === "dark" ? "Light mode" : "Dark mode"}
-            </button>
             <button className="primary-button" type="button" onClick={() => refreshSnapshot(true)}>
               Обновить снимок
             </button>
@@ -1521,6 +1995,8 @@ export function App() {
         {notice ? <div className="notice">{notice}</div> : null}
 
         <main className="dashboard">
+          {mission ? <CommandDeckPanel snapshot={snapshot} mission={mission} onOpen={open} onCopy={copy} /> : null}
+
           <section className="hero-spotlight panel">
             <div className="hero-spotlight-copy">
               <div>
@@ -1597,17 +2073,27 @@ export function App() {
             />
           </section>
 
-          <LocalCodexLabPanel lab={snapshot.localCodexLab} onOpen={open} onCopy={copy} />
+          {mission ? (
+            <div id="local-codex" className="panel-stack">
+              <LocalFallbackPanel mission={mission} source={snapshot.localCodexLab.source} onOpen={open} onCopy={copy} />
+              <TokenWastePanel lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
+              <OpenClawReliabilityPanel lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
+              <LocalCodexLabPanel lab={snapshot.localCodexLab} onOpen={open} onCopy={copy} />
+              <TimelinePanel runSummaries={snapshot.localCodexLab.runSummaries} onOpen={open} onCopy={copy} />
+            </div>
+          ) : null}
 
-          <RemoteOpsPanel
-            state={remoteState}
-            busy={remoteBusy}
-            onAction={runRemoteAction}
-            onCopy={copy}
-            onRefresh={() => refreshRemoteState(true)}
-          />
+          <div id="remote-ops">
+            <RemoteOpsPanel
+              state={remoteState}
+              busy={remoteBusy}
+              onAction={runRemoteAction}
+              onCopy={copy}
+              onRefresh={() => refreshRemoteState(true)}
+            />
+          </div>
 
-          <div className="map-layout">
+          <div id="project-map" className="map-layout">
             <div className="map-column">
               <section className="project-map panel">
                 <div className="panel-head">
@@ -1657,15 +2143,17 @@ export function App() {
             <ReleaseRadar projects={snapshot.projects.filter((project) => project.focus)} />
           </div>
 
-          <RegistryTable
-            projects={filteredProjects}
-            onCopy={copy}
-            onOpen={open}
-            onSelect={(projectId) => {
-              setSelectedId(projectId);
-              setDetailTab("overview");
-            }}
-          />
+          <div id="registry">
+            <RegistryTable
+              projects={filteredProjects}
+              onCopy={copy}
+              onOpen={open}
+              onSelect={(projectId) => {
+                setSelectedId(projectId);
+                setDetailTab("overview");
+              }}
+            />
+          </div>
           <section className="footer-note">
             <span className="section-kicker">Context</span>
             <p>
