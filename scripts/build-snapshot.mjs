@@ -11,6 +11,9 @@ const outputPath = path.join(rootDir, "public", "snapshot.json");
 const canonicalLocalCodexRuntime = path.join(home, "__home_organized", "runtime", "local-codex-stack");
 const legacyLocalCodexRuntime = path.join(home, "__home_organized", "local-codex-stack", "runtime", "local-codex-stack");
 const localCodexAtlasPath = path.join(home, "__home_organized", "local-codex-stack", "atlas", "local-codex-lab.json");
+const localAiStatePath = path.join(home, "__home_organized", "runtime", "local-ai-control", "state.json");
+const agentHealthStatePath = path.join(home, "__home_organized", "runtime", "agent-health-gate", "state.json");
+const hostAuditOutputPath = path.join(canonicalLocalCodexRuntime, "host-audit-latest.json");
 
 const overrides = JSON.parse(fs.readFileSync(overridesPath, "utf8"));
 
@@ -554,6 +557,42 @@ function buildLocalCodexLab() {
   };
 }
 
+function buildLocalAiControl() {
+  const state = readJsonFirst([localAiStatePath], {});
+  const payload = state.payload ?? {};
+  const emptyCleanup = {
+    keep: [],
+    "keep-but-manual": [],
+    "candidate-for-removal": [],
+    "unknown-needs-test": [],
+  };
+
+  return {
+    generatedAt: payload.generated_at || "",
+    host: payload.host || {},
+    ollamaVersion: payload.ollama_version?.text || "",
+    recommendations: payload.recommendations || {},
+    roleMap: payload.role_map || {},
+    models: payload.ollama?.models || [],
+    activeModels: payload.ollama_ps?.active_models || [],
+    cleanup: payload.cleanup || emptyCleanup,
+    gemma4: payload.gemma4 || { recommended_tag: "", tags: {}, reason: "" },
+    runtimes: payload.runtimes || [],
+    blockers: payload.blockers || [],
+    atlas: payload.atlas || {},
+    openclaw: {
+      overview: payload.openclaw?.overview || {},
+      channels: payload.openclaw?.channels || [],
+      agents: payload.openclaw?.agents || [],
+    },
+    security: {
+      summary: payload.openclaw_audit?.summary || { critical: 0, warn: 0, info: 0 },
+      findings: payload.openclaw_audit?.findings || [],
+    },
+    source: statMeta(state.path, payload.generated_at || ""),
+  };
+}
+
 function systemSnapshot() {
   const issues = run("bash", ["-lc", `${home}/__home_organized/scripts/system-issues-report.sh --compact`]);
   const running = run("systemctl", ["is-system-running"]);
@@ -572,6 +611,8 @@ function systemSnapshot() {
   const diskLine = disk.split(/\r?\n/)[1] ?? "";
   const diskUseMatch = diskLine.match(/(\d+)%/);
   const topIssueMatch = issues.match(/• Top current issue: (.+)/);
+  const bundlePathMatch = issues.match(/bundle path\s+(.+)/);
+  const watchdogReasonMatch = issues.match(/System watchdog reason\s+(.+)/);
   const systemNoteDate = systemIndex.match(/\[\[System\/System Health\/(\d{4}-\d{2}-\d{2})\|\1\]\]/)?.[1];
   const gpuNoteDate = gpuIndex.match(/\[\[System\/GPU Health\/(\d{4}-\d{2}-\d{2})\|\1\]\]/)?.[1];
   const systemNote = systemNoteDate
@@ -599,6 +640,102 @@ function systemSnapshot() {
     },
     diskRootPercent: Number(diskUseMatch?.[1] ?? 0),
     gpuNote: notedGpuReason,
+    bundlePath: bundlePathMatch?.[1]?.trim() ?? "",
+    watchdogReason: watchdogReasonMatch?.[1]?.trim() ?? "",
+  };
+}
+
+function buildHostAudit(system, localAiControl) {
+  const hostname = run("hostnamectl", ["--static"]) || run("hostname", []);
+  const uname = run("uname", ["-a"]);
+  const osRelease = readText("/etc/os-release");
+  const prettyName = osRelease.match(/^PRETTY_NAME=(.+)$/m)?.[1]?.replace(/^"|"$/g, "") ?? "";
+  const atlasRepo = path.join(home, "Desktop", "project-atlas");
+  const roots = [
+    { id: "project-atlas", path: atlasRepo, type: "repo" },
+    { id: "local-codex-stack", path: path.join(home, "__home_organized", "local-codex-stack"), type: "repo" },
+    { id: "runtime-local-codex-stack", path: canonicalLocalCodexRuntime, type: "runtime" },
+    { id: "codex-orchestrator", path: path.join(home, "codex-orchestrator"), type: "repo" },
+    { id: "obsidian", path: path.join(home, "Desktop", "Obsidian"), type: "repo" },
+    { id: "elizabet", path: path.join(home, "Desktop", "server", "elizabet"), type: "repo" },
+  ];
+  const repos = roots.map((entry) => {
+    if (!fileExists(entry.path)) {
+      return { ...entry, present: false, dirtyCount: null, branch: "", note: "missing" };
+    }
+    if (entry.type === "repo" && fileExists(path.join(entry.path, ".git"))) {
+      const short = run("git", ["status", "--short"], entry.path);
+      return {
+        ...entry,
+        present: true,
+        branch: run("git", ["rev-parse", "--abbrev-ref", "HEAD"], entry.path),
+        dirtyCount: short ? short.split(/\r?\n/).filter(Boolean).length : 0,
+        note: "",
+      };
+    }
+    const children = fs.readdirSync(entry.path).length;
+    return {
+      ...entry,
+      present: true,
+      branch: "",
+      dirtyCount: null,
+      note: `${children} entries`,
+    };
+  });
+  const healthState = readJsonFirst([agentHealthStatePath], {});
+  const dfRoot = run("df", ["-h", "/"]);
+  const dfBoot = run("df", ["-h", "/boot"]);
+  const hyprInstances = run("hyprctl", ["instances"]);
+  const gpuRaw = run("nvidia-smi", [
+    "--query-gpu=name,driver_version,memory.used,memory.total,temperature.gpu,pstate,utilization.gpu",
+    "--format=csv,noheader,nounits",
+  ]);
+  const audit = {
+    generatedAt: new Date().toISOString(),
+    hostname,
+    kernel: uname,
+    os: prettyName,
+    overall: system.overall,
+    safeMode: system.safeMode,
+    hyprlandOnline: system.hyprlandOnline,
+    topIssue: system.topIssue,
+    issueBundlePath: system.bundlePath,
+    watchdogReason: system.watchdogReason,
+    gpu: {
+      ...system.gpu,
+      raw: gpuRaw,
+      note: system.gpuNote,
+    },
+    disk: {
+      rootPercent: system.diskRootPercent,
+      root: dfRoot,
+      boot: dfBoot,
+    },
+    hyprland: {
+      instances: hyprInstances,
+    },
+    services: localAiControl.runtimes,
+    modelRoles: localAiControl.recommendations,
+    activeModels: localAiControl.activeModels.map((item) => item.name),
+    gemma4: localAiControl.gemma4,
+    openclawSecurity: localAiControl.security.summary,
+    codexOrchestrator: (localAiControl.runtimes || []).find((item) => item.id === "codex-orchestrator") || null,
+    atlas: localAiControl.atlas,
+    repos,
+    blockers: localAiControl.blockers,
+    sourcePaths: {
+      localAiControl: localAiStatePath,
+      healthGate: agentHealthStatePath,
+      bundle: system.bundlePath || "",
+    },
+    healthGate: healthState.payload || {},
+  };
+
+  fs.mkdirSync(path.dirname(hostAuditOutputPath), { recursive: true });
+  fs.writeFileSync(hostAuditOutputPath, `${JSON.stringify(audit, null, 2)}\n`, "utf8");
+  return {
+    ...audit,
+    source: statMeta(hostAuditOutputPath, audit.generatedAt),
   };
 }
 
@@ -639,6 +776,8 @@ const activeTasks = tasks.filter((task) => task.status === "active").length;
 const reviewTasks = tasks.filter((task) => task.status === "review").length;
 const system = systemSnapshot();
 const localCodexLab = buildLocalCodexLab();
+const localAiControl = buildLocalAiControl();
+const hostAudit = buildHostAudit(system, localAiControl);
 
 const snapshot = {
   generatedAt: new Date().toISOString(),
@@ -656,10 +795,12 @@ const snapshot = {
     domainCounts,
   },
   system,
+  hostAudit,
   projects,
   tasks,
   recentCommits,
   localCodexLab,
+  localAiControl,
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });

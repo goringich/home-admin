@@ -137,6 +137,7 @@ export interface Snapshot {
     };
     diskRootPercent: number;
   };
+  hostAudit: HostAudit;
   projects: ProjectRecord[];
   tasks: TaskItem[];
   recentCommits: Array<{
@@ -148,6 +149,7 @@ export interface Snapshot {
     branch: string;
   }>;
   localCodexLab: LocalCodexLab;
+  localAiControl: LocalAiControl;
 }
 
 export interface SourceMeta {
@@ -235,4 +237,179 @@ export interface LocalCodexLab {
   };
   goalCapsules: LocalCodexGoalCapsule[];
   runSummaries: LocalCodexRunSummary[];
+}
+
+export interface HostAudit {
+  generatedAt: string;
+  hostname: string;
+  kernel: string;
+  os: string;
+  overall: string;
+  safeMode: boolean;
+  hyprlandOnline: boolean;
+  topIssue: string;
+  issueBundlePath: string;
+  watchdogReason: string;
+  gpu: {
+    temperature: number;
+    memoryUsed: number;
+    memoryTotal: number;
+    utilization: number;
+    raw: string;
+    note: string;
+  };
+  disk: {
+    rootPercent: number;
+    root: string;
+    boot: string;
+  };
+  hyprland: {
+    instances: string;
+  };
+  services: LocalAiRuntime[];
+  modelRoles: Record<string, string | null>;
+  activeModels: string[];
+  gemma4: LocalAiGemma4;
+  openclawSecurity: {
+    critical: number;
+    warn: number;
+    info: number;
+  };
+  codexOrchestrator: LocalAiRuntime | null;
+  atlas: {
+    status: string;
+    health: string;
+    build_exists: boolean;
+    processes: string[];
+    repo_dirty: number | null;
+    repo_error: string;
+  };
+  repos: Array<{
+    id: string;
+    path: string;
+    type: string;
+    present: boolean;
+    branch: string;
+    dirtyCount: number | null;
+    note: string;
+  }>;
+  blockers: string[];
+  sourcePaths: {
+    localAiControl: string;
+    healthGate: string;
+    bundle: string;
+  };
+  healthGate: Record<string, unknown>;
+  source: SourceMeta;
+}
+
+export interface LocalAiRuntime {
+  id: string;
+  label: string;
+  status: string;
+  detail: string;
+  endpoint: string;
+}
+
+export interface LocalAiModel {
+  name: string;
+  id: string;
+  size: string;
+  size_bytes: number;
+  modified: string;
+  modified_at: string;
+  family: string;
+  parameter_size: string;
+  quantization: string;
+  roles: string[];
+  active: boolean;
+  classification: "keep" | "keep-but-manual" | "candidate-for-removal" | "unknown-needs-test";
+  reason: string;
+}
+
+export interface LocalAiGemma4 {
+  recommended_tag: string;
+  tags: Record<
+    string,
+    {
+      available: boolean;
+      detail: string;
+    }
+  >;
+  reason: string;
+}
+
+export interface LocalAiAgent {
+  id: string;
+  label: string;
+  bootstrap: string;
+  sessions: string;
+  active: string;
+  store: string;
+}
+
+export interface LocalAiSecurityFinding {
+  severity: "warn" | "info";
+  id: string;
+  title: string;
+  detail: string;
+  fix: string;
+}
+
+export interface LocalAiControl {
+  generatedAt: string;
+  host: {
+    hostname: string;
+    overall: string;
+    safe_mode: boolean | null;
+    top_issue: string;
+  };
+  ollamaVersion: string;
+  recommendations: Record<string, string | null>;
+  roleMap: Record<string, string | null>;
+  models: LocalAiModel[];
+  activeModels: Array<{
+    name: string;
+    id: string;
+    size: string;
+    processor: string;
+    context: string;
+    until: string;
+  }>;
+  cleanup: {
+    keep: string[];
+    "keep-but-manual": string[];
+    "candidate-for-removal": string[];
+    "unknown-needs-test": string[];
+  };
+  gemma4: LocalAiGemma4;
+  runtimes: LocalAiRuntime[];
+  blockers: string[];
+  atlas: {
+    status: string;
+    health: string;
+    build_exists: boolean;
+    processes: string[];
+    repo_dirty: number | null;
+    repo_error: string;
+  };
+  openclaw: {
+    overview: Record<string, string>;
+    channels: Array<{
+      channel: string;
+      enabled: string;
+      state: string;
+      detail: string;
+    }>;
+    agents: LocalAiAgent[];
+  };
+  security: {
+    summary: {
+      critical: number;
+      warn: number;
+      info: number;
+    };
+    findings: LocalAiSecurityFinding[];
+  };
+  source: SourceMeta;
 }

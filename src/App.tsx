@@ -3,6 +3,8 @@ import "./index.css";
 import type {
   DetailTab,
   HealthTone,
+  HostAudit,
+  LocalAiControl,
   LocalCodexGoalCapsule,
   LocalCodexLab,
   LocalCodexRunSummary,
@@ -221,6 +223,10 @@ function statusToneForReadiness(state: FallbackReadinessState): HealthTone {
   if (state === "blocked-by-host-health") return "risk";
   if (state === "partial" || state === "not-ready") return "attention";
   return "ok";
+}
+
+function severityTone(severity: string): HealthTone {
+  return severity === "warn" ? "risk" : "attention";
 }
 
 function topReliabilityClass(classifications: Record<string, number>) {
@@ -1205,6 +1211,300 @@ function LocalCodexLabPanel(props: {
   );
 }
 
+function HostHealthPanel(props: {
+  audit: HostAudit;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Host Health</div>
+          <h3>Recovery host audit</h3>
+        </div>
+        <StatusBadge label={props.audit.overall} tone={props.audit.overall === "ok" ? "ok" : "risk"} />
+      </div>
+
+      <div className="local-status-grid">
+        <MetricCard label="Host" value={props.audit.hostname} detail={props.audit.os || "unknown OS"} />
+        <MetricCard label="Kernel" value={props.audit.kernel.split(" ").slice(0, 3).join(" ")} detail={props.audit.safeMode ? "safe mode on" : "safe mode off"} />
+        <MetricCard label="GPU" value={`${props.audit.gpu.temperature}°C`} detail={`${props.audit.gpu.memoryUsed}/${props.audit.gpu.memoryTotal} MiB`} />
+        <MetricCard label="Disk /" value={`${props.audit.disk.rootPercent}%`} detail="live root usage" />
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Top issue</div>
+          <p>{props.audit.topIssue}</p>
+          <div className="goal-capsule-meta">
+            <span>Hyprland {props.audit.hyprlandOnline ? "online" : "missing"}</span>
+            <span>watchdog {props.audit.watchdogReason || "n/a"}</span>
+          </div>
+          {props.audit.issueBundlePath ? (
+            <SourceFootnote source={{ path: props.audit.issueBundlePath }} label="incident bundle" onOpen={props.onOpen} onCopy={props.onCopy} />
+          ) : null}
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Critical roots</div>
+          <div className="repo-intel-list">
+            {props.audit.repos.map((repo) => (
+              <div key={repo.id} className="repo-intel-row">
+                <div>
+                  <strong>{repo.id}</strong>
+                  <p>{compactPath(repo.path)}</p>
+                </div>
+                <div className="repo-intel-meta">
+                  <span>{repo.present ? "present" : "missing"}</span>
+                  <span>{repo.branch || repo.note || "—"}</span>
+                  <span>{repo.dirtyCount === null ? "n/a" : `dirty ${repo.dirtyCount}`}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <SourceFootnote source={props.audit.source} label="host audit" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function RuntimeRegistryPanel(props: {
+  control: LocalAiControl;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Runtime Registry</div>
+          <h3>Local services and control planes</h3>
+        </div>
+        <div className="panel-hint">updated {fmtRelative(new Date(props.control.generatedAt).getTime())}</div>
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card detail-card-wide">
+          <div className="detail-card-title">Live runtimes</div>
+          <div className="repo-intel-list">
+            {props.control.runtimes.map((runtime) => (
+              <div key={runtime.id} className="repo-intel-row">
+                <div>
+                  <strong>{runtime.label}</strong>
+                  <p>{runtime.detail}</p>
+                </div>
+                <div className="repo-intel-meta">
+                  <span className={`health-pill ${toneClass(runtime.status)}`}>{runtime.status}</span>
+                  <span>{runtime.endpoint || "local-only"}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <SourceFootnote source={props.control.source} label="local ai control" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function ModelRoleMapPanel(props: {
+  control: LocalAiControl;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const cleanupOrder: Array<keyof LocalAiControl["cleanup"]> = [
+    "keep",
+    "keep-but-manual",
+    "candidate-for-removal",
+    "unknown-needs-test",
+  ];
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Model Role Map</div>
+          <h3>Canonical local routing and cleanup review</h3>
+        </div>
+        <StatusBadge label={props.control.gemma4.recommended_tag || "no gemma"} tone={props.control.gemma4.recommended_tag ? "attention" : "risk"} />
+      </div>
+
+      <div className="local-status-grid">
+        <MetricCard label="Fast draft" value={props.control.recommendations.fast_draft || "missing"} detail="default quick route" />
+        <MetricCard label="Balanced" value={props.control.recommendations.balanced_coding || "missing"} detail="daily coding route" />
+        <MetricCard label="Heavy" value={props.control.recommendations.heavy_coding || "missing"} detail="manual heavy route" />
+        <MetricCard label="Embedding" value={props.control.recommendations.embedding || "missing"} detail="RAG baseline" />
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Active models</div>
+          <div className="class-grid">
+            {props.control.activeModels.length > 0 ? (
+              props.control.activeModels.map((item) => (
+                <div key={item.name} className="class-row">
+                  <span>{item.name}</span>
+                  <strong>{item.processor}</strong>
+                </div>
+              ))
+            ) : (
+              <div className="empty-inline">none loaded</div>
+            )}
+          </div>
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Cleanup buckets</div>
+          <div className="class-grid">
+            {cleanupOrder.map((bucket) => (
+              <div key={bucket} className="class-row">
+                <span>{bucket}</span>
+                <strong>{props.control.cleanup[bucket].length}</strong>
+              </div>
+            ))}
+          </div>
+          <p>{props.control.gemma4.reason}</p>
+          <SourceFootnote source={props.control.source} label="model role map" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function AgentBoardPanel(props: {
+  control: LocalAiControl;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Agent Board</div>
+          <h3>OpenClaw agents as the current native roster</h3>
+        </div>
+        <div className="panel-hint">{props.control.openclaw.agents.length} agents</div>
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card detail-card-wide">
+          <div className="detail-card-title">Roster</div>
+          <div className="repo-intel-list">
+            {props.control.openclaw.agents.map((agent) => (
+              <div key={agent.id} className="repo-intel-row">
+                <div>
+                  <strong>{agent.label}</strong>
+                  <p>{agent.store}</p>
+                </div>
+                <div className="repo-intel-meta">
+                  <span>{agent.bootstrap}</span>
+                  <span>{agent.sessions} sessions</span>
+                  <span>{agent.active}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Blockers</div>
+          <ul className="note-list compact-note-list">
+            {props.control.blockers.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <SourceFootnote source={props.control.source} label="agent board" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function OpenClawSecurityPanelV2(props: {
+  control: LocalAiControl;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">OpenClaw Security</div>
+          <h3>Current warnings and next hardening moves</h3>
+        </div>
+        <StatusBadge label={`${props.control.security.summary.warn} warn`} tone={props.control.security.summary.warn > 0 ? "risk" : "ok"} />
+      </div>
+
+      <div className="local-status-grid">
+        <MetricCard label="Critical" value={props.control.security.summary.critical} detail="audit count" />
+        <MetricCard label="Warn" value={props.control.security.summary.warn} detail="review required" />
+        <MetricCard label="Info" value={props.control.security.summary.info} detail="lower-severity signals" />
+        <MetricCard label="Channels" value={props.control.openclaw.channels.length} detail="current gateway channels" />
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card detail-card-wide">
+          <div className="detail-card-title">Findings</div>
+          <div className="task-list-vertical">
+            {props.control.security.findings.slice(0, 6).map((finding) => (
+              <article key={finding.id} className="task-vertical">
+                <div className="task-vertical-head">
+                  <strong>{finding.id}</strong>
+                  <span className={`health-pill ${toneClass(severityTone(finding.severity))}`}>{finding.severity}</span>
+                </div>
+                <p>{finding.title}</p>
+                <p>{finding.detail}</p>
+                <div className="task-vertical-meta">
+                  <span>fix</span>
+                  <span>{finding.fix || "review detail"}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+          <SourceFootnote source={props.control.source} label="openclaw security" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function SkillsRegistryPanel(props: {
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const entries = [
+    { label: "Global AGENTS", path: "/home/goringich/AGENTS.md", detail: "machine-wide bootstrap rules" },
+    { label: "Codex AGENTS", path: "/home/goringich/.codex/AGENTS.md", detail: "Codex CLI local bootstrap" },
+    { label: "Manager Prompt", path: "/home/goringich/.config/codex-orchestrator/manager-prompt.txt", detail: "queue/orchestrator system prompt" },
+    { label: "OpenClaw Policy", path: "/home/goringich/__home_organized/local-codex-stack/openclaw-policy", detail: "tracked trust split, allowlists, and break-glass policy" },
+  ];
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Skills Registry</div>
+          <h3>Current local equivalent of reusable agent skills</h3>
+        </div>
+      </div>
+
+      <div className="doc-list">
+        {entries.map((entry) => (
+          <QuickActionRow
+            key={entry.path}
+            label={entry.label}
+            value={`${entry.path} · ${entry.detail}`}
+            onOpen={() => props.onOpen(entry.label, entry.path)}
+            onCopy={() => props.onCopy(entry.label, entry.path)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function SelectedProjectPanel(props: {
   project: ProjectRecord;
   allProjects: ProjectRecord[];
@@ -2075,6 +2375,12 @@ export function App() {
 
           {mission ? (
             <div id="local-codex" className="panel-stack">
+              <HostHealthPanel audit={snapshot.hostAudit} onOpen={open} onCopy={copy} />
+              <RuntimeRegistryPanel control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
+              <ModelRoleMapPanel control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
+              <AgentBoardPanel control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
+              <OpenClawSecurityPanelV2 control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
+              <SkillsRegistryPanel onOpen={open} onCopy={copy} />
               <LocalFallbackPanel mission={mission} source={snapshot.localCodexLab.source} onOpen={open} onCopy={copy} />
               <TokenWastePanel lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
               <OpenClawReliabilityPanel lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
