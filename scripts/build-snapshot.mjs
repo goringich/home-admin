@@ -14,6 +14,7 @@ const localCodexAtlasPath = path.join(home, "__home_organized", "local-codex-sta
 const localAiStatePath = path.join(home, "__home_organized", "runtime", "local-ai-control", "state.json");
 const agentHealthStatePath = path.join(home, "__home_organized", "runtime", "agent-health-gate", "state.json");
 const hostAuditOutputPath = path.join(canonicalLocalCodexRuntime, "host-audit-latest.json");
+const aiTelemetryExportPath = path.join(home, "__home_organized", "runtime", "ai-telemetry", "exports", "atlas.json");
 
 const overrides = JSON.parse(fs.readFileSync(overridesPath, "utf8"));
 
@@ -593,6 +594,33 @@ function buildLocalAiControl() {
   };
 }
 
+function buildAiTelemetry() {
+  const exportState = readJsonFirst([aiTelemetryExportPath], {
+    retrieval_quality: { status: "missing" },
+    code_context_search: { status: "missing" },
+    skill_registry: { status: "missing" },
+    skill_usage: { status: "missing" },
+    codex_productivity: { status: "missing" },
+    token_context_waste: { status: "missing" },
+    model_routing: { status: "missing" },
+    tool_usage: { status: "missing" },
+    recent_events: [],
+  });
+  return {
+    generatedAt: exportState.payload?.generated_at || "",
+    retrievalQuality: exportState.payload?.retrieval_quality || { status: "missing" },
+    codeContextSearch: exportState.payload?.code_context_search || { status: "missing" },
+    skillRegistry: exportState.payload?.skill_registry || { status: "missing" },
+    skillUsage: exportState.payload?.skill_usage || { status: "missing" },
+    codexProductivity: exportState.payload?.codex_productivity || { status: "missing" },
+    tokenContextWaste: exportState.payload?.token_context_waste || { status: "missing" },
+    modelRouting: exportState.payload?.model_routing || { status: "missing" },
+    toolUsage: exportState.payload?.tool_usage || { status: "missing" },
+    recentEvents: exportState.payload?.recent_events || [],
+    source: statMeta(exportState.path, exportState.payload?.generated_at || ""),
+  };
+}
+
 function systemSnapshot() {
   const issues = run("bash", ["-lc", `${home}/__home_organized/scripts/system-issues-report.sh --compact`]);
   const running = run("systemctl", ["is-system-running"]);
@@ -777,6 +805,7 @@ const reviewTasks = tasks.filter((task) => task.status === "review").length;
 const system = systemSnapshot();
 const localCodexLab = buildLocalCodexLab();
 const localAiControl = buildLocalAiControl();
+const aiTelemetry = buildAiTelemetry();
 const hostAudit = buildHostAudit(system, localAiControl);
 
 const snapshot = {
@@ -801,6 +830,7 @@ const snapshot = {
   recentCommits,
   localCodexLab,
   localAiControl,
+  aiTelemetry,
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });

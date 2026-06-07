@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "./index.css";
 import type {
+  AiTelemetryExport,
   DetailTab,
   HealthTone,
   HostAudit,
@@ -227,6 +228,12 @@ function statusToneForReadiness(state: FallbackReadinessState): HealthTone {
 
 function severityTone(severity: string): HealthTone {
   return severity === "warn" ? "risk" : "attention";
+}
+
+function telemetryStatusTone(status: string): HealthTone {
+  if (status === "ok") return "ok";
+  if (status === "missing") return "attention";
+  return "unknown";
 }
 
 function topReliabilityClass(classifications: Record<string, number>) {
@@ -842,16 +849,18 @@ function CommandDeckPanel(props: {
 
 function TokenWastePanel(props: {
   lab: LocalCodexLab;
+  telemetry: AiTelemetryExport;
   mission: MissionState;
   onOpen: (label: string, target: string) => void;
   onCopy: (label: string, value: string) => void;
 }) {
+  const waste = props.telemetry.tokenContextWaste;
   return (
     <section className="panel token-panel">
       <div className="panel-head">
         <div>
-          <div className="section-kicker">Token Efficiency</div>
-          <h3>Context hygiene</h3>
+          <div className="section-kicker">Token / Context Waste</div>
+          <h3>Context hygiene and wrapper pressure</h3>
         </div>
         <StatusBadge label={props.mission.tokenLabel} tone={props.mission.tokenTone} />
       </div>
@@ -859,8 +868,8 @@ function TokenWastePanel(props: {
       <div className="local-status-grid">
         <MetricCard label="Files scanned" value={props.lab.tokenEfficiency.filesScanned} detail="conversation-mining scope" />
         <MetricCard label="Repeated health gates" value={props.lab.tokenEfficiency.repeatedHealthGateCount} detail="prompt boilerplate pressure" />
-        <MetricCard label="No assistant reply" value={props.lab.tokenEfficiency.filesWithNoAssistantReply} detail="dead context by default" />
-        <MetricCard label="Denylisted files" value={props.lab.retrievalPolicy.denylistedFiles} detail={props.lab.retrievalPolicy.denylistedClasses.join(" · ")} />
+        <MetricCard label="Wrapper chars" value={waste.wrapper_total_context_chars ?? "missing"} detail="retrieval + code search output" />
+        <MetricCard label="Avg wrapper chars" value={waste.wrapper_avg_context_chars ?? "missing"} detail={props.lab.retrievalPolicy.denylistedClasses.join(" · ") || "no denylist classes"} />
       </div>
 
       <div className="detail-grid compact-grid">
@@ -1311,6 +1320,7 @@ function RuntimeRegistryPanel(props: {
 
 function ModelRoleMapPanel(props: {
   control: LocalAiControl;
+  telemetry: AiTelemetryExport;
   onOpen: (label: string, target: string) => void;
   onCopy: (label: string, value: string) => void;
 }) {
@@ -1325,17 +1335,17 @@ function ModelRoleMapPanel(props: {
     <section className="panel">
       <div className="panel-head">
         <div>
-          <div className="section-kicker">Model Role Map</div>
-          <h3>Canonical local routing and cleanup review</h3>
+          <div className="section-kicker">Model Routing</div>
+          <h3>Canonical local routing and semantic usage</h3>
         </div>
-        <StatusBadge label={props.control.gemma4.recommended_tag || "no gemma"} tone={props.control.gemma4.recommended_tag ? "attention" : "risk"} />
+        <StatusBadge label={props.telemetry.modelRouting.latest_embedding_model || props.control.gemma4.recommended_tag || "missing"} tone={telemetryStatusTone(props.telemetry.modelRouting.status)} />
       </div>
 
       <div className="local-status-grid">
-        <MetricCard label="Fast draft" value={props.control.recommendations.fast_draft || "missing"} detail="default quick route" />
-        <MetricCard label="Balanced" value={props.control.recommendations.balanced_coding || "missing"} detail="daily coding route" />
-        <MetricCard label="Heavy" value={props.control.recommendations.heavy_coding || "missing"} detail="manual heavy route" />
-        <MetricCard label="Embedding" value={props.control.recommendations.embedding || "missing"} detail="RAG baseline" />
+        <MetricCard label="Fast draft" value={props.telemetry.modelRouting.fast || props.control.recommendations.fast_draft || "missing"} detail="default quick route" />
+        <MetricCard label="Balanced" value={props.telemetry.modelRouting.balanced || props.control.recommendations.balanced_coding || "missing"} detail="daily coding route" />
+        <MetricCard label="Heavy" value={props.telemetry.modelRouting.heavy || props.control.recommendations.heavy_coding || "missing"} detail="manual heavy route" />
+        <MetricCard label="Embedding" value={props.telemetry.modelRouting.embedding || props.control.recommendations.embedding || "missing"} detail={`${props.telemetry.modelRouting.embedding_event_count ?? 0} semantic events`} />
       </div>
 
       <div className="detail-grid compact-grid">
@@ -1471,36 +1481,173 @@ function OpenClawSecurityPanelV2(props: {
 }
 
 function SkillsRegistryPanel(props: {
+  telemetry: AiTelemetryExport;
   onOpen: (label: string, target: string) => void;
   onCopy: (label: string, value: string) => void;
 }) {
-  const entries = [
-    { label: "Global AGENTS", path: "/home/goringich/AGENTS.md", detail: "machine-wide bootstrap rules" },
-    { label: "Codex AGENTS", path: "/home/goringich/.codex/AGENTS.md", detail: "Codex CLI local bootstrap" },
-    { label: "Manager Prompt", path: "/home/goringich/.config/codex-orchestrator/manager-prompt.txt", detail: "queue/orchestrator system prompt" },
-    { label: "OpenClaw Policy", path: "/home/goringich/__home_organized/local-codex-stack/openclaw-policy", detail: "tracked trust split, allowlists, and break-glass policy" },
-  ];
+  const entries = props.telemetry.skillRegistry.entries ?? [];
 
   return (
     <section className="panel">
       <div className="panel-head">
         <div>
           <div className="section-kicker">Skills Registry</div>
-          <h3>Current local equivalent of reusable agent skills</h3>
+          <h3>Curated local skill source and installed surface</h3>
         </div>
+        <StatusBadge
+          label={`${props.telemetry.skillRegistry.installed_count ?? 0}/${props.telemetry.skillRegistry.source_count ?? 0}`}
+          tone={telemetryStatusTone(props.telemetry.skillRegistry.status)}
+        />
       </div>
 
       <div className="doc-list">
-        {entries.map((entry) => (
+        {entries.length > 0 ? entries.map((entry) => (
           <QuickActionRow
-            key={entry.path}
-            label={entry.label}
-            value={`${entry.path} · ${entry.detail}`}
-            onOpen={() => props.onOpen(entry.label, entry.path)}
-            onCopy={() => props.onCopy(entry.label, entry.path)}
+            key={entry.id}
+            label={entry.title}
+            value={`${entry.id} · ${entry.installed ? "installed" : "source-only"} · ${entry.source_path}`}
+            onOpen={() => props.onOpen(entry.title, entry.installed_path || entry.source_path)}
+            onCopy={() => props.onCopy(entry.title, entry.installed_path || entry.source_path)}
           />
-        ))}
+        )) : <div className="empty-inline">missing</div>}
       </div>
+      <SourceFootnote source={props.telemetry.source} label="skill registry export" onOpen={props.onOpen} onCopy={props.onCopy} />
+    </section>
+  );
+}
+
+function RetrievalQualityPanel(props: {
+  telemetry: AiTelemetryExport;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const data = props.telemetry.retrievalQuality;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Retrieval Quality</div>
+          <h3>Hybrid Obsidian retrieval wrapper signals</h3>
+        </div>
+        <StatusBadge label={data.status} tone={telemetryStatusTone(data.status)} />
+      </div>
+      <div className="local-status-grid">
+        <MetricCard label="Searches" value={data.count ?? "missing"} detail="logged wrapper runs" />
+        <MetricCard label="Avg results" value={data.avg_results ?? "missing"} detail="per query" />
+        <MetricCard label="Avg snippets" value={data.avg_snippets ?? "missing"} detail="per query" />
+        <MetricCard label="Semantic rate" value={data.semantic_rate ?? "missing"} detail={data.last_scope || "scope missing"} />
+      </div>
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Latest query</div>
+          <p>{data.last_query || "missing"}</p>
+          <p>{data.last_at ? fmtRelative(new Date(data.last_at).getTime()) : "no timestamp"}</p>
+        </article>
+      </div>
+      <SourceFootnote source={props.telemetry.source} label="retrieval quality export" onOpen={props.onOpen} onCopy={props.onCopy} />
+    </section>
+  );
+}
+
+function CodeContextSearchPanel(props: {
+  telemetry: AiTelemetryExport;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const data = props.telemetry.codeContextSearch;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Code Context Search</div>
+          <h3>Local semantic repo search wrapper</h3>
+        </div>
+        <StatusBadge label={data.status} tone={telemetryStatusTone(data.status)} />
+      </div>
+      <div className="local-status-grid">
+        <MetricCard label="Searches" value={data.count ?? "missing"} detail="logged repo queries" />
+        <MetricCard label="Avg results" value={data.avg_results ?? "missing"} detail="per query" />
+        <MetricCard label="Avg context chars" value={data.avg_context_chars ?? "missing"} detail="returned snippet size" />
+        <MetricCard label="Last repo" value={data.last_repo || "missing"} detail={data.last_status || "status missing"} />
+      </div>
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Latest query</div>
+          <p>{data.last_query || "missing"}</p>
+        </article>
+      </div>
+      <SourceFootnote source={props.telemetry.source} label="code search export" onOpen={props.onOpen} onCopy={props.onCopy} />
+    </section>
+  );
+}
+
+function SkillUsagePanel(props: {
+  telemetry: AiTelemetryExport;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const data = props.telemetry.skillUsage;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Skill Usage</div>
+          <h3>Wrapper-logged local skill activity</h3>
+        </div>
+        <StatusBadge label={data.status} tone={telemetryStatusTone(data.status)} />
+      </div>
+      <div className="local-status-grid">
+        <MetricCard label="Total events" value={data.total ?? "missing"} detail="skill usage rows" />
+      </div>
+      <div className="doc-list">
+        {(data.by_skill ?? []).length > 0 ? (
+          data.by_skill!.slice(0, 6).map((entry) => (
+            <QuickActionRow
+              key={entry.id}
+              label={entry.id}
+              value={`${entry.count} runs · ${entry.last_used_at ? fmtRelative(new Date(entry.last_used_at).getTime()) : "no timestamp"}`}
+              onOpen={() => props.onOpen(entry.id, props.telemetry.source.path)}
+              onCopy={() => props.onCopy(entry.id, entry.id)}
+            />
+          ))
+        ) : (
+          <div className="empty-inline">missing</div>
+        )}
+      </div>
+      <SourceFootnote source={props.telemetry.source} label="skill usage export" onOpen={props.onOpen} onCopy={props.onCopy} />
+    </section>
+  );
+}
+
+function CodexProductivityPanel(props: {
+  telemetry: AiTelemetryExport;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const data = props.telemetry.codexProductivity;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Codex Productivity</div>
+          <h3>Read-only view from run summaries and wrapper usage</h3>
+        </div>
+        <StatusBadge label={data.status} tone={telemetryStatusTone(data.status)} />
+      </div>
+      <div className="local-status-grid">
+        <MetricCard label="Runs" value={data.total_runs ?? "missing"} detail="run summaries" />
+        <MetricCard label="Verified" value={data.verified_runs ?? "missing"} detail="runs with verification" />
+        <MetricCard label="Repos touched" value={data.unique_repos_touched ?? "missing"} detail="unique repo surfaces" />
+        <MetricCard label="Tool events" value={data.tool_usage_events ?? "missing"} detail="wrapper tool usage" />
+      </div>
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Latest run</div>
+          <p>{data.latest_run?.task || "missing"}</p>
+          <p>{data.latest_run?.next_action || "missing"}</p>
+        </article>
+      </div>
+      <SourceFootnote source={props.telemetry.source} label="productivity export" onOpen={props.onOpen} onCopy={props.onCopy} />
     </section>
   );
 }
@@ -2377,12 +2524,16 @@ export function App() {
             <div id="local-codex" className="panel-stack">
               <HostHealthPanel audit={snapshot.hostAudit} onOpen={open} onCopy={copy} />
               <RuntimeRegistryPanel control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
-              <ModelRoleMapPanel control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
+              <RetrievalQualityPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
+              <CodeContextSearchPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
+              <ModelRoleMapPanel telemetry={snapshot.aiTelemetry} control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
               <AgentBoardPanel control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
               <OpenClawSecurityPanelV2 control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
-              <SkillsRegistryPanel onOpen={open} onCopy={copy} />
+              <SkillsRegistryPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
+              <SkillUsagePanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
+              <CodexProductivityPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
               <LocalFallbackPanel mission={mission} source={snapshot.localCodexLab.source} onOpen={open} onCopy={copy} />
-              <TokenWastePanel lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
+              <TokenWastePanel telemetry={snapshot.aiTelemetry} lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
               <OpenClawReliabilityPanel lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
               <LocalCodexLabPanel lab={snapshot.localCodexLab} onOpen={open} onCopy={copy} />
               <TimelinePanel runSummaries={snapshot.localCodexLab.runSummaries} onOpen={open} onCopy={copy} />

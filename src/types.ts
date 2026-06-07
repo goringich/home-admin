@@ -150,6 +150,7 @@ export interface Snapshot {
   }>;
   localCodexLab: LocalCodexLab;
   localAiControl: LocalAiControl;
+  aiTelemetry: AiTelemetryExport;
 }
 
 export interface SourceMeta {
@@ -411,5 +412,108 @@ export interface LocalAiControl {
     };
     findings: LocalAiSecurityFinding[];
   };
+  source: SourceMeta;
+}
+
+export interface AiTelemetryRecentEvent {
+  ts: string;
+  category: string;
+  tool: string;
+  subject: string;
+  query: string;
+  status: string;
+  result_count: number;
+  semantic_enabled: boolean;
+}
+
+export interface AiTelemetryRegistryEntry {
+  id: string;
+  title: string;
+  source_path: string;
+  installed_path: string;
+  installed: boolean;
+}
+
+export interface AiTelemetryExport {
+  generatedAt: string;
+  retrievalQuality: {
+    status: string;
+    count?: number;
+    avg_results?: number;
+    avg_snippets?: number;
+    avg_context_chars?: number;
+    semantic_count?: number;
+    semantic_rate?: number;
+    last_query?: string;
+    last_scope?: string;
+    last_status?: string;
+    last_at?: string;
+  };
+  codeContextSearch: {
+    status: string;
+    count?: number;
+    avg_results?: number;
+    avg_snippets?: number;
+    avg_context_chars?: number;
+    semantic_count?: number;
+    semantic_rate?: number;
+    last_query?: string;
+    last_repo?: string;
+    last_status?: string;
+    last_at?: string;
+  };
+  skillRegistry: {
+    status: string;
+    source_count?: number;
+    installed_count?: number;
+    entries?: AiTelemetryRegistryEntry[];
+  };
+  skillUsage: {
+    status: string;
+    total?: number;
+    by_skill?: Array<{
+      id: string;
+      count: number;
+      last_used_at: string;
+    }>;
+  };
+  codexProductivity: {
+    status: string;
+    total_runs?: number;
+    verified_runs?: number;
+    unique_repos_touched?: number;
+    tool_usage_events?: number;
+    latest_run?: {
+      task: string;
+      next_action: string;
+      finished_at: string;
+    };
+  };
+  tokenContextWaste: {
+    status: string;
+    files_scanned?: number;
+    repeated_health_gate_count?: number;
+    files_with_no_assistant_reply?: number;
+    bridge_noise_files?: number;
+    wrapper_total_context_chars?: number;
+    wrapper_avg_context_chars?: number;
+  };
+  modelRouting: {
+    status: string;
+    fast?: string;
+    balanced?: string;
+    heavy?: string;
+    embedding?: string;
+    embedding_event_count?: number;
+    latest_embedding_model?: string;
+  };
+  toolUsage: {
+    status: string;
+    count?: number;
+    last_tool?: string;
+    last_status?: string;
+    last_at?: string;
+  };
+  recentEvents: AiTelemetryRecentEvent[];
   source: SourceMeta;
 }
