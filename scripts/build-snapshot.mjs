@@ -15,6 +15,8 @@ const localAiStatePath = path.join(home, "__home_organized", "runtime", "local-a
 const agentHealthStatePath = path.join(home, "__home_organized", "runtime", "agent-health-gate", "state.json");
 const hostAuditOutputPath = path.join(canonicalLocalCodexRuntime, "host-audit-latest.json");
 const aiTelemetryExportPath = path.join(home, "__home_organized", "runtime", "ai-telemetry", "exports", "atlas.json");
+const commercialReadinessPath = path.join(canonicalLocalCodexRuntime, "commercial-readiness.json");
+const productIntelPath = path.join(canonicalLocalCodexRuntime, "product-intel.json");
 
 const overrides = JSON.parse(fs.readFileSync(overridesPath, "utf8"));
 
@@ -621,6 +623,42 @@ function buildAiTelemetry() {
   };
 }
 
+function buildCommercialReadiness() {
+  const report = readJsonFirst([commercialReadinessPath], {});
+  const productIntel = readJsonFirst([productIntelPath], {});
+  return {
+    generatedAt: report.payload?.generated_at || new Date().toISOString(),
+    overallStatus: report.payload?.overall_status || "unknown",
+    hostHealth: report.payload?.host_health || "unknown",
+    blockedByHostHealth: Boolean(report.payload?.blocked_by_host_health),
+    score: Number(report.payload?.score || 0),
+    targetProduct: report.payload?.target_product || {
+      id: "unknown",
+      title: "unknown",
+      path: "",
+    },
+    summary: {
+      implemented: Number(report.payload?.summary?.implemented || 0),
+      scaffolded: Number(report.payload?.summary?.scaffolded || 0),
+      missing: Number(report.payload?.summary?.missing || 0),
+      dirtyFocusRepos: Number(report.payload?.summary?.dirty_focus_repos || 0),
+      highRiskBlockers: Number(report.payload?.summary?.high_risk_blockers || 0),
+    },
+    nextAction: report.payload?.next_exact_action || "",
+    highRiskBlockers: report.payload?.high_risk_blockers || [],
+    checks: report.payload?.checks || [],
+    atlasExport: report.payload?.atlas_export || {
+      safe_to_expose: true,
+      section_label: "Commercial Readiness",
+      endpoint_hint: "/api/commercial-readiness",
+      source_path: commercialReadinessPath,
+    },
+    focusRepos: productIntel.payload?.focus_repos || [],
+    source: statMeta(report.path, report.payload?.generated_at || ""),
+    productIntelSource: statMeta(productIntel.path, productIntel.payload?.generated_at || ""),
+  };
+}
+
 function systemSnapshot() {
   const issues = run("bash", ["-lc", `${home}/__home_organized/scripts/system-issues-report.sh --compact`]);
   const running = run("systemctl", ["is-system-running"]);
@@ -806,6 +844,7 @@ const system = systemSnapshot();
 const localCodexLab = buildLocalCodexLab();
 const localAiControl = buildLocalAiControl();
 const aiTelemetry = buildAiTelemetry();
+const commercialReadiness = buildCommercialReadiness();
 const hostAudit = buildHostAudit(system, localAiControl);
 
 const snapshot = {
@@ -831,6 +870,7 @@ const snapshot = {
   localCodexLab,
   localAiControl,
   aiTelemetry,
+  commercialReadiness,
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });

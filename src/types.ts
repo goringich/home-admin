@@ -151,6 +151,7 @@ export interface Snapshot {
   localCodexLab: LocalCodexLab;
   localAiControl: LocalAiControl;
   aiTelemetry: AiTelemetryExport;
+  commercialReadiness: CommercialReadiness;
 }
 
 export interface SourceMeta {
@@ -488,6 +489,18 @@ export interface AiTelemetryExport {
       next_action: string;
       finished_at: string;
     };
+    recent_ledger?: Array<{
+      run_id: string;
+      task: string;
+      finished_at: string;
+      status: string;
+      repo_count: number;
+      repos: string[];
+      verification_count: number;
+      commit_count: number;
+      next_action: string;
+      blockers: string[];
+    }>;
   };
   tokenContextWaste: {
     status: string;
@@ -516,4 +529,52 @@ export interface AiTelemetryExport {
   };
   recentEvents: AiTelemetryRecentEvent[];
   source: SourceMeta;
+}
+
+export interface CommercialReadiness {
+  generatedAt: string;
+  overallStatus: string;
+  hostHealth: string;
+  blockedByHostHealth: boolean;
+  score: number;
+  targetProduct: {
+    id: string;
+    title: string;
+    path: string;
+  };
+  summary: {
+    implemented: number;
+    scaffolded: number;
+    missing: number;
+    dirtyFocusRepos: number;
+    highRiskBlockers: number;
+  };
+  nextAction: string;
+  highRiskBlockers: string[];
+  checks: Array<{
+    label: string;
+    status: string;
+    repo_id: string;
+    evidence: string[];
+    detail: string;
+  }>;
+  atlasExport: {
+    safe_to_expose: boolean;
+    section_label: string;
+    endpoint_hint: string;
+    source_path: string;
+  };
+  focusRepos: Array<{
+    id: string;
+    title: string;
+    kind: string;
+    path: string;
+    source_note: string;
+    branch: string;
+    dirty_count: number;
+    dirty_preview: string[];
+    status: string;
+  }>;
+  source: SourceMeta;
+  productIntelSource: SourceMeta;
 }

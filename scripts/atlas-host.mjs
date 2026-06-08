@@ -141,6 +141,16 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/commercial-readiness") {
+    try {
+      const snapshot = loadSnapshotData();
+      sendJson(res, 200, { ok: true, data: snapshot.commercialReadiness ?? null });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/open") {
     let body = "";
     req.on("data", (chunk) => {

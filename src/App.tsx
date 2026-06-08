@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "./index.css";
 import type {
   AiTelemetryExport,
+  CommercialReadiness,
   DetailTab,
   HealthTone,
   HostAudit,
@@ -234,6 +235,12 @@ function telemetryStatusTone(status: string): HealthTone {
   if (status === "ok") return "ok";
   if (status === "missing") return "attention";
   return "unknown";
+}
+
+function commercialTone(status: string): HealthTone {
+  if (status === "ready_for_live_checks") return "ok";
+  if (status === "scaffolded_waiting_for_live_checks") return "attention";
+  return "risk";
 }
 
 function topReliabilityClass(classifications: Record<string, number>) {
@@ -831,6 +838,22 @@ function CommandDeckPanel(props: {
           </article>
 
           <article className="rail-card">
+            <div className="rail-title">Commercial Readiness</div>
+            <StatusBadge label={snapshot.commercialReadiness.overallStatus} tone={commercialTone(snapshot.commercialReadiness.overallStatus)} />
+            <div className="rail-hero-number rail-hero-status">{snapshot.commercialReadiness.score}</div>
+            <p>
+              {snapshot.commercialReadiness.targetProduct.title} · {snapshot.commercialReadiness.summary.implemented} implemented ·{" "}
+              {snapshot.commercialReadiness.summary.scaffolded} scaffolded · {snapshot.commercialReadiness.summary.missing} missing
+            </p>
+            <SourceFootnote
+              source={snapshot.commercialReadiness.source}
+              label="commercial readiness"
+              onOpen={props.onOpen}
+              onCopy={props.onCopy}
+            />
+          </article>
+
+          <article className="rail-card">
             <div className="rail-title">Risk rail</div>
             <div className="risk-list">
               {mission.riskItems.map((item) => (
@@ -1097,6 +1120,7 @@ function RunSummaryCard(props: {
 
 function LocalCodexLabPanel(props: {
   lab: LocalCodexLab;
+  commercial: CommercialReadiness;
   onOpen: (label: string, target: string) => void;
   onCopy: (label: string, value: string) => void;
 }) {
@@ -1120,6 +1144,7 @@ function LocalCodexLabPanel(props: {
         <MetricCard label="Denylist" value={props.lab.retrievalPolicy.denylistedFiles} detail={props.lab.retrievalPolicy.denylistedClasses.join(" · ")} />
         <MetricCard label="OpenClaw warns" value={props.lab.openclawReliability.warningCount} detail={props.lab.openclawReliability.status} />
         <MetricCard label="Repo-intel" value={props.lab.repoIntel.targetCount} detail={props.lab.repoIntel.safeTargets.join(" · ")} />
+        <MetricCard label="Commercial QA" value={props.commercial.score} detail={`${props.commercial.summary.implemented} impl · ${props.commercial.summary.scaffolded} scaffolded`} />
       </div>
 
       <div className="codex-lab-grid">
@@ -1175,6 +1200,23 @@ function LocalCodexLabPanel(props: {
             ))}
           </ul>
           <SourceFootnote source={props.lab.openclawReliability.source} label="openclaw reliability" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Commercial Readiness</div>
+          <div className="class-grid">
+            <div className="class-row"><span>status</span><strong>{props.commercial.overallStatus}</strong></div>
+            <div className="class-row"><span>host</span><strong>{props.commercial.hostHealth}</strong></div>
+            <div className="class-row"><span>dirty repos</span><strong>{props.commercial.summary.dirtyFocusRepos}</strong></div>
+            <div className="class-row"><span>blockers</span><strong>{props.commercial.summary.highRiskBlockers}</strong></div>
+          </div>
+          <ul className="note-list compact-note-list">
+            {props.commercial.highRiskBlockers.slice(0, 2).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+            {props.commercial.nextAction ? <li>{props.commercial.nextAction}</li> : null}
+          </ul>
+          <SourceFootnote source={props.commercial.source} label="commercial readiness" onOpen={props.onOpen} onCopy={props.onCopy} />
         </article>
 
         <article className="detail-card">
@@ -1625,6 +1667,7 @@ function CodexProductivityPanel(props: {
   onCopy: (label: string, value: string) => void;
 }) {
   const data = props.telemetry.codexProductivity;
+  const ledger = data.recent_ledger ?? [];
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1645,6 +1688,26 @@ function CodexProductivityPanel(props: {
           <div className="detail-card-title">Latest run</div>
           <p>{data.latest_run?.task || "missing"}</p>
           <p>{data.latest_run?.next_action || "missing"}</p>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Recent ledger</div>
+          <div className="doc-list">
+            {ledger.length > 0 ? (
+              ledger.slice(0, 4).map((entry) => (
+                <QuickActionRow
+                  key={entry.run_id || `${entry.task}-${entry.finished_at}`}
+                  label={entry.task || "unnamed run"}
+                  value={`${entry.status} · ${entry.repo_count} repos · ${entry.commit_count} commits · ${
+                    entry.finished_at ? fmtRelative(new Date(entry.finished_at).getTime()) : "no timestamp"
+                  }`}
+                  onOpen={() => props.onOpen(entry.run_id || entry.task || "productivity-run", props.telemetry.source.path)}
+                  onCopy={() => props.onCopy(entry.run_id || entry.task || "productivity-run", entry.next_action || entry.task || "")}
+                />
+              ))
+            ) : (
+              <div className="empty-inline">missing</div>
+            )}
+          </div>
         </article>
       </div>
       <SourceFootnote source={props.telemetry.source} label="productivity export" onOpen={props.onOpen} onCopy={props.onCopy} />
@@ -2535,7 +2598,7 @@ export function App() {
               <LocalFallbackPanel mission={mission} source={snapshot.localCodexLab.source} onOpen={open} onCopy={copy} />
               <TokenWastePanel telemetry={snapshot.aiTelemetry} lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
               <OpenClawReliabilityPanel lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
-              <LocalCodexLabPanel lab={snapshot.localCodexLab} onOpen={open} onCopy={copy} />
+              <LocalCodexLabPanel lab={snapshot.localCodexLab} commercial={snapshot.commercialReadiness} onOpen={open} onCopy={copy} />
               <TimelinePanel runSummaries={snapshot.localCodexLab.runSummaries} onOpen={open} onCopy={copy} />
             </div>
           ) : null}
