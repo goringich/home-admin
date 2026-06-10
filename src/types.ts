@@ -425,6 +425,15 @@ export interface AiTelemetryRecentEvent {
   status: string;
   result_count: number;
   semantic_enabled: boolean;
+  provider?: string;
+  model?: string;
+  total_tokens?: number;
+  cost_usd?: number;
+  run_id?: string;
+  goal_id?: string;
+  context_budget?: string;
+  retrieval_pack_hash?: string;
+  success_status?: string;
 }
 
 export interface AiTelemetryRegistryEntry {
@@ -526,6 +535,99 @@ export interface AiTelemetryExport {
     last_tool?: string;
     last_status?: string;
     last_at?: string;
+  };
+  aiResponseUsage: {
+    status: string;
+    count?: number;
+    success_count?: number;
+    success_rate?: number;
+    provider_count?: number;
+    model_count?: number;
+    providers?: string[];
+    models?: string[];
+    total_input_tokens?: number;
+    total_cached_input_tokens?: number;
+    total_output_tokens?: number;
+    total_reasoning_tokens?: number;
+    total_tokens?: number;
+    total_cost_usd?: number;
+    avg_latency_ms?: number;
+    avg_cost_usd?: number;
+    last_provider?: string;
+    last_model?: string;
+    last_run_id?: string;
+    last_goal_id?: string;
+    last_status?: string;
+    last_at?: string;
+    latest_summary?: string;
+  };
+  promptCacheEfficiency: {
+    status: string;
+    count?: number;
+    cached_input_tokens?: number;
+    uncached_input_tokens?: number;
+    effective_input_tokens?: number;
+    cache_ratio?: number;
+    by_model?: Array<{
+      provider: string;
+      model: string;
+      count: number;
+      cached_input_tokens: number;
+      uncached_input_tokens: number;
+      cache_ratio: number;
+    }>;
+  };
+  costByModel: {
+    status: string;
+    entries?: Array<{
+      provider: string;
+      model: string;
+      count: number;
+      success_count: number;
+      total_cost_usd: number;
+      total_tokens: number;
+      avg_latency_ms: number;
+      avg_cost_usd: number;
+    }>;
+  };
+  costByGoal: {
+    status: string;
+    entries?: Array<{
+      goal_id: string;
+      count: number;
+      run_ids: string[];
+      model_count: number;
+      total_cost_usd: number;
+      total_tokens: number;
+    }>;
+  };
+  tokensPerVerifiedRun: {
+    status: string;
+    run_count?: number;
+    avg_tokens?: number;
+    avg_cost_usd?: number;
+    entries?: Array<{
+      run_id: string;
+      goal_id: string;
+      task: string;
+      event_count: number;
+      total_tokens: number;
+      total_cost_usd: number;
+      verified_checks: number;
+    }>;
+  };
+  budgetDrift: {
+    status: string;
+    evaluated_count?: number;
+    unknown_budget_count?: number;
+    by_budget?: Array<{
+      context_budget: string;
+      count: number;
+      within_budget: number;
+      over_budget: number;
+      under_budget: number;
+      avg_drift_ratio: number;
+    }>;
   };
   recentEvents: AiTelemetryRecentEvent[];
   source: SourceMeta;

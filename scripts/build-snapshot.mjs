@@ -606,6 +606,12 @@ function buildAiTelemetry() {
     token_context_waste: { status: "missing" },
     model_routing: { status: "missing" },
     tool_usage: { status: "missing" },
+    ai_response_usage: { status: "missing" },
+    prompt_cache_efficiency: { status: "missing" },
+    cost_by_model: { status: "missing", entries: [] },
+    cost_by_goal: { status: "missing", entries: [] },
+    tokens_per_verified_run: { status: "missing" },
+    budget_drift: { status: "missing" },
     recent_events: [],
   });
   return {
@@ -618,6 +624,12 @@ function buildAiTelemetry() {
     tokenContextWaste: exportState.payload?.token_context_waste || { status: "missing" },
     modelRouting: exportState.payload?.model_routing || { status: "missing" },
     toolUsage: exportState.payload?.tool_usage || { status: "missing" },
+    aiResponseUsage: exportState.payload?.ai_response_usage || { status: "missing" },
+    promptCacheEfficiency: exportState.payload?.prompt_cache_efficiency || { status: "missing" },
+    costByModel: exportState.payload?.cost_by_model || { status: "missing", entries: [] },
+    costByGoal: exportState.payload?.cost_by_goal || { status: "missing", entries: [] },
+    tokensPerVerifiedRun: exportState.payload?.tokens_per_verified_run || { status: "missing" },
+    budgetDrift: exportState.payload?.budget_drift || { status: "missing" },
     recentEvents: exportState.payload?.recent_events || [],
     source: statMeta(exportState.path, exportState.payload?.generated_at || ""),
   };
