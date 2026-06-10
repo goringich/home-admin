@@ -415,6 +415,20 @@ function summarizeRepo(repoEntry) {
 
 function buildLocalCodexLab() {
   const lab = readJsonFirst([localCodexAtlasPath], {});
+  const researchSummary = readJsonFirst(
+    [
+      path.join(canonicalLocalCodexRuntime, "research", "research-summary.json"),
+      path.join(legacyLocalCodexRuntime, "research", "research-summary.json"),
+    ],
+    {},
+  );
+  const workspaceMemory = readJsonFirst(
+    [
+      path.join(canonicalLocalCodexRuntime, "memory", "workspace-memory-summary.json"),
+      path.join(legacyLocalCodexRuntime, "memory", "workspace-memory-summary.json"),
+    ],
+    {},
+  );
   const retrievalPolicy = readJsonFirst(
     [
       path.join(canonicalLocalCodexRuntime, "retrieval-policy.json"),
@@ -555,6 +569,42 @@ function buildLocalCodexLab() {
       })),
       source: statMeta(repoIntel.path, repoIntel.payload?.generated_at || ""),
     },
+    research: {
+      runCount: Number(researchSummary.payload?.research_run_count || 0),
+      sourceCardCount: Number(researchSummary.payload?.source_card_count || 0),
+      providers: researchSummary.payload?.providers || [],
+      sourceDomains: researchSummary.payload?.source_domains || [],
+      latestRun: researchSummary.payload?.latest_run || {},
+      paths: researchSummary.payload?.paths || {},
+      freshness: researchSummary.payload?.freshness || {},
+      source: statMeta(researchSummary.path, researchSummary.payload?.generated_at || ""),
+    },
+    memory: {
+      workspaceFocus: workspaceMemory.payload?.workspace_focus || "",
+      activeGoalCount: Number(workspaceMemory.payload?.active_goal_count || 0),
+      activeGoalIds: workspaceMemory.payload?.active_goal_ids || [],
+      latestRunId: workspaceMemory.payload?.latest_run_id || "",
+      latestTask: workspaceMemory.payload?.latest_task || "",
+      hostHealth: workspaceMemory.payload?.host_health || "",
+      highlights: workspaceMemory.payload?.highlights || [],
+      sourcePaths: workspaceMemory.payload?.source_paths || {},
+      source: statMeta(workspaceMemory.path, workspaceMemory.payload?.generated_at || ""),
+    },
+    tokenEconomy: {
+      contextBudgetsPath: lab.payload?.token_economy?.context_budgets_path || "",
+      tokenWasteMetricsPath: lab.payload?.token_economy?.token_waste_metrics_path || "",
+      runSummariesPath: lab.payload?.token_economy?.run_summaries_path || "",
+      freshness: lab.payload?.token_economy?.freshness || {},
+      source: statMeta(lab.path, lab.payload?.generated_at || ""),
+    },
+    failureAwareObservability: {
+      hostHealth: lab.payload?.failure_aware_observability?.host_health || "unknown",
+      safeMode: lab.payload?.failure_aware_observability?.safe_mode || "unknown",
+      openclawWarningCount: Number(lab.payload?.failure_aware_observability?.openclaw_warning_count || 0),
+      latestRunFailures: lab.payload?.failure_aware_observability?.latest_run_failures || [],
+      sourcePaths: lab.payload?.failure_aware_observability?.source_paths || {},
+      source: statMeta(lab.path, lab.payload?.generated_at || ""),
+    },
     goalCapsules,
     runSummaries: summarizedRuns,
   };
@@ -606,12 +656,17 @@ function buildAiTelemetry() {
     token_context_waste: { status: "missing" },
     model_routing: { status: "missing" },
     tool_usage: { status: "missing" },
+    ai_response: { status: "missing" },
     ai_response_usage: { status: "missing" },
     prompt_cache_efficiency: { status: "missing" },
     cost_by_model: { status: "missing", entries: [] },
     cost_by_goal: { status: "missing", entries: [] },
     tokens_per_verified_run: { status: "missing" },
     budget_drift: { status: "missing" },
+    research: { status: "missing" },
+    memory: { status: "missing" },
+    token_economy: { status: "missing" },
+    failure_aware_observability: { status: "missing" },
     recent_events: [],
   });
   return {
@@ -624,12 +679,17 @@ function buildAiTelemetry() {
     tokenContextWaste: exportState.payload?.token_context_waste || { status: "missing" },
     modelRouting: exportState.payload?.model_routing || { status: "missing" },
     toolUsage: exportState.payload?.tool_usage || { status: "missing" },
+    aiResponse: exportState.payload?.ai_response || { status: "missing" },
     aiResponseUsage: exportState.payload?.ai_response_usage || { status: "missing" },
     promptCacheEfficiency: exportState.payload?.prompt_cache_efficiency || { status: "missing" },
     costByModel: exportState.payload?.cost_by_model || { status: "missing", entries: [] },
     costByGoal: exportState.payload?.cost_by_goal || { status: "missing", entries: [] },
     tokensPerVerifiedRun: exportState.payload?.tokens_per_verified_run || { status: "missing" },
     budgetDrift: exportState.payload?.budget_drift || { status: "missing" },
+    research: exportState.payload?.research || { status: "missing" },
+    memory: exportState.payload?.memory || { status: "missing" },
+    tokenEconomy: exportState.payload?.token_economy || { status: "missing" },
+    failureAwareObservability: exportState.payload?.failure_aware_observability || { status: "missing" },
     recentEvents: exportState.payload?.recent_events || [],
     source: statMeta(exportState.path, exportState.payload?.generated_at || ""),
   };

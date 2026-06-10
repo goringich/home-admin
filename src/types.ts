@@ -237,6 +237,42 @@ export interface LocalCodexLab {
     }>;
     source: SourceMeta;
   };
+  research: {
+    runCount: number;
+    sourceCardCount: number;
+    providers: string[];
+    sourceDomains: string[];
+    latestRun: Record<string, unknown>;
+    paths: Record<string, string>;
+    freshness: Record<string, unknown>;
+    source: SourceMeta;
+  };
+  memory: {
+    workspaceFocus: string;
+    activeGoalCount: number;
+    activeGoalIds: string[];
+    latestRunId: string;
+    latestTask: string;
+    hostHealth: string;
+    highlights: string[];
+    sourcePaths: Record<string, string>;
+    source: SourceMeta;
+  };
+  tokenEconomy: {
+    contextBudgetsPath: string;
+    tokenWasteMetricsPath: string;
+    runSummariesPath: string;
+    freshness: Record<string, unknown>;
+    source: SourceMeta;
+  };
+  failureAwareObservability: {
+    hostHealth: string;
+    safeMode: string;
+    openclawWarningCount: number;
+    latestRunFailures: string[];
+    sourcePaths: Record<string, string>;
+    source: SourceMeta;
+  };
   goalCapsules: LocalCodexGoalCapsule[];
   runSummaries: LocalCodexRunSummary[];
 }
@@ -431,6 +467,7 @@ export interface AiTelemetryRecentEvent {
   cost_usd?: number;
   run_id?: string;
   goal_id?: string;
+  response_id?: string;
   context_budget?: string;
   retrieval_pack_hash?: string;
   success_status?: string;
@@ -536,6 +573,15 @@ export interface AiTelemetryExport {
     last_status?: string;
     last_at?: string;
   };
+  aiResponse: {
+    status: string;
+    count?: number;
+    required_fields?: string[];
+    providers?: string[];
+    models?: string[];
+    latest?: Record<string, unknown>;
+    source_paths?: Record<string, string>;
+  };
   aiResponseUsage: {
     status: string;
     count?: number;
@@ -628,6 +674,59 @@ export interface AiTelemetryExport {
       under_budget: number;
       avg_drift_ratio: number;
     }>;
+  };
+  research: {
+    status: string;
+    run_count?: number;
+    source_card_count?: number;
+    provider_count?: number;
+    providers?: string[];
+    source_domains?: string[];
+    last_research_run_id?: string;
+    last_title?: string;
+    last_topic?: string;
+    last_imported_at?: string;
+    obsidian_note_path?: string;
+    obsidian_note_present?: boolean;
+    source_paths?: Record<string, string>;
+    freshness?: Record<string, string>;
+  };
+  memory: {
+    status: string;
+    architectural_decision_count?: number;
+    agent_intent_count?: number;
+    active_goal_count?: number;
+    shared_scratchpad_present?: boolean;
+    workspace_focus?: string;
+    highlights?: string[];
+    source_paths?: Record<string, string>;
+    freshness?: Record<string, string>;
+  };
+  tokenEconomy: {
+    status: string;
+    total_tokens?: number;
+    total_cost_usd?: number;
+    avg_latency_ms?: number;
+    cache_ratio?: number;
+    verified_run_count?: number;
+    avg_tokens_per_verified_run?: number;
+    avg_cost_per_verified_run?: number;
+    wrapper_total_context_chars?: number;
+    repeated_health_gate_count?: number;
+    budget_evaluated_count?: number;
+    budget_unknown_count?: number;
+    over_budget_count?: number;
+    under_budget_count?: number;
+  };
+  failureAwareObservability: {
+    status: string;
+    ai_response_failure_count?: number;
+    run_with_blockers_count?: number;
+    openclaw_warning_count?: number;
+    openclaw_status?: string;
+    latest_ai_failure?: Record<string, unknown>;
+    latest_blocked_run?: Record<string, unknown>;
+    source_paths?: Record<string, string>;
   };
   recentEvents: AiTelemetryRecentEvent[];
   source: SourceMeta;
