@@ -273,6 +273,72 @@ export interface LocalCodexLab {
     sourcePaths: Record<string, string>;
     source: SourceMeta;
   };
+  activeRuns: Array<{
+    run_id: string;
+    status: string;
+    dry_run: boolean;
+    repo_id: string;
+    task_type: string;
+    task_text: string;
+    context_budget: string;
+    selected_agent: string;
+    generated_at: string;
+    run_report_path: string;
+    context_pack_path: string;
+    failed_checks: string[];
+    next_best_action: string;
+  }>;
+  latestRunReports: Array<{
+    run_id: string;
+    status: string;
+    dry_run: boolean;
+    repo_id: string;
+    task_type: string;
+    task_text: string;
+    context_budget: string;
+    selected_agent: string;
+    generated_at: string;
+    run_report_path: string;
+    context_pack_path: string;
+    failed_checks: string[];
+    next_best_action: string;
+  }>;
+  evalStatus: {
+    status: string;
+    matched_spec_ids?: string[];
+    spec_count?: number;
+    specs?: Array<{
+      id: string;
+      title: string;
+      repo_id: string;
+      task_type: string;
+      status: string;
+      last_run_id: string;
+      source_path: string;
+    }>;
+  };
+  agentRouting: {
+    source_path?: string;
+    default_route?: string;
+    default_context_budget?: string;
+    routes?: Array<{
+      id: string;
+      label: string;
+      context_budget: string;
+      sandbox_mode: string;
+      permission_tier: string;
+      preferred_agents: string[];
+    }>;
+    status?: string;
+  };
+  tokenCostPlaceholders: {
+    input_tokens: number | null;
+    output_tokens: number | null;
+    total_tokens: number | null;
+    cost_usd: number | null;
+  };
+  failedChecks: string[];
+  nextBestAction: string;
   goalCapsules: LocalCodexGoalCapsule[];
   runSummaries: LocalCodexRunSummary[];
 }

@@ -605,6 +605,18 @@ function buildLocalCodexLab() {
       sourcePaths: lab.payload?.failure_aware_observability?.source_paths || {},
       source: statMeta(lab.path, lab.payload?.generated_at || ""),
     },
+    activeRuns: lab.payload?.active_runs || [],
+    latestRunReports: lab.payload?.latest_run_reports || [],
+    evalStatus: lab.payload?.eval_status || { status: "missing" },
+    agentRouting: lab.payload?.agent_routing || { status: "missing" },
+    tokenCostPlaceholders: lab.payload?.token_cost_placeholders || {
+      input_tokens: null,
+      output_tokens: null,
+      total_tokens: null,
+      cost_usd: null,
+    },
+    failedChecks: lab.payload?.failed_checks || [],
+    nextBestAction: lab.payload?.next_best_action || "",
     goalCapsules,
     runSummaries: summarizedRuns,
   };
