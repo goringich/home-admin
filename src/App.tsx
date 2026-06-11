@@ -202,6 +202,16 @@ function compactPath(target: string) {
   return target.replace("/home/goringich/", "~/");
 }
 
+function compactHash(value: string, head = 12) {
+  if (!value) {
+    return "missing";
+  }
+  if (value.length <= head) {
+    return value;
+  }
+  return `${value.slice(0, head)}...`;
+}
+
 function compactObjective(value: string, limit = 180) {
   const singleLine = value.replace(/\s+/g, " ").trim();
   if (singleLine.length <= limit) {
@@ -1715,6 +1725,279 @@ function CodexProductivityPanel(props: {
   );
 }
 
+function TokenEconomyPanel(props: {
+  telemetry: AiTelemetryExport;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const economy = props.telemetry.tokenEconomy;
+  const governor = props.telemetry.tokenGovernor;
+  const usage = props.telemetry.aiResponseUsage;
+  const cache = props.telemetry.promptCacheEfficiency;
+  const latest = governor.latest;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Token Economy</div>
+          <h3>Governor, usage, and cache pressure</h3>
+        </div>
+        <StatusBadge label={economy.status} tone={telemetryStatusTone(economy.status)} />
+      </div>
+      <div className="local-status-grid">
+        <MetricCard label="Total tokens" value={economy.total_tokens ?? "missing"} detail={`${usage.count ?? 0} ai responses`} />
+        <MetricCard label="Total cost" value={economy.total_cost_usd ?? "missing"} detail={`avg latency ${economy.avg_latency_ms ?? "missing"} ms`} />
+        <MetricCard label="Cache ratio" value={cache.cache_ratio ?? economy.cache_ratio ?? "missing"} detail={`${cache.cached_input_tokens ?? 0} cached input`} />
+        <MetricCard label="Governor runs" value={governor.run_count ?? "missing"} detail={`${governor.over_budget_count ?? 0} over budget`} />
+      </div>
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Latest governed pack</div>
+          <div className="class-grid">
+            <div className="class-row"><span>budget</span><strong>{latest?.context_budget || "missing"}</strong></div>
+            <div className="class-row"><span>chars</span><strong>{latest ? `${latest.estimated_context_chars} / ${latest.max_context_chars}` : "missing"}</strong></div>
+            <div className="class-row"><span>warnings</span><strong>{latest?.warning_count ?? "missing"}</strong></div>
+            <div className="class-row"><span>hash</span><strong>{compactHash(latest?.retrieval_pack_hash || "")}</strong></div>
+          </div>
+          <p>{latest?.over_budget ? "Estimated context is over the governor cap." : "Latest governed run stayed within the configured cap."}</p>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">By budget</div>
+          <div className="class-grid">
+            {(governor.by_budget ?? []).length > 0 ? (
+              governor.by_budget!.map((entry) => (
+                <div key={entry.context_budget} className="class-row">
+                  <span>{entry.context_budget}</span>
+                  <strong>{entry.count} runs · {entry.over_budget_count} over</strong>
+                </div>
+              ))
+            ) : (
+              <div className="empty-inline">missing</div>
+            )}
+          </div>
+          <SourceFootnote source={props.telemetry.source} label="token economy export" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function AgentTracePanel(props: {
+  telemetry: AiTelemetryExport;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const data = props.telemetry.agentTrace;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Agent Trace</div>
+          <h3>Deterministic run-level event ledger</h3>
+        </div>
+        <StatusBadge label={data.status} tone={telemetryStatusTone(data.status)} />
+      </div>
+      <div className="local-status-grid">
+        <MetricCard label="Events" value={data.total_events ?? "missing"} detail={`${data.run_count ?? 0} runs`} />
+        <MetricCard label="Commands" value={data.command_run_count ?? "missing"} detail={`${data.test_run_count ?? 0} test/build runs`} />
+        <MetricCard label="File reads" value={data.file_read_count ?? "missing"} detail={`${data.patch_applied_count ?? 0} patch events`} />
+        <MetricCard label="AI trace" value={data.ai_response_count ?? "missing"} detail={`${data.cache_hit_count ?? 0} cache hits`} />
+      </div>
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Recent events</div>
+          <div className="doc-list">
+            {(data.recent_events ?? []).length > 0 ? (
+              data.recent_events!.slice(0, 6).map((entry) => (
+                <QuickActionRow
+                  key={`${entry.ts}-${entry.event_type}-${entry.run_id}`}
+                  label={entry.event_type}
+                  value={`${entry.repo_id || "repo?"} · ${entry.status} · ${entry.run_id || "no-run"} · ${
+                    entry.ts ? fmtRelative(new Date(entry.ts).getTime()) : "no timestamp"
+                  }`}
+                  onCopy={() => props.onCopy(entry.event_type, `${entry.run_id} ${entry.subject}`.trim())}
+                />
+              ))
+            ) : (
+              <div className="empty-inline">missing</div>
+            )}
+          </div>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Latest finished run</div>
+          <div className="class-grid">
+            <div className="class-row"><span>run</span><strong>{data.latest_run?.run_id || "missing"}</strong></div>
+            <div className="class-row"><span>repo</span><strong>{data.latest_run?.repo_id || "missing"}</strong></div>
+            <div className="class-row"><span>status</span><strong>{data.latest_run?.status || "missing"}</strong></div>
+            <div className="class-row"><span>phase</span><strong>{data.latest_run?.phase || "missing"}</strong></div>
+          </div>
+          <SourceFootnote source={props.telemetry.source} label="agent trace export" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function CacheLedgerPanel(props: {
+  telemetry: AiTelemetryExport;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const data = props.telemetry.cacheLedger;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Cache Ledger</div>
+          <h3>Retrieval pack reuse vs fresh work</h3>
+        </div>
+        <StatusBadge label={data.status} tone={telemetryStatusTone(data.status)} />
+      </div>
+      <div className="local-status-grid">
+        <MetricCard label="Hits" value={data.hit_count ?? "missing"} detail={`rate ${data.hit_rate ?? "missing"}`} />
+        <MetricCard label="Misses" value={data.miss_count ?? "missing"} detail="new retrieval packs" />
+        <MetricCard label="Cache keys" value={data.unique_cache_keys ?? "missing"} detail="unique retrieval hashes" />
+        <MetricCard label="Repos" value={data.by_repo?.length ?? "missing"} detail="repo surfaces in ledger" />
+      </div>
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Recent cache entries</div>
+          <div className="doc-list">
+            {(data.entries ?? []).length > 0 ? (
+              data.entries!.slice(0, 6).map((entry) => (
+                <QuickActionRow
+                  key={`${entry.ts}-${entry.cache_key}`}
+                  label={entry.event_type}
+                  value={`${entry.repo_id || "repo?"} · ${compactHash(entry.cache_key)} · prev ${entry.previous_run_id || "none"}`}
+                  onCopy={() => props.onCopy(entry.event_type, entry.cache_key || entry.previous_run_id || "")}
+                />
+              ))
+            ) : (
+              <div className="empty-inline">missing</div>
+            )}
+          </div>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">By repo</div>
+          <div className="class-grid">
+            {(data.by_repo ?? []).length > 0 ? (
+              data.by_repo!.map((entry) => (
+                <div key={entry.repo_id} className="class-row">
+                  <span>{entry.repo_id}</span>
+                  <strong>{entry.count}</strong>
+                </div>
+              ))
+            ) : (
+              <div className="empty-inline">missing</div>
+            )}
+          </div>
+          <SourceFootnote source={props.telemetry.source} label="cache ledger export" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function RedundantWorkPanel(props: {
+  telemetry: AiTelemetryExport;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const data = props.telemetry.redundantWork;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Redundant Work</div>
+          <h3>Repeated retrieval, command, and file-read patterns</h3>
+        </div>
+        <StatusBadge label={data.status} tone={telemetryStatusTone(data.status)} />
+      </div>
+      <div className="local-status-grid">
+        <MetricCard label="Repeated packs" value={data.repeated_retrieval_packs ?? "missing"} detail="extra retrieval pack rebuilds" />
+        <MetricCard label="Repeated queries" value={data.repeated_queries ?? "missing"} detail="same retrieval query repeated" />
+        <MetricCard label="Repeated commands" value={data.repeated_commands ?? "missing"} detail="same command reruns" />
+        <MetricCard label="Repeated file reads" value={data.repeated_file_reads ?? "missing"} detail="same source reread" />
+      </div>
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Top repeated commands</div>
+          <ul className="note-list compact-note-list">
+            {(data.top_commands ?? []).length > 0 ? (
+              data.top_commands!.slice(0, 4).map((entry) => <li key={entry.command}>{entry.command} · {entry.count}</li>)
+            ) : (
+              <li>missing</li>
+            )}
+          </ul>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Top repeated files</div>
+          <ul className="note-list compact-note-list">
+            {(data.top_files ?? []).length > 0 ? (
+              data.top_files!.slice(0, 4).map((entry) => <li key={entry.path}>{compactPath(entry.path)} · {entry.count}</li>)
+            ) : (
+              <li>missing</li>
+            )}
+          </ul>
+          <SourceFootnote source={props.telemetry.source} label="redundant work export" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function BudgetDriftPanel(props: {
+  telemetry: AiTelemetryExport;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const data = props.telemetry.budgetDrift;
+  const overBudget = (data.by_budget ?? []).reduce((sum, entry) => sum + (entry.over_budget ?? 0), 0);
+  const underBudget = (data.by_budget ?? []).reduce((sum, entry) => sum + (entry.under_budget ?? 0), 0);
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Budget Drift</div>
+          <h3>Actual token usage vs declared context budget</h3>
+        </div>
+        <StatusBadge label={data.status} tone={telemetryStatusTone(data.status)} />
+      </div>
+      <div className="local-status-grid">
+        <MetricCard label="Evaluated" value={data.evaluated_count ?? "missing"} detail="ai responses with budget tags" />
+        <MetricCard label="Unknown budget" value={data.unknown_budget_count ?? "missing"} detail="missing context budget label" />
+        <MetricCard label="Over budget" value={overBudget} detail="token usage exceeded budget band" />
+        <MetricCard label="Under budget" value={underBudget} detail="budget bands were conservative" />
+      </div>
+      <div className="detail-grid compact-grid">
+        <article className="detail-card detail-card-wide">
+          <div className="detail-card-title">By budget</div>
+          <div className="repo-intel-list">
+            {(data.by_budget ?? []).length > 0 ? (
+              data.by_budget!.map((entry) => (
+                <div key={entry.context_budget} className="repo-intel-row">
+                  <div>
+                    <strong>{entry.context_budget}</strong>
+                    <p>drift {entry.avg_drift_ratio}</p>
+                  </div>
+                  <div className="repo-intel-meta">
+                    <span>count {entry.count}</span>
+                    <span>over {entry.over_budget}</span>
+                    <span>under {entry.under_budget}</span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="empty-inline">missing</div>
+            )}
+          </div>
+          <SourceFootnote source={props.telemetry.source} label="budget drift export" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function SelectedProjectPanel(props: {
   project: ProjectRecord;
   allProjects: ProjectRecord[];
@@ -2587,6 +2870,11 @@ export function App() {
             <div id="local-codex" className="panel-stack">
               <HostHealthPanel audit={snapshot.hostAudit} onOpen={open} onCopy={copy} />
               <RuntimeRegistryPanel control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
+              <TokenEconomyPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
+              <AgentTracePanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
+              <CacheLedgerPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
+              <RedundantWorkPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
+              <BudgetDriftPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
               <RetrievalQualityPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
               <CodeContextSearchPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
               <ModelRoleMapPanel telemetry={snapshot.aiTelemetry} control={snapshot.localAiControl} onOpen={open} onCopy={copy} />

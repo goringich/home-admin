@@ -768,6 +768,107 @@ export interface AiTelemetryExport {
     source_paths?: Record<string, string>;
     freshness?: Record<string, string>;
   };
+  tokenGovernor: {
+    status: string;
+    run_count?: number;
+    budget_names?: string[];
+    over_budget_count?: number;
+    latest?: {
+      run_id: string;
+      repo_id: string;
+      context_budget: string;
+      estimated_context_chars: number;
+      max_context_chars: number;
+      warning_threshold_chars: number;
+      retrieval_pack_hash: string;
+      excluded_source_count: number;
+      warning_count: number;
+      over_budget: boolean;
+    };
+    by_budget?: Array<{
+      context_budget: string;
+      count: number;
+      avg_estimated_context_chars: number;
+      avg_max_context_chars: number;
+      over_budget_count: number;
+    }>;
+    source_paths?: Record<string, string>;
+  };
+  agentTrace: {
+    status: string;
+    total_events?: number;
+    run_count?: number;
+    cache_hit_count?: number;
+    cache_miss_count?: number;
+    command_run_count?: number;
+    test_run_count?: number;
+    file_read_count?: number;
+    patch_applied_count?: number;
+    ai_response_count?: number;
+    by_event?: Array<{
+      event_type: string;
+      count: number;
+    }>;
+    recent_events?: Array<{
+      ts: string;
+      event_type: string;
+      run_id: string;
+      repo_id: string;
+      subject: string;
+      status: string;
+    }>;
+    latest_run?: {
+      run_id: string;
+      repo_id: string;
+      status: string;
+      phase: string;
+    };
+    source_paths?: Record<string, string>;
+  };
+  cacheLedger: {
+    status: string;
+    hit_count?: number;
+    miss_count?: number;
+    hit_rate?: number;
+    unique_cache_keys?: number;
+    entries?: Array<{
+      ts: string;
+      event_type: string;
+      run_id: string;
+      repo_id: string;
+      cache_key: string;
+      previous_run_id: string;
+    }>;
+    by_repo?: Array<{
+      repo_id: string;
+      count: number;
+    }>;
+    source_paths?: Record<string, string>;
+  };
+  redundantWork: {
+    status: string;
+    repeated_retrieval_packs?: number;
+    repeated_queries?: number;
+    repeated_commands?: number;
+    repeated_file_reads?: number;
+    top_retrieval_packs?: Array<{
+      retrieval_pack_hash: string;
+      count: number;
+    }>;
+    top_queries?: Array<{
+      query: string;
+      count: number;
+    }>;
+    top_commands?: Array<{
+      command: string;
+      count: number;
+    }>;
+    top_files?: Array<{
+      path: string;
+      count: number;
+    }>;
+    source_paths?: Record<string, string>;
+  };
   tokenEconomy: {
     status: string;
     total_tokens?: number;
