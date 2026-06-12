@@ -221,6 +221,44 @@ function compactObjective(value: string, limit = 180) {
   return `${shortened.slice(0, shortened.lastIndexOf(" "))}...`;
 }
 
+function fmtInteger(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "missing";
+  }
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
+function fmtUsd(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "missing";
+  }
+  return `$${value.toFixed(4)}`;
+}
+
+function fmtRatio(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "missing";
+  }
+  return value.toFixed(2);
+}
+
+function accountDisplay(entry: {
+  account_label?: string;
+  account_email?: string;
+  account_id?: string;
+}) {
+  const email = entry.account_email && entry.account_email !== "unknown" ? entry.account_email : "";
+  const label = entry.account_label && entry.account_label !== "unknown" ? entry.account_label : "";
+  const accountId = entry.account_id && entry.account_id !== "unknown" ? entry.account_id : "";
+  return email || label || (accountId ? `account-${compactHash(accountId, 8)}` : "unknown");
+}
+
+function verificationTone(status?: string): HealthTone {
+  if (status === "verified" || status === "success") return "ok";
+  if (status === "blocked" || status === "failed") return "risk";
+  return "attention";
+}
+
 function sourceAge(source: SourceMeta) {
   return source.modifiedAtMs ? fmtRelative(source.modifiedAtMs) : "нет данных";
 }
@@ -1195,6 +1233,31 @@ function LocalCodexLabPanel(props: {
         </article>
 
         <article className="detail-card">
+          <div className="detail-card-title">Token economy artifacts</div>
+          <div className="doc-list">
+            <QuickActionRow
+              label="High-waste capsules"
+              value={compactPath(props.lab.tokenEconomy.highWasteCapsulesPath || "missing")}
+              onOpen={props.lab.tokenEconomy.highWasteCapsulesPath ? () => props.onOpen("high-waste capsules", props.lab.tokenEconomy.highWasteCapsulesPath!) : undefined}
+              onCopy={props.lab.tokenEconomy.highWasteCapsulesPath ? () => props.onCopy("high-waste capsules", props.lab.tokenEconomy.highWasteCapsulesPath!) : undefined}
+            />
+            <QuickActionRow
+              label="Token economy report"
+              value={compactPath(props.lab.tokenEconomy.tokenEconomyReportPath || "missing")}
+              onOpen={props.lab.tokenEconomy.tokenEconomyReportPath ? () => props.onOpen("token economy report", props.lab.tokenEconomy.tokenEconomyReportPath!) : undefined}
+              onCopy={props.lab.tokenEconomy.tokenEconomyReportPath ? () => props.onCopy("token economy report", props.lab.tokenEconomy.tokenEconomyReportPath!) : undefined}
+            />
+            <QuickActionRow
+              label="Context budgets"
+              value={compactPath(props.lab.tokenEconomy.contextBudgetsPath)}
+              onOpen={() => props.onOpen("context budgets", props.lab.tokenEconomy.contextBudgetsPath)}
+              onCopy={() => props.onCopy("context budgets", props.lab.tokenEconomy.contextBudgetsPath)}
+            />
+          </div>
+          <SourceFootnote source={props.lab.tokenEconomy.source} label="token economy artifacts" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
           <div className="detail-card-title">OpenClaw reliability classes</div>
           <div className="class-grid">
             {orderedClassifications.slice(0, 5).map(([name, count]) => (
@@ -1731,10 +1794,17 @@ function TokenEconomyPanel(props: {
   onCopy: (label: string, value: string) => void;
 }) {
   const economy = props.telemetry.tokenEconomy;
+  const accounts = props.telemetry.accountAnalytics;
+  const report = props.telemetry.tokenEconomyReport;
   const governor = props.telemetry.tokenGovernor;
   const usage = props.telemetry.aiResponseUsage;
   const cache = props.telemetry.promptCacheEfficiency;
   const latest = governor.latest;
+  const accountRows = report.tokens_by_account?.length ? report.tokens_by_account : (accounts.tokens_by_account ?? []);
+  const expensiveRuns = report.top_expensive_runs ?? [];
+  const blockedRuns = report.over_budget_runs ?? [];
+  const verifiedRollup = report.tokens_per_verified_run ?? { entries: [] };
+  const failedOrPartial = report.failed_or_partial_token_waste ?? { status: "missing", run_count: 0, total_tokens: 0, entries: [] };
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1745,10 +1815,15 @@ function TokenEconomyPanel(props: {
         <StatusBadge label={economy.status} tone={telemetryStatusTone(economy.status)} />
       </div>
       <div className="local-status-grid">
-        <MetricCard label="Total tokens" value={economy.total_tokens ?? "missing"} detail={`${usage.count ?? 0} ai responses`} />
-        <MetricCard label="Total cost" value={economy.total_cost_usd ?? "missing"} detail={`avg latency ${economy.avg_latency_ms ?? "missing"} ms`} />
-        <MetricCard label="Cache ratio" value={cache.cache_ratio ?? economy.cache_ratio ?? "missing"} detail={`${cache.cached_input_tokens ?? 0} cached input`} />
-        <MetricCard label="Governor runs" value={governor.run_count ?? "missing"} detail={`${governor.over_budget_count ?? 0} over budget`} />
+        <MetricCard label="Total tokens" value={fmtInteger(economy.total_tokens)} detail={`${usage.count ?? 0} ai responses`} />
+        <MetricCard label="Total cost" value={fmtUsd(economy.total_cost_usd)} detail={`avg latency ${economy.avg_latency_ms ?? "missing"} ms`} />
+        <MetricCard label="Cache ratio" value={fmtRatio(cache.cache_ratio ?? economy.cache_ratio)} detail={`${cache.cached_input_tokens ?? 0} cached input`} />
+        <MetricCard
+          label="Accounts"
+          value={economy.tracked_account_count ?? accountRows.length ?? "missing"}
+          detail={`${(accounts.unknown_account_sessions ?? []).length} unknown sessions listed`}
+        />
+        <MetricCard label="Governor runs" value={governor.run_count ?? "missing"} detail={`${report.over_budget_run_count ?? governor.over_budget_count ?? 0} over-budget or blocked`} />
       </div>
       <div className="detail-grid compact-grid">
         <article className="detail-card">
@@ -1762,19 +1837,74 @@ function TokenEconomyPanel(props: {
           <p>{latest?.over_budget ? "Estimated context is over the governor cap." : "Latest governed run stayed within the configured cap."}</p>
         </article>
         <article className="detail-card">
-          <div className="detail-card-title">By budget</div>
-          <div className="class-grid">
-            {(governor.by_budget ?? []).length > 0 ? (
-              governor.by_budget!.map((entry) => (
-                <div key={entry.context_budget} className="class-row">
-                  <span>{entry.context_budget}</span>
-                  <strong>{entry.count} runs · {entry.over_budget_count} over</strong>
-                </div>
+          <div className="detail-card-title">Account breakdown</div>
+          <div className="doc-list">
+            {accountRows.length > 0 ? (
+              accountRows.slice(0, 4).map((entry) => (
+                <QuickActionRow
+                  key={`${entry.account_key}-${entry.account_email}`}
+                  label={accountDisplay(entry)}
+                  value={`${fmtInteger(entry.total_tokens)} tok · ${entry.runs} runs · ${entry.verified_runs} verified`}
+                  onCopy={() => props.onCopy(accountDisplay(entry), entry.account_email || entry.account_id || entry.account_key)}
+                />
               ))
             ) : (
               <div className="empty-inline">missing</div>
             )}
           </div>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Top expensive runs</div>
+          <div className="doc-list">
+            {expensiveRuns.length > 0 ? (
+              expensiveRuns.slice(0, 4).map((entry) => (
+                <QuickActionRow
+                  key={entry.run_id}
+                  label={compactHash(entry.run_id, 24)}
+                  value={`${fmtInteger(entry.total_tokens)} tok · ${fmtUsd(entry.total_cost_usd)} · ${entry.verification_status} · ${accountDisplay(entry)}`}
+                  onCopy={() => props.onCopy(entry.run_id, entry.run_id)}
+                />
+              ))
+            ) : (
+              <div className="empty-inline">missing</div>
+            )}
+          </div>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Blocked and over-budget runs</div>
+          <div className="doc-list">
+            {blockedRuns.length > 0 ? (
+              blockedRuns.slice(0, 4).map((entry) => (
+                <QuickActionRow
+                  key={entry.run_id}
+                  label={`${entry.context_budget} · ${compactHash(entry.run_id, 22)}`}
+                  value={`${entry.gate_blocked ? "blocked" : entry.over_budget ? "over" : "within"} · ${entry.estimated_context_chars}/${entry.max_context_chars} chars · ${entry.blocked_reasons[0] || entry.verification_status}`}
+                  onCopy={() => props.onCopy(entry.run_id, `${entry.run_id} ${entry.blocked_reasons.join(" | ")}`.trim())}
+                />
+              ))
+            ) : (
+              <div className="empty-inline">missing</div>
+            )}
+          </div>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Verified efficiency</div>
+          <div className="class-grid">
+            <div className="class-row"><span>verified runs</span><strong>{verifiedRollup.run_count ?? "missing"}</strong></div>
+            <div className="class-row"><span>avg tokens</span><strong>{fmtInteger(verifiedRollup.avg_tokens)}</strong></div>
+            <div className="class-row"><span>failed/partial runs</span><strong>{failedOrPartial.run_count ?? "missing"}</strong></div>
+            <div className="class-row"><span>failed/partial tokens</span><strong>{fmtInteger(failedOrPartial.total_tokens)}</strong></div>
+          </div>
+          {(verifiedRollup.entries ?? []).length > 0 ? (
+            <ul className="note-list compact-note-list">
+              {verifiedRollup.entries!.slice(0, 2).map((entry) => (
+                <li key={entry.run_id}>
+                  <span className={toneClass(verificationTone(entry.verification_status))}>{entry.verification_status}</span>
+                  {` · ${fmtInteger(entry.total_tokens)} tok · ${entry.verified_checks} checks · ${compactObjective(entry.task, 90)}`}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <SourceFootnote source={props.telemetry.source} label="token economy export" onOpen={props.onOpen} onCopy={props.onCopy} />
         </article>
       </div>

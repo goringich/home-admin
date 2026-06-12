@@ -262,6 +262,8 @@ export interface LocalCodexLab {
     contextBudgetsPath: string;
     tokenWasteMetricsPath: string;
     runSummariesPath: string;
+    highWasteCapsulesPath?: string;
+    tokenEconomyReportPath?: string;
     freshness: Record<string, unknown>;
     source: SourceMeta;
   };
@@ -884,6 +886,153 @@ export interface AiTelemetryExport {
     budget_unknown_count?: number;
     over_budget_count?: number;
     under_budget_count?: number;
+    tracked_account_count?: number;
+    top_expensive_run_count?: number;
+  };
+  accountAnalytics: {
+    status: string;
+    tokens_by_account?: Array<{
+      account_key: string;
+      account_label: string;
+      account_email: string;
+      account_id: string;
+      conversation_tokens: number;
+      ai_response_tokens: number;
+      total_tokens: number;
+      runs: number;
+      sessions: number;
+      verified_runs: number;
+      unverified_runs: number;
+    }>;
+    runs_by_account?: Array<{
+      account_label: string;
+      account_email: string;
+      account_id: string;
+      runs: number;
+      sessions: number;
+      verified_runs: number;
+      unverified_runs: number;
+    }>;
+    unknown_account_sessions?: Array<{
+      session_id: string;
+      path: string;
+      tokens_used: number;
+    }>;
+    source_paths?: Record<string, string>;
+  };
+  tokenEconomyReport: {
+    status: string;
+    wasted_tokens?: number;
+    repeated_health_gate_count?: number;
+    over_budget_run_count?: number;
+    top_expensive_runs?: Array<{
+      run_id: string;
+      goal_id: string;
+      account_email: string;
+      account_id: string;
+      account_label: string;
+      models: string[];
+      verification_status: string;
+      success_status: string;
+      event_count: number;
+      total_tokens: number;
+      total_cost_usd: number;
+    }>;
+    over_budget_runs?: Array<{
+      run_id: string;
+      repo_id: string;
+      context_budget: string;
+      verification_status: string;
+      estimated_context_chars: number;
+      max_context_chars: number;
+      over_budget: boolean;
+      gate_blocked: boolean;
+      blocked_reasons: string[];
+    }>;
+    budget_drift?: {
+      status?: string;
+      evaluated_count?: number;
+      unknown_budget_count?: number;
+      by_budget?: Array<{
+        context_budget: string;
+        count: number;
+        within_budget: number;
+        over_budget: number;
+        under_budget: number;
+        avg_drift_ratio: number;
+      }>;
+    };
+    tokens_per_verified_run?: {
+      run_count?: number;
+      avg_tokens?: number;
+      entries?: Array<{
+        run_id: string;
+        goal_id: string;
+        task: string;
+        account_email: string;
+        account_id: string;
+        account_label: string;
+        models: string[];
+        verification_status: string;
+        event_count: number;
+        total_tokens: number;
+        total_cost_usd: number;
+        verified_checks: number;
+      }>;
+    };
+    failed_or_partial_token_waste?: {
+      status?: string;
+      total_tokens?: number;
+      run_count?: number;
+      entries?: Array<{
+        run_id: string;
+        goal_id: string;
+        account_email: string;
+        account_id: string;
+        account_label: string;
+        verification_status: string;
+        success_status: string;
+        total_tokens: number;
+        total_cost_usd: number;
+      }>;
+    };
+    top_waste_sources?: Array<{
+      session_id: string;
+      account_label: string;
+      account_email: string;
+      account_id: string;
+      tokens_used: number;
+      classification: string;
+      reason: string;
+    }>;
+    tokens_by_account?: Array<{
+      account_key: string;
+      account_label: string;
+      account_email: string;
+      account_id: string;
+      conversation_tokens: number;
+      ai_response_tokens: number;
+      total_tokens: number;
+      runs: number;
+      sessions: number;
+      verified_runs: number;
+      unverified_runs: number;
+    }>;
+    runs_by_account?: Array<{
+      account_label: string;
+      account_email: string;
+      account_id: string;
+      runs: number;
+      sessions: number;
+      verified_runs: number;
+      unverified_runs: number;
+    }>;
+    unknown_account_sessions?: Array<{
+      session_id: string;
+      path?: string;
+      tokens_used: number;
+    }>;
+    source_paths?: Record<string, string>;
   };
   failureAwareObservability: {
     status: string;
