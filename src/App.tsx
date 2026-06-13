@@ -259,6 +259,12 @@ function verificationTone(status?: string): HealthTone {
   return "attention";
 }
 
+function guardrailTone(status?: string): HealthTone {
+  if (status === "clear" || status === "success") return "ok";
+  if (status === "blocked" || status === "failed") return "risk";
+  return "attention";
+}
+
 function sourceAge(source: SourceMeta) {
   return source.modifiedAtMs ? fmtRelative(source.modifiedAtMs) : "нет данных";
 }
@@ -1912,6 +1918,136 @@ function TokenEconomyPanel(props: {
   );
 }
 
+function AiActivityExplorerPanel(props: {
+  telemetry: AiTelemetryExport;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const explorer = props.telemetry.aiActivityExplorer;
+  const overview = explorer.overview ?? { status: "missing" };
+  const trends = explorer.trends ?? { status: "missing" };
+  const explore = explorer.explore ?? { status: "missing" };
+  const guardrails = explorer.guardrails ?? props.telemetry.guardrailEvents;
+  const recentResponses = explore.recent_responses ?? [];
+  const recentGuardrails = guardrails.recent_events ?? [];
+  const providerRows = trends.by_provider ?? [];
+  const dayRows = trends.by_day ?? [];
+  const workspaceRows = explore.workspaces ?? [];
+  const agentRows = explore.agents ?? [];
+  const sessionRows = explore.sessions ?? [];
+  const guardrailTypeRows = guardrails.by_type ?? [];
+  const latestGuardrail = guardrails.latest_event as { status?: string; event_type?: string; summary?: string } | undefined;
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">AI Activity Explorer</div>
+          <h3>Local response usage, optional providers, and guardrail pulse</h3>
+        </div>
+        <StatusBadge label={explorer.status} tone={telemetryStatusTone(explorer.status)} />
+      </div>
+      <div className="local-status-grid">
+        <MetricCard label="Responses" value={overview.ai_response_count ?? "missing"} detail={`${overview.provider_count ?? 0} providers`} />
+        <MetricCard label="Workspaces" value={overview.workspace_count ?? "missing"} detail={`${overview.agent_count ?? 0} agents · ${overview.session_count ?? 0} sessions`} />
+        <MetricCard label="Spend" value={fmtUsd(overview.total_cost_usd)} detail={`${fmtInteger(overview.total_tokens)} tok`} />
+        <MetricCard label="Guardrails" value={guardrails.count ?? 0} detail={`${guardrails.blocked_count ?? 0} blocked · ${guardrails.review_count ?? 0} review`} />
+        <MetricCard
+          label="OpenRouter"
+          value={overview.openrouter_response_count ?? 0}
+          detail={overview.optional_provider_present ? "optional provider rows present" : "optional provider rows missing"}
+        />
+      </div>
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Overview</div>
+          <div className="class-grid">
+            <div className="class-row"><span>last model</span><strong>{overview.last_model || "missing"}</strong></div>
+            <div className="class-row"><span>last provider</span><strong>{overview.last_provider || "missing"}</strong></div>
+            <div className="class-row"><span>cache discount</span><strong>{fmtUsd(overview.total_cache_discount_usd)}</strong></div>
+            <div className="class-row"><span>latest guardrail</span><strong>{overview.last_guardrail_status || "missing"}</strong></div>
+          </div>
+          <p>Codex, Atlas, and local-codex-stack stay primary. Optional provider rows appear here only when local telemetry imports them.</p>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Trends</div>
+          <div className="doc-list">
+            {providerRows.length > 0 ? (
+              providerRows.slice(0, 4).map((entry) => (
+                <QuickActionRow
+                  key={entry.provider}
+                  label={entry.provider}
+                  value={`${entry.count} resp · ${fmtInteger(entry.total_tokens)} tok · ${fmtUsd(entry.total_cost_usd)}${entry.openrouter ? " · optional" : ""}`}
+                  onCopy={() => props.onCopy(entry.provider, `${entry.provider} ${entry.total_tokens}`)}
+                />
+              ))
+            ) : (
+              <div className="empty-inline">missing</div>
+            )}
+          </div>
+          {dayRows.length > 0 ? (
+            <ul className="note-list compact-note-list">
+              {dayRows.slice(0, 3).map((entry) => (
+                <li key={entry.day}>
+                  {`${entry.day} · ${entry.count} resp · ${fmtInteger(entry.total_tokens)} tok · ${entry.guardrail_event_count} guardrails`}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Explore</div>
+          <div className="doc-list">
+            {recentResponses.length > 0 ? (
+              recentResponses.slice(0, 4).map((entry) => (
+                <QuickActionRow
+                  key={`${entry.ts}-${entry.run_id}-${entry.model}`}
+                  label={`${entry.provider}/${entry.model}`}
+                  value={`${entry.billing_source || "billing?"} · ${entry.context_budget || "no-budget"} · ${fmtInteger(entry.total_tokens)} tok · ${entry.guardrail_status || "clear"}`}
+                  onCopy={() => props.onCopy(entry.run_id || entry.model, `${entry.session_id || "no-session"} ${entry.workspace_id || ""}`.trim())}
+                />
+              ))
+            ) : (
+              <div className="empty-inline">missing</div>
+            )}
+          </div>
+          {(workspaceRows.length > 0 || agentRows.length > 0 || sessionRows.length > 0) ? (
+            <ul className="note-list compact-note-list">
+              {workspaceRows[0] ? <li>{`workspace ${workspaceRows[0].workspace_id} · ${workspaceRows[0].count} resp`}</li> : null}
+              {agentRows[0] ? <li>{`agent ${agentRows[0].agent_id} · ${agentRows[0].count} resp`}</li> : null}
+              {sessionRows[0] ? <li>{`session ${compactHash(sessionRows[0].session_id, 16)} · ${sessionRows[0].count} resp`}</li> : null}
+            </ul>
+          ) : null}
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Guardrails</div>
+          <div className="class-grid">
+            <div className="class-row"><span>latest</span><strong>{latestGuardrail?.event_type || "missing"}</strong></div>
+            <div className="class-row"><span>status</span><strong className={toneClass(guardrailTone(latestGuardrail?.status))}>{latestGuardrail?.status || "missing"}</strong></div>
+            <div className="class-row"><span>top type</span><strong>{guardrailTypeRows[0]?.event_type || "missing"}</strong></div>
+            <div className="class-row"><span>count</span><strong>{guardrailTypeRows[0]?.count ?? 0}</strong></div>
+          </div>
+          <div className="doc-list">
+            {recentGuardrails.length > 0 ? (
+              recentGuardrails.slice(0, 4).map((entry) => (
+                <QuickActionRow
+                  key={`${entry.ts}-${entry.event_type}-${entry.run_id}`}
+                  label={entry.event_type}
+                  value={`${entry.status} · ${entry.repo_id || "repo?"} · ${entry.reason || entry.summary}`}
+                  onCopy={() => props.onCopy(entry.event_type, `${entry.run_id} ${entry.command || entry.matched_pattern || entry.reason}`.trim())}
+                />
+              ))
+            ) : (
+              <div className="empty-inline">no guardrail events yet</div>
+            )}
+          </div>
+        </article>
+      </div>
+      <SourceFootnote source={props.telemetry.source} label="ai activity export" onOpen={props.onOpen} onCopy={props.onCopy} />
+    </section>
+  );
+}
+
 function AgentTracePanel(props: {
   telemetry: AiTelemetryExport;
   onOpen: (label: string, target: string) => void;
@@ -3001,6 +3137,7 @@ export function App() {
               <HostHealthPanel audit={snapshot.hostAudit} onOpen={open} onCopy={copy} />
               <RuntimeRegistryPanel control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
               <TokenEconomyPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
+              <AiActivityExplorerPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
               <AgentTracePanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
               <CacheLedgerPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
               <RedundantWorkPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />

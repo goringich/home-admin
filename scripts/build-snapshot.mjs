@@ -687,6 +687,14 @@ function buildAiTelemetry() {
     account_analytics: { status: "missing" },
     token_economy_report: { status: "missing" },
     failure_aware_observability: { status: "missing" },
+    guardrail_events: { status: "ok", count: 0, by_type: [], by_status: [], recent_events: [], latest_event: {} },
+    ai_activity_explorer: {
+      status: "missing",
+      overview: { status: "missing" },
+      trends: { status: "missing" },
+      explore: { status: "missing" },
+      guardrails: { status: "ok", count: 0, by_type: [], by_status: [], recent_events: [], latest_event: {} },
+    },
     recent_events: [],
   });
   return {
@@ -716,6 +724,14 @@ function buildAiTelemetry() {
     accountAnalytics: exportState.payload?.account_analytics || { status: "missing" },
     tokenEconomyReport: exportState.payload?.token_economy_report || { status: "missing" },
     failureAwareObservability: exportState.payload?.failure_aware_observability || { status: "missing" },
+    guardrailEvents: exportState.payload?.guardrail_events || { status: "ok", count: 0, by_type: [], by_status: [], recent_events: [], latest_event: {} },
+    aiActivityExplorer: exportState.payload?.ai_activity_explorer || {
+      status: "missing",
+      overview: { status: "missing" },
+      trends: { status: "missing" },
+      explore: { status: "missing" },
+      guardrails: { status: "ok", count: 0, by_type: [], by_status: [], recent_events: [], latest_event: {} },
+    },
     recentEvents: exportState.payload?.recent_events || [],
     source: statMeta(exportState.path, exportState.payload?.generated_at || ""),
   };

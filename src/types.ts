@@ -645,9 +645,37 @@ export interface AiTelemetryExport {
     status: string;
     count?: number;
     required_fields?: string[];
+    optional_fields?: string[];
     providers?: string[];
     models?: string[];
-    latest?: Record<string, unknown>;
+    latest?: {
+      ts?: string;
+      provider?: string;
+      model?: string;
+      workspace_id?: string;
+      agent_id?: string;
+      billing_source?: string;
+      session_id?: string;
+      cache_policy?: string;
+      cache_write_tokens?: number;
+      cache_read_tokens?: number;
+      cache_discount_usd?: number;
+      guardrail_status?: string;
+      input_tokens?: number;
+      input_tokens_include_cached?: boolean;
+      uncached_input_tokens?: number;
+      cached_input_tokens?: number;
+      output_tokens?: number;
+      reasoning_tokens?: number;
+      total_tokens?: number;
+      cost_usd?: number;
+      latency_ms?: number;
+      response_id?: string;
+      context_budget?: string;
+      run_id?: string;
+      goal_id?: string;
+      success_status?: string;
+    };
     source_paths?: Record<string, string>;
   };
   aiResponseUsage: {
@@ -659,8 +687,19 @@ export interface AiTelemetryExport {
     model_count?: number;
     providers?: string[];
     models?: string[];
+    workspace_count?: number;
+    agent_count?: number;
+    session_count?: number;
+    billing_sources?: string[];
+    cache_policies?: string[];
+    guardrail_status_buckets?: Record<string, number>;
     total_input_tokens?: number;
+    total_uncached_input_tokens?: number;
+    total_effective_input_tokens?: number;
     total_cached_input_tokens?: number;
+    total_cache_write_tokens?: number;
+    total_cache_read_tokens?: number;
+    total_cache_discount_usd?: number;
     total_output_tokens?: number;
     total_reasoning_tokens?: number;
     total_tokens?: number;
@@ -669,6 +708,12 @@ export interface AiTelemetryExport {
     avg_cost_usd?: number;
     last_provider?: string;
     last_model?: string;
+    last_workspace_id?: string;
+    last_agent_id?: string;
+    last_billing_source?: string;
+    last_session_id?: string;
+    last_cache_policy?: string;
+    last_guardrail_status?: string;
     last_run_id?: string;
     last_goal_id?: string;
     last_status?: string;
@@ -1042,6 +1087,171 @@ export interface AiTelemetryExport {
     openclaw_status?: string;
     latest_ai_failure?: Record<string, unknown>;
     latest_blocked_run?: Record<string, unknown>;
+    source_paths?: Record<string, string>;
+  };
+  guardrailEvents: {
+    status: string;
+    count?: number;
+    blocked_count?: number;
+    review_count?: number;
+    by_type?: Array<{
+      event_type: string;
+      count: number;
+    }>;
+    by_status?: Array<{
+      status: string;
+      count: number;
+    }>;
+    recent_events?: Array<{
+      ts: string;
+      event_type: string;
+      status: string;
+      summary: string;
+      reason: string;
+      run_id: string;
+      repo_id: string;
+      context_budget: string;
+      workspace_id: string;
+      agent_id: string;
+      billing_source: string;
+      session_id: string;
+      matched_pattern: string;
+      command: string;
+      source: string;
+      source_path: string;
+    }>;
+    latest_event?: Record<string, unknown>;
+    safe_to_expose?: boolean;
+    source_paths?: Record<string, string>;
+  };
+  aiActivityExplorer: {
+    status: string;
+    overview?: {
+      status: string;
+      ai_response_count?: number;
+      provider_count?: number;
+      model_count?: number;
+      workspace_count?: number;
+      agent_count?: number;
+      session_count?: number;
+      total_tokens?: number;
+      total_cost_usd?: number;
+      total_cache_discount_usd?: number;
+      openrouter_response_count?: number;
+      openrouter_total_tokens?: number;
+      optional_provider_present?: boolean;
+      guardrail_event_count?: number;
+      last_guardrail_status?: string;
+      last_provider?: string;
+      last_model?: string;
+    };
+    trends?: {
+      status: string;
+      by_provider?: Array<{
+        provider: string;
+        count: number;
+        total_tokens: number;
+        total_cost_usd: number;
+        openrouter: boolean;
+      }>;
+      by_billing_source?: Array<{
+        billing_source: string;
+        count: number;
+        total_tokens: number;
+        total_cost_usd: number;
+      }>;
+      by_cache_policy?: Array<{
+        cache_policy: string;
+        count: number;
+        cache_read_tokens: number;
+        cache_write_tokens: number;
+        cache_discount_usd: number;
+      }>;
+      by_guardrail_status?: Array<{
+        guardrail_status: string;
+        count: number;
+      }>;
+      by_day?: Array<{
+        day: string;
+        count: number;
+        total_tokens: number;
+        total_cost_usd: number;
+        guardrail_event_count: number;
+      }>;
+    };
+    explore?: {
+      status: string;
+      recent_responses?: Array<{
+        ts: string;
+        provider: string;
+        model: string;
+        workspace_id: string;
+        agent_id: string;
+        billing_source: string;
+        session_id: string;
+        context_budget: string;
+        run_id: string;
+        success_status: string;
+        guardrail_status: string;
+        cache_policy: string;
+        cache_write_tokens: number;
+        cache_read_tokens: number;
+        cache_discount_usd: number;
+        total_tokens: number;
+        cost_usd: number;
+      }>;
+      workspaces?: Array<{
+        workspace_id: string;
+        count: number;
+        total_tokens: number;
+      }>;
+      agents?: Array<{
+        agent_id: string;
+        count: number;
+        total_tokens: number;
+      }>;
+      sessions?: Array<{
+        session_id: string;
+        count: number;
+        total_tokens: number;
+        last_at: string;
+      }>;
+    };
+    guardrails?: {
+      status: string;
+      count?: number;
+      blocked_count?: number;
+      review_count?: number;
+      by_type?: Array<{
+        event_type: string;
+        count: number;
+      }>;
+      by_status?: Array<{
+        status: string;
+        count: number;
+      }>;
+      recent_events?: Array<{
+        ts: string;
+        event_type: string;
+        status: string;
+        summary: string;
+        reason: string;
+        run_id: string;
+        repo_id: string;
+        context_budget: string;
+        workspace_id: string;
+        agent_id: string;
+        billing_source: string;
+        session_id: string;
+        matched_pattern: string;
+        command: string;
+        source: string;
+        source_path: string;
+      }>;
+      latest_event?: Record<string, unknown>;
+      safe_to_expose?: boolean;
+      source_paths?: Record<string, string>;
+    };
     source_paths?: Record<string, string>;
   };
   recentEvents: AiTelemetryRecentEvent[];
