@@ -1,0 +1,37 @@
+.tone-ok {
+  color: var(--color-success) !important;
+  background: var(--color-success-soft) !important;
+  border-color: transparent !important;
+}
+
+.tone-attention {
+  color: var(--color-warning) !important;
+  background: var(--color-warning-soft) !important;
+  border-color: transparent !important;
+}
+
+.tone-risk {
+  color: var(--color-danger) !important;
+  background: var(--color-danger-soft) !important;
+  border-color: transparent !important;
+}
+
+.tone-muted {
+  color: var(--color-text-muted) !important;
+  background: var(--color-muted-soft) !important;
+  border-color: transparent !important;
+}
+
+.health-pill.tone-ok,
+.health-pill.tone-attention,
+.health-pill.tone-risk,
+.health-pill.tone-muted {
+  font-weight: 700;
+}
+
+.service-dot.tone-ok,
+.service-dot.tone-attention,
+.service-dot.tone-risk,
+.service-dot.tone-muted {
+  border: 0;
+}

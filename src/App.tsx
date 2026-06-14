@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import "./index.css";
 import type {
   AiTelemetryExport,
   CommercialReadiness,
@@ -97,10 +96,55 @@ type MissionState = {
   nextFallbackStep: string;
 };
 
-const DEFAULT_THEME = "dark";
+type AtlasTheme = "dark" | "light" | "contrast";
 
-if (typeof document !== "undefined") {
-  document.documentElement.dataset.theme = DEFAULT_THEME;
+const DEFAULT_THEME: AtlasTheme = "dark";
+const THEME_STORAGE_KEY = "project-atlas-theme";
+const THEME_OPTIONS: Array<{ value: AtlasTheme; label: string }> = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+  { value: "contrast", label: "High Contrast" },
+];
+
+function isAtlasTheme(value: string | null): value is AtlasTheme {
+  return value === "dark" || value === "light" || value === "contrast";
+}
+
+function readInitialTheme(): AtlasTheme {
+  if (typeof window === "undefined") {
+    return DEFAULT_THEME;
+  }
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  return isAtlasTheme(stored) ? stored : DEFAULT_THEME;
+}
+
+function applyTheme(theme: AtlasTheme) {
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.theme = theme;
+  }
+}
+
+applyTheme(readInitialTheme());
+
+function ThemeSwitcher(props: {
+  theme: AtlasTheme;
+  onChange: (theme: AtlasTheme) => void;
+}) {
+  return (
+    <div className="theme-switcher" role="group" aria-label="Theme switcher">
+      {THEME_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          className={`theme-button ${props.theme === option.value ? "theme-button-active" : ""}`}
+          type="button"
+          onClick={() => props.onChange(option.value)}
+          aria-pressed={props.theme === option.value}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 type RemoteControlState = {
@@ -2778,6 +2822,7 @@ export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [remoteState, setRemoteState] = useState<RemoteControlState | null>(null);
   const [remoteBusy, setRemoteBusy] = useState(false);
+  const [theme, setTheme] = useState<AtlasTheme>(() => readInitialTheme());
   const [activeNav, setActiveNav] = useState(NAV_ITEMS[0].id);
   const [query, setQuery] = useState("");
   const [domainFilter, setDomainFilter] = useState<ProjectDomain | "all">("all");
@@ -2864,6 +2909,13 @@ export function App() {
     refreshSnapshot();
     refreshRemoteState();
   }, []);
+
+  useEffect(() => {
+    applyTheme(theme);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    }
+  }, [theme]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -3008,43 +3060,48 @@ export function App() {
 
       <div className="main-frame">
         <header className="topbar">
-          <label className="searchbar">
-            <input
-              type="text"
-              value={query}
-              placeholder="Поиск по проектам, тегам, задачам"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
+          <div className="topbar-search-row">
+            <label className="searchbar">
+              <input
+                type="text"
+                value={query}
+                placeholder="Поиск по проектам, тегам, задачам"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
 
-          <div className="topbar-filters">
-            <select value={domainFilter} onChange={(event) => setDomainFilter(event.target.value as ProjectDomain | "all")}>
-              <option value="all">Все домены</option>
-              {Object.entries(DOMAIN_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            <div className="topbar-filters">
+              <select value={domainFilter} onChange={(event) => setDomainFilter(event.target.value as ProjectDomain | "all")}>
+                <option value="all">Все домены</option>
+                {Object.entries(DOMAIN_LABELS).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="sync-meta">
-            <div>Синхронизировано {fmtRelative(new Date(snapshot.generatedAt).getTime())}</div>
-            <div className={`sync-dot ${snapshot.system.safeMode ? "sync-dot-warn" : ""}`} />
-          </div>
+          <div className="topbar-meta">
+            <div className="sync-meta">
+              <div>Синхронизировано {fmtRelative(new Date(snapshot.generatedAt).getTime())}</div>
+              <div className={`sync-dot ${snapshot.system.safeMode ? "sync-dot-warn" : ""}`} />
+            </div>
 
-          <div className="topbar-ribbon">
-            <span className="ribbon-pill">goal {mission?.activeGoal?.goalId || "unknown"}</span>
-            <span className={`ribbon-pill ${snapshot.system.safeMode ? "ribbon-pill-warn" : "ribbon-pill-ok"}`}>
-              {snapshot.system.safeMode ? "safe mode" : "runtime normal"}
-            </span>
-            <span className={`ribbon-pill ${mission?.openclawTone === "risk" ? "ribbon-pill-warn" : ""}`}>
-              OpenClaw {mission?.openclawLabel || "unknown"}
-            </span>
-            <span className="ribbon-pill">tokens {mission?.tokenLabel || "unknown"}</span>
+            <div className="topbar-ribbon">
+              <span className="ribbon-pill">goal {mission?.activeGoal?.goalId || "unknown"}</span>
+              <span className={`ribbon-pill ${snapshot.system.safeMode ? "ribbon-pill-warn" : "ribbon-pill-ok"}`}>
+                {snapshot.system.safeMode ? "safe mode" : "runtime normal"}
+              </span>
+              <span className={`ribbon-pill ${mission?.openclawTone === "risk" ? "ribbon-pill-warn" : ""}`}>
+                OpenClaw {mission?.openclawLabel || "unknown"}
+              </span>
+              <span className="ribbon-pill">tokens {mission?.tokenLabel || "unknown"}</span>
+            </div>
           </div>
 
           <div className="topbar-actions">
+            <ThemeSwitcher theme={theme} onChange={setTheme} />
             <button className="primary-button" type="button" onClick={() => refreshSnapshot(true)}>
               Обновить снимок
             </button>

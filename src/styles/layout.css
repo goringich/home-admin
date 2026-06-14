@@ -1,0 +1,433 @@
+.atlas-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: var(--space-5);
+  min-height: 100vh;
+  padding: var(--space-6);
+  background: var(--color-sidebar);
+  border-right: var(--border-thin) solid var(--color-border-soft);
+  backdrop-filter: blur(18px);
+}
+
+.main-frame {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  min-height: var(--topbar-height);
+  background: var(--color-topbar);
+  border-bottom: var(--border-thin) solid var(--color-border-soft);
+  backdrop-filter: blur(18px);
+}
+
+.topbar-search-row,
+.topbar-meta,
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.topbar-search-row {
+  justify-content: flex-start;
+}
+
+.topbar-meta {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.topbar-actions {
+  justify-content: flex-end;
+}
+
+.dashboard {
+  display: grid;
+  gap: var(--space-5);
+  width: min(100%, var(--content-max));
+  padding: var(--space-5) var(--space-6) var(--space-8);
+  margin: 0 auto;
+}
+
+.panel-stack {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.hero-grid,
+.local-status-grid,
+.local-codex-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.command-deck-grid,
+.map-layout,
+.lower-grid,
+.remote-ops-grid,
+.command-deck-main,
+.command-deck-rail,
+.map-column,
+.intel-rail,
+.remote-sidecar,
+.remote-ops-main,
+.spotlight-grid,
+.answer-grid,
+.detail-grid,
+.codex-lab-grid,
+.task-columns,
+.radar-body {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.command-deck-grid {
+  grid-template-columns: minmax(0, 1.6fr) minmax(19rem, 0.9fr);
+}
+
+.command-deck-main,
+.command-deck-rail,
+.remote-sidecar,
+.intel-rail {
+  align-content: start;
+}
+
+.answer-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hero-spotlight {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.hero-spotlight-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.spotlight-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.answer-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detail-card-wide {
+  grid-column: 1 / -1;
+}
+
+.compact-grid {
+  align-items: start;
+}
+
+.codex-lab-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.lab-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.map-layout {
+  grid-template-columns: minmax(0, 1.7fr) minmax(19rem, 0.85fr);
+}
+
+.lower-grid {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+}
+
+.remote-ops-grid {
+  grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 0.95fr);
+}
+
+.remote-service-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.remote-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.remote-command-stack,
+.doc-list,
+.goal-capsule-list,
+.timeline-list,
+.blocker-list,
+.commit-list,
+.alt-tool-list,
+.remote-note-list,
+.service-list,
+.task-list-vertical,
+.command-list,
+.risk-list,
+.repo-intel-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.repo-intel-list,
+.command-list {
+  gap: var(--space-2);
+}
+
+.goal-capsule-list {
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+}
+
+.task-columns {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: start;
+}
+
+.registry-table {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.registry-row {
+  display: grid;
+  grid-template-columns: minmax(18rem, 2.2fr) 9rem 8rem 5rem 7rem auto;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.registry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.selected-panel {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.selected-header,
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.selected-header {
+  flex-wrap: wrap;
+}
+
+.selected-header-meta,
+.detail-tabs,
+.chip-wrap,
+.signals,
+.goal-capsule-meta,
+.project-node-meta,
+.project-node-footer,
+.task-vertical-meta,
+.task-card-foot,
+.release-row-meta,
+.panel-hint,
+.topbar-ribbon,
+.topbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sidebar-nav {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.searchbar {
+  flex: 1 1 22rem;
+}
+
+.searchbar input,
+.topbar-filters select {
+  width: 100%;
+}
+
+.map-canvas {
+  position: relative;
+  min-height: 42rem;
+  overflow: hidden;
+}
+
+.graph-links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.project-node {
+  position: absolute;
+}
+
+.bar-strip {
+  display: flex;
+  align-items: end;
+  gap: 0.35rem;
+  min-height: 4rem;
+}
+
+.bar-strip span {
+  flex: 1 1 auto;
+}
+
+.footer-note {
+  padding-bottom: var(--space-4);
+}
+
+@media (max-width: 1440px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topbar-actions,
+  .topbar-search-row,
+  .topbar-meta {
+    justify-content: space-between;
+  }
+
+  .hero-grid,
+  .local-status-grid,
+  .local-codex-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .codex-lab-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .map-layout,
+  .remote-ops-grid,
+  .command-deck-grid,
+  .lower-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1120px) {
+  .atlas-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: static;
+    min-height: auto;
+    grid-template-rows: auto auto auto auto;
+    border-right: 0;
+    border-bottom: var(--border-thin) solid var(--color-border-soft);
+  }
+
+  .task-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .registry-row {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: flex-start;
+  }
+
+  .registry-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 860px) {
+  .dashboard,
+  .topbar,
+  .sidebar {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .detail-grid,
+  .lab-detail-grid,
+  .answer-grid,
+  .answer-action-row,
+  .hero-spotlight-copy,
+  .hero-grid,
+  .local-status-grid,
+  .local-codex-metrics,
+  .remote-service-grid,
+  .task-columns,
+  .codex-lab-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topbar-actions {
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .spotlight-actions {
+    justify-content: flex-start;
+  }
+
+  .topbar-actions > * {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .sidebar,
+  .topbar,
+  .dashboard {
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
+
+  .map-canvas {
+    display: grid;
+    min-height: auto;
+    gap: var(--space-3);
+  }
+
+  .goal-capsule-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .graph-links {
+    display: none;
+  }
+}
