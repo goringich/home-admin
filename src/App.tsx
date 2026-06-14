@@ -309,6 +309,13 @@ function guardrailTone(status?: string): HealthTone {
   return "attention";
 }
 
+function hermesRuntimeTone(state?: string): HealthTone {
+  if (state === "selected") return "ok";
+  if (state === "fallback_used" || state === "staged" || state === "available") return "attention";
+  if (state === "failed" || state === "missing") return "risk";
+  return "unknown";
+}
+
 function sourceAge(source: SourceMeta) {
   return source.modifiedAtMs ? fmtRelative(source.modifiedAtMs) : "нет данных";
 }
@@ -1223,6 +1230,7 @@ function LocalCodexLabPanel(props: {
   onCopy: (label: string, value: string) => void;
 }) {
   const orderedClassifications = Object.entries(props.lab.openclawReliability.classifications).sort((left, right) => right[1] - left[1]);
+  const hermes = props.lab.latestHermes;
 
   return (
     <section className="local-codex-lab panel">
@@ -1323,6 +1331,37 @@ function LocalCodexLabPanel(props: {
             ))}
           </ul>
           <SourceFootnote source={props.lab.openclawReliability.source} label="openclaw reliability" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
+          <div className="goal-capsule-head">
+            <div className="detail-card-title">Hermes runtime route</div>
+            <StatusBadge label={hermes.runtime_state || "missing"} tone={hermesRuntimeTone(hermes.runtime_state)} />
+          </div>
+          <div className="class-grid">
+            <div className="class-row"><span>selected runtime</span><strong>{hermes.selected_runtime || "missing"}</strong></div>
+            <div className="class-row"><span>delegation</span><strong>{hermes.delegation_status || "missing"}</strong></div>
+            <div className="class-row"><span>fallback</span><strong>{hermes.fallback_used ? (hermes.fallback_target || "used") : "not used"}</strong></div>
+            <div className="class-row"><span>installed</span><strong>{hermes.hermes_installed ? "yes" : "no"}</strong></div>
+          </div>
+          <ul className="note-list compact-note-list">
+            {hermes.state_reason ? <li>{hermes.state_reason}</li> : null}
+            {hermes.skip_reason ? <li>{hermes.skip_reason}</li> : null}
+          </ul>
+          <div className="doc-list">
+            <QuickActionRow
+              label="policy"
+              value={compactPath(hermes.runtime_policy_path || "missing")}
+              onOpen={hermes.runtime_policy_path ? () => props.onOpen("Hermes runtime policy", hermes.runtime_policy_path) : undefined}
+              onCopy={hermes.runtime_policy_path ? () => props.onCopy("Hermes runtime policy", hermes.runtime_policy_path) : undefined}
+            />
+            <QuickActionRow
+              label="manifest"
+              value={compactPath(hermes.worker_manifest_path || "missing")}
+              onOpen={hermes.worker_manifest_path ? () => props.onOpen("Hermes worker manifest", hermes.worker_manifest_path) : undefined}
+              onCopy={hermes.worker_manifest_path ? () => props.onCopy("Hermes worker manifest", hermes.worker_manifest_path) : undefined}
+            />
+          </div>
         </article>
 
         <article className="detail-card">

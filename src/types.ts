@@ -319,6 +319,24 @@ export interface LocalCodexLab {
       source_path: string;
     }>;
   };
+  latestHermes: {
+    status: string;
+    runtime_state: string;
+    state_reason: string;
+    selected_runtime: string;
+    requested_runtime: string;
+    fallback_used: boolean;
+    fallback_target: string;
+    policy_allowed: boolean;
+    delegation_status: string;
+    preflight_completed: boolean;
+    hermes_installed: boolean;
+    hermes_binary: string;
+    runtime_policy_path: string;
+    worker_manifest_path: string;
+    workers_dir: string;
+    skip_reason: string;
+  };
   agentRouting: {
     source_path?: string;
     default_route?: string;
@@ -838,6 +856,26 @@ export interface AiTelemetryExport {
       avg_estimated_context_chars: number;
       avg_max_context_chars: number;
       over_budget_count: number;
+    }>;
+    source_paths?: Record<string, string>;
+  };
+  hermesRuntime: {
+    status: string;
+    state?: string;
+    installed?: boolean;
+    binary?: string;
+    selected_runtime?: string;
+    fallback_used?: boolean;
+    fallback_target?: string;
+    state_reason?: string;
+    delegation_status?: string;
+    run_count?: number;
+    policy_status?: string;
+    gateway_enabled?: boolean;
+    latest?: Record<string, unknown>;
+    state_counts?: Array<{
+      state: string;
+      count: number;
     }>;
     source_paths?: Record<string, string>;
   };
