@@ -1231,6 +1231,7 @@ function LocalCodexLabPanel(props: {
 }) {
   const orderedClassifications = Object.entries(props.lab.openclawReliability.classifications).sort((left, right) => right[1] - left[1]);
   const hermes = props.lab.latestHermes;
+  const hermesModels = Object.entries(hermes.planned_worker_models || {}).map(([role, model]) => `${role}=${model}`);
 
   return (
     <section className="local-codex-lab panel">
@@ -1342,11 +1343,15 @@ function LocalCodexLabPanel(props: {
             <div className="class-row"><span>selected runtime</span><strong>{hermes.selected_runtime || "missing"}</strong></div>
             <div className="class-row"><span>delegation</span><strong>{hermes.delegation_status || "missing"}</strong></div>
             <div className="class-row"><span>fallback</span><strong>{hermes.fallback_used ? (hermes.fallback_target || "used") : "not used"}</strong></div>
+            <div className="class-row"><span>saved context</span><strong>{fmtInteger(hermes.saved_context_chars_estimated || 0)} ch</strong></div>
             <div className="class-row"><span>installed</span><strong>{hermes.hermes_installed ? "yes" : "no"}</strong></div>
+            <div className="class-row"><span>mode</span><strong>{hermes.preflight_mode_resolved || "missing"}</strong></div>
           </div>
           <ul className="note-list compact-note-list">
             {hermes.state_reason ? <li>{hermes.state_reason}</li> : null}
             {hermes.skip_reason ? <li>{hermes.skip_reason}</li> : null}
+            {hermes.failed_roles?.length ? <li>failed roles: {hermes.failed_roles.join(", ")}</li> : null}
+            {hermesModels.length ? <li>planned models: {hermesModels.join(" · ")}</li> : null}
           </ul>
           <div className="doc-list">
             <QuickActionRow

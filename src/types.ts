@@ -330,12 +330,16 @@ export interface LocalCodexLab {
     policy_allowed: boolean;
     delegation_status: string;
     preflight_completed: boolean;
+    preflight_mode_resolved: string;
     hermes_installed: boolean;
     hermes_binary: string;
     runtime_policy_path: string;
     worker_manifest_path: string;
     workers_dir: string;
     skip_reason: string;
+    saved_context_chars_estimated: number;
+    failed_roles: string[];
+    planned_worker_models: Record<string, string>;
   };
   agentRouting: {
     source_path?: string;
