@@ -189,6 +189,138 @@ export interface LocalCodexRunSummary {
   source: SourceMeta;
 }
 
+export interface AiLabGroupAction {
+  label: string;
+  launcherId: string;
+  target: string;
+  status: string;
+}
+
+export interface AiLabGroupItem {
+  id: string;
+  label: string;
+  status: string;
+  summary: string;
+  path?: string;
+  primaryTarget?: string;
+  installedTools?: string[];
+  missingTools?: string[];
+  actions?: AiLabGroupAction[];
+}
+
+export interface AiLabToolInventoryEntry {
+  id: string;
+  label: string;
+  command: string;
+  path: string;
+  category: string;
+  status: string;
+  openTarget: string;
+}
+
+export interface AiLabLauncher {
+  id: string;
+  label: string;
+  status: string;
+  kind: string;
+  target: string;
+}
+
+export interface AiLabPrepareResponse {
+  task: string;
+  proposedBudget: string;
+  routeId: string;
+  routeLabel: string;
+  selectedAgent: string;
+  localCloudDecision: {
+    mode: string;
+    reason: string;
+  };
+  sandboxStatus: {
+    backend: string;
+    mode: string;
+    permissionTier: string;
+  };
+  retrievalSources: string[];
+  excludedSources: string[];
+  focusFiles: string[];
+  scientificToolTarget: {
+    labId: string;
+    label: string;
+    launcherId: string;
+    target: string;
+    reason: string;
+  } | null;
+  verificationCommands: string[];
+  codexNecessary: boolean;
+  codexReason: string;
+  nextBestAction: string;
+}
+
+export interface AiLab {
+  generatedAt: string;
+  status: string;
+  source: SourceMeta;
+  control: {
+    tokenBudgetTier: string;
+    retrievalSources: string[];
+    excludedSources: string[];
+    selectedAgentRoute: {
+      routeId: string;
+      routeLabel: string;
+      selectedAgent: string;
+      defaultContextBudget: string;
+      localCloudDecision: {
+        mode: string;
+        reason: string;
+      };
+    };
+    sandboxStatus: {
+      backend: string;
+      mode: string;
+      permissionTier: string;
+      rawConversationMirrorsAllowed: boolean;
+      hostHealth: string;
+    };
+    activeRuns: Array<Record<string, unknown>>;
+    latestRunReports: Array<Record<string, unknown>>;
+    tokenWasteMarkers: {
+      filesScanned: number;
+      repeatedHealthGateCount: number;
+      bridgeNoiseFiles: number;
+      filesWithNoAssistantReply: number;
+      highWasteCapsulesPath: string;
+    };
+    goalCapsules: Array<{
+      goalId: string;
+      status: string;
+      objective: string;
+      nextAction: string;
+      recommendedContextBudget: string;
+      sourcePath: string;
+    }>;
+    nextBestAction: string;
+  };
+  groups: {
+    codexControlLab: AiLabGroupItem[];
+    scientificVisualLab: AiLabGroupItem[];
+  };
+  scientificTools: {
+    generatedAt: string;
+    inventory: AiLabToolInventoryEntry[];
+    installed: string[];
+    missing: string[];
+    launchers: AiLabLauncher[];
+  };
+  prepareFlow: {
+    endpoint: string;
+    toolInventoryEndpoint: string;
+    launcherEndpoint: string;
+    executionPolicy: string;
+    launcherIds: string[];
+  };
+}
+
 export interface LocalCodexLab {
   generatedAt: string;
   hostHealth: string;
@@ -345,6 +477,16 @@ export interface LocalCodexLab {
     source_path?: string;
     default_route?: string;
     default_context_budget?: string;
+    agents?: Array<{
+      id: string;
+      label: string;
+      kind: string;
+      why?: string;
+      preferred_model?: string;
+      availability?: {
+        command?: string;
+      };
+    }>;
     routes?: Array<{
       id: string;
       label: string;
@@ -365,6 +507,7 @@ export interface LocalCodexLab {
   nextBestAction: string;
   goalCapsules: LocalCodexGoalCapsule[];
   runSummaries: LocalCodexRunSummary[];
+  aiLab: AiLab;
 }
 
 export interface HostAudit {

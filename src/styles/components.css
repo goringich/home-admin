@@ -452,6 +452,34 @@
   line-height: 1.45;
 }
 
+.lab-policy {
+  margin-top: var(--space-3);
+}
+
+.prepare-form {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.prepare-textarea {
+  min-height: 7.5rem;
+  resize: vertical;
+  width: 100%;
+  border: var(--border-thin) solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+  padding: 0.95rem 1rem;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.prepare-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .source-footnote {
   display: flex;
   flex-wrap: wrap;
@@ -471,7 +499,9 @@
 .system-grid,
 .service-list,
 .release-list,
-.signals {
+.signals,
+.tool-inventory-grid,
+.scientific-lab-grid {
   display: grid;
   gap: var(--space-2);
 }
@@ -521,6 +551,15 @@
   border: var(--border-thin) solid var(--color-border-soft);
   border-radius: var(--radius-md);
   background: var(--color-surface-3);
+}
+
+.scientific-lab-grid {
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-3);
+}
+
+.tool-inventory-grid {
+  gap: var(--space-3);
 }
 
 .repo-intel-row,

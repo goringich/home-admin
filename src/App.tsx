@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
+  AiLabPrepareResponse,
   AiTelemetryExport,
   CommercialReadiness,
   DetailTab,
@@ -316,6 +317,13 @@ function hermesRuntimeTone(state?: string): HealthTone {
   return "unknown";
 }
 
+function aiLabStatusTone(status?: string): HealthTone {
+  if (status === "installed" || status === "available" || status === "ready" || status === "web_ready" || status === "datasets_ready") return "ok";
+  if (status === "links_only" || status === "staged" || status === "staged_only" || status === "degraded_host") return "attention";
+  if (status === "missing") return "risk";
+  return "unknown";
+}
+
 function sourceAge(source: SourceMeta) {
   return source.modifiedAtMs ? fmtRelative(source.modifiedAtMs) : "нет данных";
 }
@@ -604,6 +612,37 @@ async function openHostTarget(target: string) {
   if (!response.ok) {
     throw new Error(await response.text());
   }
+}
+
+async function launchAiLabTarget(launcherId: string) {
+  const response = await fetch("./api/ai-lab/launch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ launcherId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+}
+
+async function prepareAiLabTask(task: string): Promise<AiLabPrepareResponse> {
+  const response = await fetch("./api/ai-lab/prepare", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ task }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  const payload = (await response.json()) as { data: AiLabPrepareResponse };
+  return payload.data;
 }
 
 function QuickActionRow(props: {
@@ -1232,13 +1271,17 @@ function LocalCodexLabPanel(props: {
   const orderedClassifications = Object.entries(props.lab.openclawReliability.classifications).sort((left, right) => right[1] - left[1]);
   const hermes = props.lab.latestHermes;
   const hermesModels = Object.entries(hermes.planned_worker_models || {}).map(([role, model]) => `${role}=${model}`);
+  const [prepareTask, setPrepareTask] = useState("prepare an Atlas AI Lab pass for Blender scenes and token economy routing");
+  const [prepareBusy, setPrepareBusy] = useState(false);
+  const [prepareResult, setPrepareResult] = useState<AiLabPrepareResponse | null>(null);
+  const [prepareError, setPrepareError] = useState("");
 
   return (
     <section className="local-codex-lab panel">
       <div className="panel-head">
         <div>
-          <div className="section-kicker">Local Codex Lab</div>
-          <h3>AI Mission Control</h3>
+          <div className="section-kicker">AI Lab</div>
+          <h3>Codex Control and Scientific Surface</h3>
         </div>
         <div className="panel-hint">
           host {props.lab.hostHealth} · updated {fmtRelative(new Date(props.lab.generatedAt).getTime())}
@@ -1252,6 +1295,225 @@ function LocalCodexLabPanel(props: {
         <MetricCard label="OpenClaw warns" value={props.lab.openclawReliability.warningCount} detail={props.lab.openclawReliability.status} />
         <MetricCard label="Repo-intel" value={props.lab.repoIntel.targetCount} detail={props.lab.repoIntel.safeTargets.join(" · ")} />
         <MetricCard label="Commercial QA" value={props.commercial.score} detail={`${props.commercial.summary.implemented} impl · ${props.commercial.summary.scaffolded} scaffolded`} />
+      </div>
+
+      <div className="detail-grid lab-detail-grid">
+        <article className="detail-card detail-card-wide">
+          <div className="goal-capsule-head">
+            <div>
+              <div className="detail-card-title">AI Lab Prepare</div>
+              <strong>Deterministic planning without shell execution</strong>
+            </div>
+            <StatusBadge label={props.lab.aiLab.status} tone={aiLabStatusTone(props.lab.aiLab.status)} />
+          </div>
+          <p className="lab-policy">{props.lab.aiLab.prepareFlow.executionPolicy}</p>
+          <div className="prepare-form">
+            <textarea
+              className="prepare-textarea"
+              value={prepareTask}
+              onChange={(event) => setPrepareTask(event.target.value)}
+              placeholder="Describe the task you want the AI Lab to prepare."
+            />
+            <div className="prepare-actions">
+              <button
+                className="ghost-action"
+                type="button"
+                disabled={prepareBusy || !prepareTask.trim()}
+                onClick={async () => {
+                  setPrepareBusy(true);
+                  setPrepareError("");
+                  try {
+                    const result = await prepareAiLabTask(prepareTask.trim());
+                    setPrepareResult(result);
+                  } catch (error) {
+                    setPrepareError(error instanceof Error ? error.message : String(error));
+                  } finally {
+                    setPrepareBusy(false);
+                  }
+                }}
+              >
+                {prepareBusy ? "preparing..." : "prepare"}
+              </button>
+            </div>
+          </div>
+          {prepareError ? <div className="empty-inline">{prepareError}</div> : null}
+          {prepareResult ? (
+            <div className="detail-grid compact-grid prepare-result-grid">
+              <article className="detail-card">
+                <div className="detail-card-title">Prepared route</div>
+                <div className="class-grid">
+                  <div className="class-row"><span>budget</span><strong>{prepareResult.proposedBudget}</strong></div>
+                  <div className="class-row"><span>route</span><strong>{prepareResult.routeLabel}</strong></div>
+                  <div className="class-row"><span>agent</span><strong>{prepareResult.selectedAgent}</strong></div>
+                  <div className="class-row"><span>local/cloud</span><strong>{prepareResult.localCloudDecision.mode}</strong></div>
+                </div>
+                <p>{prepareResult.localCloudDecision.reason}</p>
+              </article>
+              <article className="detail-card">
+                <div className="detail-card-title">Sandbox and Codex decision</div>
+                <div className="class-grid">
+                  <div className="class-row"><span>backend</span><strong>{prepareResult.sandboxStatus.backend}</strong></div>
+                  <div className="class-row"><span>mode</span><strong>{prepareResult.sandboxStatus.mode}</strong></div>
+                  <div className="class-row"><span>tier</span><strong>{prepareResult.sandboxStatus.permissionTier}</strong></div>
+                  <div className="class-row"><span>codex</span><strong>{prepareResult.codexNecessary ? "needed" : "not needed"}</strong></div>
+                </div>
+                <p>{prepareResult.codexReason}</p>
+              </article>
+              <article className="detail-card">
+                <div className="detail-card-title">Retrieval sources</div>
+                <ul className="note-list compact-note-list">
+                  {prepareResult.retrievalSources.map((entry) => (
+                    <li key={entry}>{entry}</li>
+                  ))}
+                </ul>
+              </article>
+              <article className="detail-card">
+                <div className="detail-card-title">Excluded sources</div>
+                <ul className="note-list compact-note-list">
+                  {prepareResult.excludedSources.map((entry) => (
+                    <li key={entry}>{entry}</li>
+                  ))}
+                </ul>
+              </article>
+              <article className="detail-card detail-card-wide">
+                <div className="detail-card-title">Focus files</div>
+                <div className="doc-list">
+                  {prepareResult.focusFiles.map((entry) => (
+                    <QuickActionRow
+                      key={entry}
+                      label={entry.split("/").slice(-1)[0]}
+                      value={compactPath(entry)}
+                      onOpen={() => props.onOpen("focus file", entry)}
+                      onCopy={() => props.onCopy("focus file", entry)}
+                    />
+                  ))}
+                </div>
+              </article>
+              <article className="detail-card">
+                <div className="detail-card-title">Verification commands</div>
+                <ul className="note-list compact-note-list">
+                  {prepareResult.verificationCommands.map((entry) => (
+                    <li key={entry}>{entry}</li>
+                  ))}
+                </ul>
+              </article>
+              <article className="detail-card">
+                <div className="detail-card-title">Scientific target</div>
+                {prepareResult.scientificToolTarget ? (
+                  <div className="doc-list">
+                    <QuickActionRow
+                      label={prepareResult.scientificToolTarget.label}
+                      value={prepareResult.scientificToolTarget.target}
+                      onOpen={() => {
+                        void launchAiLabTarget(prepareResult.scientificToolTarget!.launcherId).catch(() => undefined);
+                      }}
+                    />
+                    <p>{prepareResult.scientificToolTarget.reason}</p>
+                  </div>
+                ) : (
+                  <div className="empty-inline">no scientific target matched</div>
+                )}
+              </article>
+            </div>
+          ) : null}
+        </article>
+
+        <article className="detail-card detail-card-wide">
+          <div className="goal-capsule-head">
+            <div>
+              <div className="detail-card-title">Codex Control Lab</div>
+              <strong>Existing control-plane surfaces, grouped into one entrypoint</strong>
+            </div>
+            <StatusBadge label={props.lab.aiLab.control.selectedAgentRoute.selectedAgent || "manual"} tone={aiLabStatusTone("available")} />
+          </div>
+          <div className="doc-list">
+            {props.lab.aiLab.groups.codexControlLab.map((entry) => (
+              <QuickActionRow
+                key={entry.id}
+                label={entry.label}
+                value={`${entry.status} · ${entry.summary}`}
+                onOpen={entry.path ? () => props.onOpen(entry.label, entry.path!) : undefined}
+                onCopy={entry.path ? () => props.onCopy(entry.label, entry.path!) : undefined}
+              />
+            ))}
+          </div>
+        </article>
+
+        <article className="detail-card detail-card-wide">
+          <div className="goal-capsule-head">
+            <div>
+              <div className="detail-card-title">Scientific / Visual Lab</div>
+              <strong>Allowlisted open-only launchers for installed tools, scenes, and reference portals</strong>
+            </div>
+            <StatusBadge label={`${props.lab.aiLab.scientificTools.installed.length} installed`} tone="ok" />
+          </div>
+          <div className="scientific-lab-grid">
+            {props.lab.aiLab.groups.scientificVisualLab.map((entry) => (
+              <article key={entry.id} className="alt-tool-card">
+                <div className="goal-capsule-head">
+                  <div>
+                    <strong>{entry.label}</strong>
+                    <p>{entry.summary}</p>
+                  </div>
+                  <StatusBadge label={entry.status} tone={aiLabStatusTone(entry.status)} />
+                </div>
+                {entry.primaryTarget ? <div className="quick-row-value">{compactPath(entry.primaryTarget)}</div> : null}
+                <div className="goal-capsule-meta">
+                  <span>installed {entry.installedTools?.join(", ") || "none"}</span>
+                  <span>missing {entry.missingTools?.join(", ") || "none"}</span>
+                </div>
+                {entry.actions?.length ? (
+                  <div className="doc-list">
+                    {entry.actions.map((action) => (
+                      <QuickActionRow
+                        key={`${entry.id}-${action.launcherId || action.label}`}
+                        label={action.label}
+                        value={action.target ? compactPath(action.target) : action.status}
+                        onOpen={
+                          action.launcherId
+                            ? () => {
+                                void launchAiLabTarget(action.launcherId).catch(() => undefined);
+                              }
+                            : action.target
+                              ? () => props.onOpen(action.label, action.target)
+                              : undefined
+                        }
+                        openLabel="open"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-inline">no allowlisted launchers in this lab yet</div>
+                )}
+              </article>
+            ))}
+          </div>
+        </article>
+
+        <article className="detail-card detail-card-wide">
+          <div className="goal-capsule-head">
+            <div>
+              <div className="detail-card-title">Scientific Tool Inventory</div>
+              <strong>Safe export of installed and missing tools</strong>
+            </div>
+            <StatusBadge label={`${props.lab.aiLab.scientificTools.missing.length} missing`} tone={props.lab.aiLab.scientificTools.missing.length > 0 ? "attention" : "ok"} />
+          </div>
+          <div className="tool-inventory-grid">
+            {props.lab.aiLab.scientificTools.inventory.map((entry) => (
+              <div key={entry.id} className="repo-intel-row">
+                <div>
+                  <strong>{entry.label}</strong>
+                  <p>{entry.command}</p>
+                </div>
+                <div className="repo-intel-meta">
+                  <span>{entry.category}</span>
+                  <span>{entry.status}</span>
+                  <span>{entry.path ? compactPath(entry.path) : "missing"}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
       </div>
 
       <div className="codex-lab-grid">

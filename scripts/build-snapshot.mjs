@@ -40,6 +40,45 @@ function fileExists(targetPath) {
   }
 }
 
+function sensitivePathLike(value) {
+  const lowered = String(value || "").toLowerCase();
+  return ["auth", "cookie", "secret", "token", ".env"].some((marker) => lowered.includes(marker));
+}
+
+function sanitizeSensitiveExportMetadata(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeSensitiveExportMetadata(entry));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const clone = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (key === "auth_file") {
+      clone[key] = "";
+      continue;
+    }
+    if (key === "source_path" && typeof raw === "string" && sensitivePathLike(path.basename(raw))) {
+      clone[key] = "";
+      continue;
+    }
+    if (key === "source_paths" && raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const sanitizedPaths = {};
+      for (const [pathKey, pathValue] of Object.entries(raw)) {
+        sanitizedPaths[pathKey] =
+          typeof pathValue === "string" && (sensitivePathLike(pathKey) || sensitivePathLike(path.basename(pathValue)))
+            ? ""
+            : pathValue;
+      }
+      clone[key] = sanitizedPaths;
+      continue;
+    }
+    clone[key] = sanitizeSensitiveExportMetadata(raw);
+  }
+  return clone;
+}
+
 function readText(targetPath) {
   try {
     return fs.readFileSync(targetPath, "utf8");
@@ -517,6 +556,7 @@ function buildLocalCodexLab() {
       nextAction: entry.next_action || "",
       source: runSummarySource,
     }));
+  const aiLab = lab.payload?.ai_lab || {};
 
   return {
     generatedAt: lab.payload?.generated_at || new Date().toISOString(),
@@ -643,6 +683,104 @@ function buildLocalCodexLab() {
     nextBestAction: lab.payload?.next_best_action || "",
     goalCapsules,
     runSummaries: summarizedRuns,
+    aiLab: {
+      generatedAt: aiLab.generated_at || lab.payload?.generated_at || new Date().toISOString(),
+      status: aiLab.status || "missing",
+      source: statMeta(lab.path, aiLab.generated_at || lab.payload?.generated_at || ""),
+      control: {
+        tokenBudgetTier: aiLab.control?.token_budget_tier || "small",
+        retrievalSources: aiLab.control?.retrieval_sources || [],
+        excludedSources: aiLab.control?.excluded_sources || [],
+        selectedAgentRoute: {
+          routeId: aiLab.control?.selected_agent_route?.route_id || "",
+          routeLabel: aiLab.control?.selected_agent_route?.route_label || "",
+          selectedAgent: aiLab.control?.selected_agent_route?.selected_agent || "",
+          defaultContextBudget: aiLab.control?.selected_agent_route?.default_context_budget || "small",
+          localCloudDecision: {
+            mode: aiLab.control?.selected_agent_route?.local_cloud_decision?.mode || "hybrid",
+            reason: aiLab.control?.selected_agent_route?.local_cloud_decision?.reason || "",
+          },
+        },
+        sandboxStatus: {
+          backend: aiLab.control?.sandbox_status?.backend || "",
+          mode: aiLab.control?.sandbox_status?.mode || "",
+          permissionTier: aiLab.control?.sandbox_status?.permission_tier || "",
+          rawConversationMirrorsAllowed: Boolean(aiLab.control?.sandbox_status?.raw_conversation_mirrors_allowed),
+          hostHealth: aiLab.control?.sandbox_status?.host_health || "unknown",
+        },
+        activeRuns: aiLab.control?.active_runs || [],
+        latestRunReports: aiLab.control?.latest_run_reports || [],
+        tokenWasteMarkers: {
+          filesScanned: Number(aiLab.control?.token_waste_markers?.files_scanned || 0),
+          repeatedHealthGateCount: Number(aiLab.control?.token_waste_markers?.repeated_health_gate_count || 0),
+          bridgeNoiseFiles: Number(aiLab.control?.token_waste_markers?.bridge_noise_files || 0),
+          filesWithNoAssistantReply: Number(aiLab.control?.token_waste_markers?.files_with_no_assistant_reply || 0),
+          highWasteCapsulesPath: aiLab.control?.token_waste_markers?.high_waste_capsules_path || "",
+        },
+        goalCapsules: (aiLab.control?.goal_capsules || []).map((entry) => ({
+          goalId: entry.goal_id || "",
+          status: entry.status || "unknown",
+          objective: entry.objective || "",
+          nextAction: entry.next_action || "",
+          recommendedContextBudget: entry.recommended_context_budget || "",
+          sourcePath: entry.source_path || "",
+        })),
+        nextBestAction: aiLab.control?.next_best_action || "",
+      },
+      groups: {
+        codexControlLab: (aiLab.groups?.codex_control_lab || []).map((entry) => ({
+          id: entry.id || "",
+          label: entry.label || "",
+          status: entry.status || "missing",
+          summary: entry.summary || "",
+          path: entry.path || "",
+        })),
+        scientificVisualLab: (aiLab.groups?.scientific_visual_lab || []).map((entry) => ({
+          id: entry.id || "",
+          label: entry.label || "",
+          status: entry.status || "missing",
+          summary: entry.summary || "",
+          path: entry.path || "",
+          primaryTarget: entry.primary_target || "",
+          installedTools: entry.installed_tools || [],
+          missingTools: entry.missing_tools || [],
+          actions: (entry.actions || []).map((action) => ({
+            label: action.label || "",
+            launcherId: action.launcher_id || "",
+            target: action.target || "",
+            status: action.status || "missing",
+          })),
+        })),
+      },
+      scientificTools: {
+        generatedAt: aiLab.scientific_tools?.generated_at || aiLab.generated_at || "",
+        inventory: (aiLab.scientific_tools?.inventory || []).map((entry) => ({
+          id: entry.id || "",
+          label: entry.label || "",
+          command: entry.command || "",
+          path: entry.path || "",
+          category: entry.category || "",
+          status: entry.status || "missing",
+          openTarget: entry.open_target || "",
+        })),
+        installed: aiLab.scientific_tools?.installed || [],
+        missing: aiLab.scientific_tools?.missing || [],
+        launchers: (aiLab.scientific_tools?.launchers || []).map((entry) => ({
+          id: entry.id || "",
+          label: entry.label || "",
+          status: entry.status || "missing",
+          kind: entry.kind || "path",
+          target: entry.target || "",
+        })),
+      },
+      prepareFlow: {
+        endpoint: aiLab.prepare_flow?.endpoint || "/api/ai-lab/prepare",
+        toolInventoryEndpoint: aiLab.prepare_flow?.tool_inventory_endpoint || "/api/ai-lab/tool-inventory",
+        launcherEndpoint: aiLab.prepare_flow?.launcher_endpoint || "/api/ai-lab/launch",
+        executionPolicy: aiLab.prepare_flow?.execution_policy || "",
+        launcherIds: aiLab.prepare_flow?.launcher_ids || [],
+      },
+    },
   };
 }
 
@@ -720,44 +858,45 @@ function buildAiTelemetry() {
     },
     recent_events: [],
   });
+  const sanitizedPayload = sanitizeSensitiveExportMetadata(exportState.payload || {});
   return {
-    generatedAt: exportState.payload?.generated_at || "",
-    retrievalQuality: exportState.payload?.retrieval_quality || { status: "missing" },
-    codeContextSearch: exportState.payload?.code_context_search || { status: "missing" },
-    skillRegistry: exportState.payload?.skill_registry || { status: "missing" },
-    skillUsage: exportState.payload?.skill_usage || { status: "missing" },
-    codexProductivity: exportState.payload?.codex_productivity || { status: "missing" },
-    tokenContextWaste: exportState.payload?.token_context_waste || { status: "missing" },
-    modelRouting: exportState.payload?.model_routing || { status: "missing" },
-    toolUsage: exportState.payload?.tool_usage || { status: "missing" },
-    aiResponse: exportState.payload?.ai_response || { status: "missing" },
-    aiResponseUsage: exportState.payload?.ai_response_usage || { status: "missing" },
-    promptCacheEfficiency: exportState.payload?.prompt_cache_efficiency || { status: "missing" },
-    costByModel: exportState.payload?.cost_by_model || { status: "missing", entries: [] },
-    costByGoal: exportState.payload?.cost_by_goal || { status: "missing", entries: [] },
-    tokensPerVerifiedRun: exportState.payload?.tokens_per_verified_run || { status: "missing" },
-    budgetDrift: exportState.payload?.budget_drift || { status: "missing" },
-    research: exportState.payload?.research || { status: "missing" },
-    memory: exportState.payload?.memory || { status: "missing" },
-    tokenGovernor: exportState.payload?.token_governor || { status: "missing" },
-    hermesRuntime: exportState.payload?.hermes_runtime || { status: "missing", state: "missing", installed: false, fallback_used: false, state_counts: [] },
-    agentTrace: exportState.payload?.agent_trace || { status: "missing" },
-    cacheLedger: exportState.payload?.cache_ledger || { status: "missing" },
-    redundantWork: exportState.payload?.redundant_work || { status: "missing" },
-    tokenEconomy: exportState.payload?.token_economy || { status: "missing" },
-    accountAnalytics: exportState.payload?.account_analytics || { status: "missing" },
-    tokenEconomyReport: exportState.payload?.token_economy_report || { status: "missing" },
-    failureAwareObservability: exportState.payload?.failure_aware_observability || { status: "missing" },
-    guardrailEvents: exportState.payload?.guardrail_events || { status: "ok", count: 0, by_type: [], by_status: [], recent_events: [], latest_event: {} },
-    aiActivityExplorer: exportState.payload?.ai_activity_explorer || {
+    generatedAt: sanitizedPayload.generated_at || "",
+    retrievalQuality: sanitizedPayload.retrieval_quality || { status: "missing" },
+    codeContextSearch: sanitizedPayload.code_context_search || { status: "missing" },
+    skillRegistry: sanitizedPayload.skill_registry || { status: "missing" },
+    skillUsage: sanitizedPayload.skill_usage || { status: "missing" },
+    codexProductivity: sanitizedPayload.codex_productivity || { status: "missing" },
+    tokenContextWaste: sanitizedPayload.token_context_waste || { status: "missing" },
+    modelRouting: sanitizedPayload.model_routing || { status: "missing" },
+    toolUsage: sanitizedPayload.tool_usage || { status: "missing" },
+    aiResponse: sanitizedPayload.ai_response || { status: "missing" },
+    aiResponseUsage: sanitizedPayload.ai_response_usage || { status: "missing" },
+    promptCacheEfficiency: sanitizedPayload.prompt_cache_efficiency || { status: "missing" },
+    costByModel: sanitizedPayload.cost_by_model || { status: "missing", entries: [] },
+    costByGoal: sanitizedPayload.cost_by_goal || { status: "missing", entries: [] },
+    tokensPerVerifiedRun: sanitizedPayload.tokens_per_verified_run || { status: "missing" },
+    budgetDrift: sanitizedPayload.budget_drift || { status: "missing" },
+    research: sanitizedPayload.research || { status: "missing" },
+    memory: sanitizedPayload.memory || { status: "missing" },
+    tokenGovernor: sanitizedPayload.token_governor || { status: "missing" },
+    hermesRuntime: sanitizedPayload.hermes_runtime || { status: "missing", state: "missing", installed: false, fallback_used: false, state_counts: [] },
+    agentTrace: sanitizedPayload.agent_trace || { status: "missing" },
+    cacheLedger: sanitizedPayload.cache_ledger || { status: "missing" },
+    redundantWork: sanitizedPayload.redundant_work || { status: "missing" },
+    tokenEconomy: sanitizedPayload.token_economy || { status: "missing" },
+    accountAnalytics: sanitizedPayload.account_analytics || { status: "missing" },
+    tokenEconomyReport: sanitizedPayload.token_economy_report || { status: "missing" },
+    failureAwareObservability: sanitizedPayload.failure_aware_observability || { status: "missing" },
+    guardrailEvents: sanitizedPayload.guardrail_events || { status: "ok", count: 0, by_type: [], by_status: [], recent_events: [], latest_event: {} },
+    aiActivityExplorer: sanitizedPayload.ai_activity_explorer || {
       status: "missing",
       overview: { status: "missing" },
       trends: { status: "missing" },
       explore: { status: "missing" },
       guardrails: { status: "ok", count: 0, by_type: [], by_status: [], recent_events: [], latest_event: {} },
     },
-    recentEvents: exportState.payload?.recent_events || [],
-    source: statMeta(exportState.path, exportState.payload?.generated_at || ""),
+    recentEvents: sanitizedPayload.recent_events || [],
+    source: statMeta(exportState.path, sanitizedPayload.generated_at || ""),
   };
 }
 
