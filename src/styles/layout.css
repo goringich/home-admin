@@ -75,7 +75,9 @@
 
 .hero-grid,
 .local-status-grid,
-.local-codex-metrics {
+.local-codex-metrics,
+.ai-lab-hero-grid,
+.ai-lab-tool-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-3);
@@ -96,7 +98,14 @@
 .detail-grid,
 .codex-lab-grid,
 .task-columns,
-.radar-body {
+.radar-body,
+.ai-lab-hero,
+.ai-lab-section-grid,
+.ai-lab-runtime-grid,
+.ai-lab-signal-grid,
+.ai-lab-run-grid,
+.ai-lab-prepare-grid,
+.ai-lab-rail-grid {
   display: grid;
   gap: var(--space-4);
 }
@@ -159,6 +168,44 @@
 
 .lab-detail-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ai-lab-hero {
+  grid-template-columns: minmax(0, 1.7fr) minmax(17rem, 0.72fr);
+  align-items: stretch;
+}
+
+.ai-lab-hero-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ai-lab-section-grid {
+  grid-template-columns: minmax(0, 1.18fr) minmax(18rem, 0.82fr);
+}
+
+.ai-lab-section-grid-wide {
+  grid-template-columns: minmax(0, 1.45fr) minmax(18rem, 0.9fr);
+}
+
+.ai-lab-runtime-grid,
+.ai-lab-signal-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ai-lab-run-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ai-lab-prepare-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ai-lab-rail-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ai-lab-span-full {
+  grid-column: 1 / -1;
 }
 
 .map-layout {
@@ -330,12 +377,23 @@
 
   .hero-grid,
   .local-status-grid,
-  .local-codex-metrics {
+  .local-codex-metrics,
+  .ai-lab-hero-grid,
+  .ai-lab-tool-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .codex-lab-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ai-lab-hero,
+  .ai-lab-section-grid,
+  .ai-lab-section-grid-wide,
+  .ai-lab-runtime-grid,
+  .ai-lab-signal-grid,
+  .ai-lab-run-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .map-layout,
@@ -391,7 +449,13 @@
   .local-codex-metrics,
   .remote-service-grid,
   .task-columns,
-  .codex-lab-grid {
+  .codex-lab-grid,
+  .ai-lab-hero-grid,
+  .ai-lab-tool-summary,
+  .ai-lab-prepare-grid,
+  .ai-lab-runtime-grid,
+  .ai-lab-signal-grid,
+  .ai-lab-run-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -424,6 +488,12 @@
   }
 
   .goal-capsule-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ai-lab-section-grid,
+  .ai-lab-section-grid-wide,
+  .ai-lab-hero {
     grid-template-columns: minmax(0, 1fr);
   }
 

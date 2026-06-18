@@ -452,6 +452,135 @@
   line-height: 1.45;
 }
 
+.ai-lab-shell {
+  gap: var(--space-5);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-2) 92%, black), var(--color-surface-1));
+}
+
+.ai-lab-hero,
+.ai-lab-section {
+  position: relative;
+}
+
+.ai-lab-hero {
+  padding: var(--space-4);
+  border: var(--border-thin) solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border-soft));
+  border-radius: calc(var(--radius-lg) + 0.15rem);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-accent-soft) 55%, transparent), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-2) 94%, black), var(--color-surface-1));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+}
+
+.ai-lab-hero-main,
+.ai-lab-hero-side,
+.ai-lab-section,
+.ai-lab-panel,
+.ai-lab-mini-stat {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.ai-lab-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ai-lab-hero-panel {
+  display: grid;
+  gap: var(--space-3);
+  min-height: 100%;
+  padding: var(--space-4);
+  border: var(--border-thin) solid color-mix(in srgb, var(--color-accent) 18%, var(--color-border-soft));
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-3) 92%, black), var(--color-surface-2));
+}
+
+.ai-lab-hero-panel-primary {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border-soft));
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 42%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-3) 94%, black), var(--color-surface-2));
+}
+
+.ai-lab-hero-value {
+  font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.5rem);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+}
+
+.ai-lab-mini-stat {
+  padding: var(--space-3);
+  border: var(--border-thin) solid color-mix(in srgb, var(--color-accent) 16%, var(--color-border-soft));
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-3) 92%, black), var(--color-surface-2));
+}
+
+.ai-lab-mini-stat strong {
+  font-size: clamp(1.15rem, 0.95rem + 0.8vw, 1.6rem);
+  color: var(--color-text-primary);
+}
+
+.ai-lab-mini-stat p,
+.ai-lab-hero-panel p,
+.ai-lab-section-head p {
+  margin: 0;
+}
+
+.ai-lab-section {
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+  border-top: var(--border-thin) solid color-mix(in srgb, var(--color-accent) 10%, var(--color-border-soft));
+}
+
+.ai-lab-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.ai-lab-section-head h4 {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-primary);
+  font-size: clamp(1.05rem, 0.95rem + 0.45vw, 1.35rem);
+  line-height: 1.2;
+}
+
+.ai-lab-panel {
+  min-width: 0;
+  border-color: color-mix(in srgb, var(--color-accent) 10%, var(--color-border-soft));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-2) 96%, black), var(--color-surface-1));
+}
+
+.ai-lab-science-grid .ai-lab-tool-panel,
+.ai-lab-tool-rail .quick-row,
+.ai-lab-panel .quick-row {
+  background: color-mix(in srgb, var(--color-surface-3) 90%, black);
+}
+
+.ai-lab-tool-panel {
+  min-width: 0;
+}
+
+.ai-lab-tool-summary .goal-capsule-meta {
+  gap: var(--space-2);
+}
+
+.ai-lab-tool-summary .health-pill {
+  background: color-mix(in srgb, var(--color-surface-3) 92%, black);
+}
+
+.ai-lab-prepare-grid .detail-card {
+  background: color-mix(in srgb, var(--color-surface-3) 92%, black);
+}
+
 .lab-policy {
   margin-top: var(--space-3);
 }
@@ -861,6 +990,7 @@
   .panel-head,
   .selected-header,
   .answer-card-head,
+  .ai-lab-section-head,
   .goal-capsule-head,
   .class-row,
   .readiness-row,
@@ -893,9 +1023,22 @@
     flex: 1 1 0;
     min-width: 0;
   }
+
+  .ai-lab-hero {
+    padding: var(--space-3);
+  }
+
+  .ai-lab-hero-panel,
+  .ai-lab-mini-stat {
+    padding: var(--space-3);
+  }
 }
 
 @media (max-width: 640px) {
+  .ai-lab-shell {
+    padding: var(--space-4);
+  }
+
   .project-node {
     position: static;
     width: 100%;

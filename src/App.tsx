@@ -287,6 +287,14 @@ function fmtRatio(value?: number | null) {
   return value.toFixed(2);
 }
 
+function fmtPercent(value?: number | null, fraction = false) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "missing";
+  }
+  const normalized = fraction ? value * 100 : value;
+  return `${normalized.toFixed(1)}%`;
+}
+
 function accountDisplay(entry: {
   account_label?: string;
   account_email?: string;
@@ -322,6 +330,12 @@ function aiLabStatusTone(status?: string): HealthTone {
   if (status === "links_only" || status === "staged" || status === "staged_only" || status === "degraded_host") return "attention";
   if (status === "missing") return "risk";
   return "unknown";
+}
+
+function aiLabRunTone(status?: string, failedChecks = 0): HealthTone {
+  if (status === "prepared" || status === "real_ready") return failedChecks > 0 ? "attention" : "ok";
+  if (status === "failed" || status === "blocked") return "risk";
+  return "attention";
 }
 
 function sourceAge(source: SourceMeta) {
@@ -614,20 +628,6 @@ async function openHostTarget(target: string) {
   }
 }
 
-async function launchAiLabTarget(launcherId: string) {
-  const response = await fetch("./api/ai-lab/launch", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ launcherId }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-}
-
 async function prepareAiLabTask(task: string): Promise<AiLabPrepareResponse> {
   const response = await fetch("./api/ai-lab/prepare", {
     method: "POST",
@@ -650,7 +650,9 @@ function QuickActionRow(props: {
   value: string;
   href?: string;
   onOpen?: () => void;
+  openDisabled?: boolean;
   openLabel?: string;
+  openTitle?: string;
   onCopy?: () => void;
 }) {
   return (
@@ -660,10 +662,12 @@ function QuickActionRow(props: {
         <div className="quick-row-value">{props.value}</div>
       </div>
       <div className="quick-row-actions">
-        {props.href || props.onOpen ? (
+        {props.href || props.onOpen || props.openDisabled ? (
           <button
             className="ghost-action"
             type="button"
+            disabled={props.openDisabled}
+            title={props.openDisabled ? (props.openTitle ?? "open disabled") : undefined}
             onClick={
               props.onOpen ??
               (() => {
@@ -1275,181 +1279,283 @@ function LocalCodexLabPanel(props: {
   const [prepareBusy, setPrepareBusy] = useState(false);
   const [prepareResult, setPrepareResult] = useState<AiLabPrepareResponse | null>(null);
   const [prepareError, setPrepareError] = useState("");
+  const aiLabRuns = props.lab.aiLab.control.activeRuns.length > 0 ? props.lab.aiLab.control.activeRuns : props.lab.activeRuns;
+  const latestRunReports = props.lab.aiLab.control.latestRunReports.length > 0 ? props.lab.aiLab.control.latestRunReports : props.lab.latestRunReports;
+  const launcherLookup = new Map(props.lab.aiLab.scientificTools.launchers.map((launcher) => [launcher.id, launcher]));
+  const allowlistedLaunchers = props.lab.aiLab.prepareFlow.launcherIds.map((launcherId) => {
+    const launcher = launcherLookup.get(launcherId);
+    return {
+      id: launcherId,
+      label: launcher?.label || "missing launcher metadata",
+      kind: launcher?.kind || "unknown",
+      status: launcher?.status || "missing",
+      target: launcher?.target || "",
+    };
+  });
+  const prepareScientificTarget = prepareResult?.scientificToolTarget;
 
   return (
-    <section className="local-codex-lab panel">
+    <section className="local-codex-lab panel ai-lab-shell">
       <div className="panel-head">
         <div>
           <div className="section-kicker">AI Lab</div>
-          <h3>Codex Control and Scientific Surface</h3>
+          <h3>Tony Stark-style local lab dashboard</h3>
+          <p>Control routes, scientific launch metadata, and runtime signals in one bounded read-only surface.</p>
         </div>
         <div className="panel-hint">
           host {props.lab.hostHealth} · updated {fmtRelative(new Date(props.lab.generatedAt).getTime())}
         </div>
       </div>
 
-      <div className="local-codex-metrics">
-        <MetricCard label="Goal capsules" value={props.lab.goalCapsules.length} detail={`run summaries ${props.lab.runSummaries.length}`} />
-        <MetricCard label="Token waste" value={props.lab.tokenEfficiency.filesScanned} detail={`health repeats ${props.lab.tokenEfficiency.repeatedHealthGateCount}`} />
-        <MetricCard label="Denylist" value={props.lab.retrievalPolicy.denylistedFiles} detail={props.lab.retrievalPolicy.denylistedClasses.join(" · ")} />
-        <MetricCard label="OpenClaw warns" value={props.lab.openclawReliability.warningCount} detail={props.lab.openclawReliability.status} />
-        <MetricCard label="Repo-intel" value={props.lab.repoIntel.targetCount} detail={props.lab.repoIntel.safeTargets.join(" · ")} />
-        <MetricCard label="Commercial QA" value={props.commercial.score} detail={`${props.commercial.summary.implemented} impl · ${props.commercial.summary.scaffolded} scaffolded`} />
+      <div className="ai-lab-hero">
+        <div className="ai-lab-hero-main">
+          <div className="ai-lab-status-strip">
+            <span className={`health-pill ${toneClass(props.lab.hostHealth === "ok" ? "ok" : "attention")}`}>Host {props.lab.hostHealth}</span>
+            <span className={`health-pill ${toneClass(aiLabStatusTone(props.lab.aiLab.status))}`}>Lab {props.lab.aiLab.status}</span>
+            <span className={`health-pill ${toneClass(props.lab.localGpuLiveBenchStatus.status === "ok" ? "ok" : "attention")}`}>GPU {props.lab.localGpuLiveBenchStatus.status}</span>
+            <span className={`health-pill ${toneClass(aiLabRuns.length > 0 ? "attention" : "unknown")}`}>Runs {aiLabRuns.length}</span>
+            <span className="health-pill">Allowlist {allowlistedLaunchers.length}</span>
+          </div>
+          <div className="ai-lab-hero-grid">
+            <article className="ai-lab-hero-panel ai-lab-hero-panel-primary">
+              <div className="section-kicker">Control Route</div>
+              <div className="ai-lab-hero-value">{props.lab.aiLab.control.selectedAgentRoute.selectedAgent || "manual route"}</div>
+              <p>{props.lab.aiLab.control.selectedAgentRoute.localCloudDecision.reason}</p>
+              <div className="goal-capsule-meta">
+                <span>budget {props.lab.aiLab.control.selectedAgentRoute.defaultContextBudget || "missing"}</span>
+                <span>sandbox {props.lab.aiLab.control.sandboxStatus.mode}</span>
+                <span>tier {props.lab.aiLab.control.sandboxStatus.permissionTier}</span>
+              </div>
+            </article>
+            <article className="ai-lab-hero-panel">
+              <div className="section-kicker">Scientific Surface</div>
+              <div className="ai-lab-hero-value">{props.lab.aiLab.groups.scientificVisualLab.length}</div>
+              <p>Bounded launcher metadata for local visual and research workflows.</p>
+              <div className="goal-capsule-meta">
+                <span>installed {props.lab.aiLab.scientificTools.installed.length}</span>
+                <span>missing {props.lab.aiLab.scientificTools.missing.length}</span>
+              </div>
+            </article>
+            <article className="ai-lab-hero-panel">
+              <div className="section-kicker">Context Signals</div>
+              <div className="ai-lab-hero-value">{fmtPercent(props.lab.ragE2eEvalStatus.hitAt3, true)}</div>
+              <p>RAG hit@3 paired with graph, prompt-entrypoint, and local-model readiness.</p>
+              <div className="goal-capsule-meta">
+                <span>graph {props.lab.knowledgeGraphStatus.status}</span>
+                <span>context {props.lab.contextPackStatus.status}</span>
+              </div>
+            </article>
+          </div>
+        </div>
+        <aside className="ai-lab-hero-side">
+          <div className="ai-lab-mini-stat">
+            <span className="section-kicker">GPU Throughput</span>
+            <strong>{fmtRatio(props.lab.localGpuLiveBenchStatus.metrics.tokensPerSec)}</strong>
+            <p>{props.lab.localGpuLiveBenchStatus.offloadRecommendations.balanced || "missing"} offload</p>
+          </div>
+          <div className="ai-lab-mini-stat">
+            <span className="section-kicker">Commercial QA</span>
+            <strong>{props.commercial.score}</strong>
+            <p>{props.commercial.summary.implemented} implemented · {props.commercial.summary.scaffolded} scaffolded</p>
+          </div>
+          <div className="ai-lab-mini-stat">
+            <span className="section-kicker">Token Economy</span>
+            <strong>{props.lab.tokenEfficiency.filesScanned}</strong>
+            <p>{props.lab.tokenEfficiency.repeatedHealthGateCount} repeated health gates</p>
+          </div>
+        </aside>
       </div>
 
-      <div className="detail-grid lab-detail-grid">
-        <article className="detail-card detail-card-wide">
-          <div className="goal-capsule-head">
-            <div>
-              <div className="detail-card-title">AI Lab Prepare</div>
-              <strong>Deterministic planning without shell execution</strong>
-            </div>
-            <StatusBadge label={props.lab.aiLab.status} tone={aiLabStatusTone(props.lab.aiLab.status)} />
+      <section className="ai-lab-section">
+        <div className="ai-lab-section-head">
+          <div>
+            <div className="section-kicker">Codex Control Lab</div>
+            <h4>Prepare flow and control-plane routing</h4>
           </div>
-          <p className="lab-policy">{props.lab.aiLab.prepareFlow.executionPolicy}</p>
-          <div className="prepare-form">
-            <textarea
-              className="prepare-textarea"
-              value={prepareTask}
-              onChange={(event) => setPrepareTask(event.target.value)}
-              placeholder="Describe the task you want the AI Lab to prepare."
-            />
-            <div className="prepare-actions">
-              <button
-                className="ghost-action"
-                type="button"
-                disabled={prepareBusy || !prepareTask.trim()}
-                onClick={async () => {
-                  setPrepareBusy(true);
-                  setPrepareError("");
-                  try {
-                    const result = await prepareAiLabTask(prepareTask.trim());
-                    setPrepareResult(result);
-                  } catch (error) {
-                    setPrepareError(error instanceof Error ? error.message : String(error));
-                  } finally {
-                    setPrepareBusy(false);
-                  }
-                }}
-              >
-                {prepareBusy ? "preparing..." : "prepare"}
-              </button>
+          <StatusBadge label={props.lab.aiLab.control.selectedAgentRoute.selectedAgent || "manual"} tone={aiLabStatusTone("available")} />
+        </div>
+        <div className="ai-lab-section-grid ai-lab-section-grid-wide">
+          <article className="detail-card ai-lab-panel">
+            <div className="goal-capsule-head">
+              <div>
+                <div className="detail-card-title">Prepare</div>
+                <strong>Deterministic planning without shell execution</strong>
+              </div>
+              <StatusBadge label={props.lab.aiLab.status} tone={aiLabStatusTone(props.lab.aiLab.status)} />
             </div>
-          </div>
-          {prepareError ? <div className="empty-inline">{prepareError}</div> : null}
-          {prepareResult ? (
-            <div className="detail-grid compact-grid prepare-result-grid">
-              <article className="detail-card">
-                <div className="detail-card-title">Prepared route</div>
-                <div className="class-grid">
-                  <div className="class-row"><span>budget</span><strong>{prepareResult.proposedBudget}</strong></div>
-                  <div className="class-row"><span>route</span><strong>{prepareResult.routeLabel}</strong></div>
-                  <div className="class-row"><span>agent</span><strong>{prepareResult.selectedAgent}</strong></div>
-                  <div className="class-row"><span>local/cloud</span><strong>{prepareResult.localCloudDecision.mode}</strong></div>
-                </div>
-                <p>{prepareResult.localCloudDecision.reason}</p>
-              </article>
-              <article className="detail-card">
-                <div className="detail-card-title">Sandbox and Codex decision</div>
-                <div className="class-grid">
-                  <div className="class-row"><span>backend</span><strong>{prepareResult.sandboxStatus.backend}</strong></div>
-                  <div className="class-row"><span>mode</span><strong>{prepareResult.sandboxStatus.mode}</strong></div>
-                  <div className="class-row"><span>tier</span><strong>{prepareResult.sandboxStatus.permissionTier}</strong></div>
-                  <div className="class-row"><span>codex</span><strong>{prepareResult.codexNecessary ? "needed" : "not needed"}</strong></div>
-                </div>
-                <p>{prepareResult.codexReason}</p>
-              </article>
-              <article className="detail-card">
-                <div className="detail-card-title">Retrieval sources</div>
-                <ul className="note-list compact-note-list">
-                  {prepareResult.retrievalSources.map((entry) => (
-                    <li key={entry}>{entry}</li>
-                  ))}
-                </ul>
-              </article>
-              <article className="detail-card">
-                <div className="detail-card-title">Excluded sources</div>
-                <ul className="note-list compact-note-list">
-                  {prepareResult.excludedSources.map((entry) => (
-                    <li key={entry}>{entry}</li>
-                  ))}
-                </ul>
-              </article>
-              <article className="detail-card detail-card-wide">
-                <div className="detail-card-title">Focus files</div>
-                <div className="doc-list">
-                  {prepareResult.focusFiles.map((entry) => (
-                    <QuickActionRow
-                      key={entry}
-                      label={entry.split("/").slice(-1)[0]}
-                      value={compactPath(entry)}
-                      onOpen={() => props.onOpen("focus file", entry)}
-                      onCopy={() => props.onCopy("focus file", entry)}
-                    />
-                  ))}
-                </div>
-              </article>
-              <article className="detail-card">
-                <div className="detail-card-title">Verification commands</div>
-                <ul className="note-list compact-note-list">
-                  {prepareResult.verificationCommands.map((entry) => (
-                    <li key={entry}>{entry}</li>
-                  ))}
-                </ul>
-              </article>
-              <article className="detail-card">
-                <div className="detail-card-title">Scientific target</div>
-                {prepareResult.scientificToolTarget ? (
-                  <div className="doc-list">
-                    <QuickActionRow
-                      label={prepareResult.scientificToolTarget.label}
-                      value={prepareResult.scientificToolTarget.target}
-                      onOpen={() => {
-                        void launchAiLabTarget(prepareResult.scientificToolTarget!.launcherId).catch(() => undefined);
-                      }}
-                    />
-                    <p>{prepareResult.scientificToolTarget.reason}</p>
-                  </div>
-                ) : (
-                  <div className="empty-inline">no scientific target matched</div>
-                )}
-              </article>
-            </div>
-          ) : null}
-        </article>
-
-        <article className="detail-card detail-card-wide">
-          <div className="goal-capsule-head">
-            <div>
-              <div className="detail-card-title">Codex Control Lab</div>
-              <strong>Existing control-plane surfaces, grouped into one entrypoint</strong>
-            </div>
-            <StatusBadge label={props.lab.aiLab.control.selectedAgentRoute.selectedAgent || "manual"} tone={aiLabStatusTone("available")} />
-          </div>
-          <div className="doc-list">
-            {props.lab.aiLab.groups.codexControlLab.map((entry) => (
-              <QuickActionRow
-                key={entry.id}
-                label={entry.label}
-                value={`${entry.status} · ${entry.summary}`}
-                onOpen={entry.path ? () => props.onOpen(entry.label, entry.path!) : undefined}
-                onCopy={entry.path ? () => props.onCopy(entry.label, entry.path!) : undefined}
+            <p className="lab-policy">{props.lab.aiLab.prepareFlow.executionPolicy}</p>
+            <div className="prepare-form">
+              <textarea
+                className="prepare-textarea"
+                value={prepareTask}
+                onChange={(event) => setPrepareTask(event.target.value)}
+                placeholder="Describe the task you want the AI Lab to prepare."
               />
-            ))}
-          </div>
-        </article>
-
-        <article className="detail-card detail-card-wide">
-          <div className="goal-capsule-head">
-            <div>
-              <div className="detail-card-title">Scientific / Visual Lab</div>
-              <strong>Allowlisted open-only launchers for installed tools, scenes, and reference portals</strong>
+              <div className="prepare-actions">
+                <button
+                  className="ghost-action"
+                  type="button"
+                  disabled={prepareBusy || !prepareTask.trim()}
+                  onClick={async () => {
+                    setPrepareBusy(true);
+                    setPrepareError("");
+                    try {
+                      const result = await prepareAiLabTask(prepareTask.trim());
+                      setPrepareResult(result);
+                    } catch (error) {
+                      setPrepareError(error instanceof Error ? error.message : String(error));
+                    } finally {
+                      setPrepareBusy(false);
+                    }
+                  }}
+                >
+                  {prepareBusy ? "preparing..." : "prepare"}
+                </button>
+              </div>
             </div>
-            <StatusBadge label={`${props.lab.aiLab.scientificTools.installed.length} installed`} tone="ok" />
+            {prepareError ? <div className="empty-inline">{prepareError}</div> : null}
+            {prepareResult ? (
+              <div className="ai-lab-prepare-grid">
+                <article className="detail-card">
+                  <div className="detail-card-title">Prepared route</div>
+                  <div className="class-grid">
+                    <div className="class-row"><span>budget</span><strong>{prepareResult.proposedBudget}</strong></div>
+                    <div className="class-row"><span>route</span><strong>{prepareResult.routeLabel}</strong></div>
+                    <div className="class-row"><span>agent</span><strong>{prepareResult.selectedAgent}</strong></div>
+                    <div className="class-row"><span>local/cloud</span><strong>{prepareResult.localCloudDecision.mode}</strong></div>
+                  </div>
+                  <p>{prepareResult.localCloudDecision.reason}</p>
+                </article>
+                <article className="detail-card">
+                  <div className="detail-card-title">Sandbox and Codex decision</div>
+                  <div className="class-grid">
+                    <div className="class-row"><span>backend</span><strong>{prepareResult.sandboxStatus.backend}</strong></div>
+                    <div className="class-row"><span>mode</span><strong>{prepareResult.sandboxStatus.mode}</strong></div>
+                    <div className="class-row"><span>tier</span><strong>{prepareResult.sandboxStatus.permissionTier}</strong></div>
+                    <div className="class-row"><span>codex</span><strong>{prepareResult.codexNecessary ? "needed" : "not needed"}</strong></div>
+                  </div>
+                  <p>{prepareResult.codexReason}</p>
+                </article>
+                <article className="detail-card">
+                  <div className="detail-card-title">Retrieval sources</div>
+                  <ul className="note-list compact-note-list">
+                    {prepareResult.retrievalSources.map((entry) => (
+                      <li key={entry}>{entry}</li>
+                    ))}
+                  </ul>
+                </article>
+                <article className="detail-card">
+                  <div className="detail-card-title">Excluded sources</div>
+                  <ul className="note-list compact-note-list">
+                    {prepareResult.excludedSources.map((entry) => (
+                      <li key={entry}>{entry}</li>
+                    ))}
+                  </ul>
+                </article>
+                <article className="detail-card ai-lab-span-full">
+                  <div className="detail-card-title">Focus files</div>
+                  <div className="doc-list">
+                    {prepareResult.focusFiles.map((entry) => (
+                      <QuickActionRow
+                        key={entry}
+                        label={entry.split("/").slice(-1)[0]}
+                        value={compactPath(entry)}
+                        onOpen={() => props.onOpen("focus file", entry)}
+                        onCopy={() => props.onCopy("focus file", entry)}
+                      />
+                    ))}
+                  </div>
+                </article>
+                <article className="detail-card">
+                  <div className="detail-card-title">Verification commands</div>
+                  <ul className="note-list compact-note-list">
+                    {prepareResult.verificationCommands.map((entry) => (
+                      <li key={entry}>{entry}</li>
+                    ))}
+                  </ul>
+                </article>
+                <article className="detail-card">
+                  <div className="detail-card-title">Scientific target</div>
+                  {prepareScientificTarget ? (
+                    <div className="doc-list">
+                      <QuickActionRow
+                        label={prepareScientificTarget.label}
+                        value={`${prepareScientificTarget.launcherId} · ${compactPath(prepareScientificTarget.target)}`}
+                        openDisabled
+                        openLabel="metadata only"
+                        openTitle="Launcher execution is intentionally disabled in Atlas AI Lab."
+                        onCopy={() => props.onCopy("AI Lab scientific target", `${prepareScientificTarget.launcherId} ${prepareScientificTarget.target}`)}
+                      />
+                      <p>{prepareScientificTarget.reason}</p>
+                    </div>
+                  ) : (
+                    <div className="empty-inline">no scientific target matched</div>
+                  )}
+                </article>
+              </div>
+            ) : null}
+          </article>
+
+          <article className="detail-card ai-lab-panel">
+            <div className="goal-capsule-head">
+              <div>
+                <div className="detail-card-title">Control Surface</div>
+                <strong>Existing control-plane surfaces grouped into one entrypoint</strong>
+              </div>
+              <StatusBadge label={props.lab.aiLab.control.selectedAgentRoute.defaultContextBudget || "missing budget"} tone="ok" />
+            </div>
+            <div className="doc-list">
+              {props.lab.aiLab.groups.codexControlLab.map((entry) => (
+                <QuickActionRow
+                  key={entry.id}
+                  label={entry.label}
+                  value={`${entry.status} · ${entry.summary}`}
+                  onOpen={entry.path ? () => props.onOpen(entry.label, entry.path!) : undefined}
+                  onCopy={entry.path ? () => props.onCopy(entry.label, entry.path!) : undefined}
+                />
+              ))}
+            </div>
+            <div className="ai-lab-rail-grid">
+              <article className="detail-card">
+                <div className="detail-card-title">Model routing baseline</div>
+                <div className="class-grid">
+                  <div className="class-row"><span>fast</span><strong>{props.lab.modelRouting.fast}</strong></div>
+                  <div className="class-row"><span>balanced</span><strong>{props.lab.modelRouting.balanced}</strong></div>
+                  <div className="class-row"><span>planning</span><strong>{props.lab.modelRouting.planning}</strong></div>
+                  <div className="class-row"><span>embedding</span><strong>{props.lab.modelRouting.embedding}</strong></div>
+                </div>
+                <SourceFootnote source={props.lab.modelRouting.source} label="model routing" onOpen={props.onOpen} onCopy={props.onCopy} />
+              </article>
+              <article className="detail-card">
+                <div className="detail-card-title">Retrieval policy</div>
+                <ul className="note-list compact-note-list">
+                  {props.lab.retrievalPolicy.priorityOrder.slice(0, 4).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+                <div className="goal-capsule-meta">
+                  <span>denylisted {props.lab.retrievalPolicy.denylistedFiles}</span>
+                  <span>{props.lab.retrievalPolicy.denylistedClasses.join(" · ")}</span>
+                </div>
+                <SourceFootnote source={props.lab.retrievalPolicy.source} label="retrieval policy" onOpen={props.onOpen} onCopy={props.onCopy} />
+              </article>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section className="ai-lab-section">
+        <div className="ai-lab-section-head">
+          <div>
+            <div className="section-kicker">Scientific / Visual Lab</div>
+            <h4>Installed tools, missing paths, and launcher metadata</h4>
           </div>
-          <div className="scientific-lab-grid">
+          <StatusBadge label={`${props.lab.aiLab.scientificTools.installed.length} installed`} tone="ok" />
+        </div>
+        <div className="ai-lab-section-grid ai-lab-section-grid-wide">
+          <div className="scientific-lab-grid ai-lab-science-grid">
             {props.lab.aiLab.groups.scientificVisualLab.map((entry) => (
-              <article key={entry.id} className="alt-tool-card">
+              <article key={entry.id} className="alt-tool-card ai-lab-tool-panel">
                 <div className="goal-capsule-head">
                   <div>
                     <strong>{entry.label}</strong>
@@ -1468,17 +1574,11 @@ function LocalCodexLabPanel(props: {
                       <QuickActionRow
                         key={`${entry.id}-${action.launcherId || action.label}`}
                         label={action.label}
-                        value={action.target ? compactPath(action.target) : action.status}
-                        onOpen={
-                          action.launcherId
-                            ? () => {
-                                void launchAiLabTarget(action.launcherId).catch(() => undefined);
-                              }
-                            : action.target
-                              ? () => props.onOpen(action.label, action.target)
-                              : undefined
-                        }
-                        openLabel="open"
+                        value={`${action.launcherId || "missing-launcher-id"} · ${action.target ? compactPath(action.target) : "missing target"}`}
+                        openDisabled={Boolean(action.launcherId || action.target)}
+                        openLabel="metadata only"
+                        openTitle="Atlas AI Lab only exposes allowlisted launcher metadata here."
+                        onCopy={action.target ? () => props.onCopy(action.label, `${action.launcherId || "missing-launcher-id"} ${action.target}`) : undefined}
                       />
                     ))}
                   </div>
@@ -1488,16 +1588,261 @@ function LocalCodexLabPanel(props: {
               </article>
             ))}
           </div>
-        </article>
 
-        <article className="detail-card detail-card-wide">
-          <div className="goal-capsule-head">
-            <div>
-              <div className="detail-card-title">Scientific Tool Inventory</div>
-              <strong>Safe export of installed and missing tools</strong>
+          <aside className="detail-card ai-lab-panel ai-lab-tool-rail">
+            <div className="goal-capsule-head">
+              <div>
+                <div className="detail-card-title">Allowlisted launcher IDs</div>
+                <strong>Metadata only; UI execution remains disabled</strong>
+              </div>
+              <StatusBadge label={`${allowlistedLaunchers.length} allowlisted`} tone={allowlistedLaunchers.length > 0 ? "ok" : "attention"} />
             </div>
-            <StatusBadge label={`${props.lab.aiLab.scientificTools.missing.length} missing`} tone={props.lab.aiLab.scientificTools.missing.length > 0 ? "attention" : "ok"} />
+            <div className="doc-list">
+              {allowlistedLaunchers.map((launcher) => (
+                <QuickActionRow
+                  key={launcher.id}
+                  label={launcher.id}
+                  value={`${launcher.status} · ${launcher.kind} · ${launcher.target ? compactPath(launcher.target) : "missing target"}`}
+                  openDisabled
+                  openLabel="metadata only"
+                  openTitle="Launcher execution is disabled on the AI Lab surface."
+                  onCopy={() => props.onCopy("AI Lab launcher", `${launcher.id} ${launcher.target}`.trim())}
+                />
+              ))}
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section className="ai-lab-section">
+        <div className="ai-lab-section-head">
+          <div>
+            <div className="section-kicker">Runtime Health</div>
+            <h4>Routing, token economy, reliability, and repo freshness</h4>
           </div>
+          <StatusBadge label={hermes.runtime_state || "missing"} tone={hermesRuntimeTone(hermes.runtime_state)} />
+        </div>
+        <div className="ai-lab-runtime-grid">
+          <article className="detail-card ai-lab-panel">
+            <div className="goal-capsule-head">
+              <div className="detail-card-title">Hermes runtime route</div>
+              <StatusBadge label={hermes.runtime_state || "missing"} tone={hermesRuntimeTone(hermes.runtime_state)} />
+            </div>
+            <div className="class-grid">
+              <div className="class-row"><span>selected runtime</span><strong>{hermes.selected_runtime || "missing"}</strong></div>
+              <div className="class-row"><span>delegation</span><strong>{hermes.delegation_status || "missing"}</strong></div>
+              <div className="class-row"><span>fallback</span><strong>{hermes.fallback_used ? (hermes.fallback_target || "used") : "not used"}</strong></div>
+              <div className="class-row"><span>saved context</span><strong>{fmtInteger(hermes.saved_context_chars_estimated || 0)} ch</strong></div>
+              <div className="class-row"><span>installed</span><strong>{hermes.hermes_installed ? "yes" : "no"}</strong></div>
+              <div className="class-row"><span>mode</span><strong>{hermes.preflight_mode_resolved || "missing"}</strong></div>
+            </div>
+            <ul className="note-list compact-note-list">
+              {hermes.state_reason ? <li>{hermes.state_reason}</li> : null}
+              {hermes.skip_reason ? <li>{hermes.skip_reason}</li> : null}
+              {hermes.failed_roles?.length ? <li>failed roles: {hermes.failed_roles.join(", ")}</li> : null}
+              {hermesModels.length ? <li>planned models: {hermesModels.join(" · ")}</li> : null}
+            </ul>
+            <div className="doc-list">
+              <QuickActionRow
+                label="policy"
+                value={compactPath(hermes.runtime_policy_path || "missing")}
+                onOpen={hermes.runtime_policy_path ? () => props.onOpen("Hermes runtime policy", hermes.runtime_policy_path) : undefined}
+                onCopy={hermes.runtime_policy_path ? () => props.onCopy("Hermes runtime policy", hermes.runtime_policy_path) : undefined}
+              />
+              <QuickActionRow
+                label="manifest"
+                value={compactPath(hermes.worker_manifest_path || "missing")}
+                onOpen={hermes.worker_manifest_path ? () => props.onOpen("Hermes worker manifest", hermes.worker_manifest_path) : undefined}
+                onCopy={hermes.worker_manifest_path ? () => props.onCopy("Hermes worker manifest", hermes.worker_manifest_path) : undefined}
+              />
+            </div>
+          </article>
+
+          <article className="detail-card ai-lab-panel">
+            <div className="detail-card-title">Token-efficiency audit</div>
+            <div className="class-grid">
+              <div className="class-row"><span>files scanned</span><strong>{props.lab.tokenEfficiency.filesScanned}</strong></div>
+              <div className="class-row"><span>long goal runs</span><strong>{props.lab.tokenEfficiency.longGoalRuns}</strong></div>
+              <div className="class-row"><span>bridge noise</span><strong>{props.lab.tokenEfficiency.bridgeNoiseFiles}</strong></div>
+              <div className="class-row"><span>no reply</span><strong>{props.lab.tokenEfficiency.filesWithNoAssistantReply}</strong></div>
+            </div>
+            <SourceFootnote source={props.lab.tokenEfficiency.source} label="token waste metrics" onOpen={props.onOpen} onCopy={props.onCopy} />
+            <div className="detail-card-title">Token economy artifacts</div>
+            <div className="doc-list">
+              <QuickActionRow
+                label="High-waste capsules"
+                value={compactPath(props.lab.tokenEconomy.highWasteCapsulesPath || "missing")}
+                onOpen={props.lab.tokenEconomy.highWasteCapsulesPath ? () => props.onOpen("high-waste capsules", props.lab.tokenEconomy.highWasteCapsulesPath!) : undefined}
+                onCopy={props.lab.tokenEconomy.highWasteCapsulesPath ? () => props.onCopy("high-waste capsules", props.lab.tokenEconomy.highWasteCapsulesPath!) : undefined}
+              />
+              <QuickActionRow
+                label="Token economy report"
+                value={compactPath(props.lab.tokenEconomy.tokenEconomyReportPath || "missing")}
+                onOpen={props.lab.tokenEconomy.tokenEconomyReportPath ? () => props.onOpen("token economy report", props.lab.tokenEconomy.tokenEconomyReportPath!) : undefined}
+                onCopy={props.lab.tokenEconomy.tokenEconomyReportPath ? () => props.onCopy("token economy report", props.lab.tokenEconomy.tokenEconomyReportPath!) : undefined}
+              />
+              <QuickActionRow
+                label="Context budgets"
+                value={compactPath(props.lab.tokenEconomy.contextBudgetsPath)}
+                onOpen={() => props.onOpen("context budgets", props.lab.tokenEconomy.contextBudgetsPath)}
+                onCopy={() => props.onCopy("context budgets", props.lab.tokenEconomy.contextBudgetsPath)}
+              />
+            </div>
+            <SourceFootnote source={props.lab.tokenEconomy.source} label="token economy artifacts" onOpen={props.onOpen} onCopy={props.onCopy} />
+          </article>
+
+          <article className="detail-card ai-lab-panel">
+            <div className="detail-card-title">OpenClaw reliability classes</div>
+            <div className="class-grid">
+              {orderedClassifications.slice(0, 5).map(([name, count]) => (
+                <div key={name} className="class-row">
+                  <span>{name}</span>
+                  <strong>{count}</strong>
+                </div>
+              ))}
+            </div>
+            <ul className="note-list compact-note-list">
+              {props.lab.openclawReliability.recommendedActions.slice(0, 2).map((action) => (
+                <li key={action}>{action}</li>
+              ))}
+            </ul>
+            <SourceFootnote source={props.lab.openclawReliability.source} label="openclaw reliability" onOpen={props.onOpen} onCopy={props.onCopy} />
+          </article>
+
+          <article className="detail-card ai-lab-panel">
+            <div className="detail-card-title">Commercial readiness</div>
+            <div className="class-grid">
+              <div className="class-row"><span>status</span><strong>{props.commercial.overallStatus}</strong></div>
+              <div className="class-row"><span>host</span><strong>{props.commercial.hostHealth}</strong></div>
+              <div className="class-row"><span>dirty repos</span><strong>{props.commercial.summary.dirtyFocusRepos}</strong></div>
+              <div className="class-row"><span>blockers</span><strong>{props.commercial.summary.highRiskBlockers}</strong></div>
+            </div>
+            <ul className="note-list compact-note-list">
+              {props.commercial.highRiskBlockers.slice(0, 2).map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+              {props.commercial.nextAction ? <li>{props.commercial.nextAction}</li> : null}
+            </ul>
+            <SourceFootnote source={props.commercial.source} label="commercial readiness" onOpen={props.onOpen} onCopy={props.onCopy} />
+          </article>
+
+          <article className="detail-card ai-lab-panel ai-lab-span-full">
+            <div className="detail-card-title">Repo-intel freshness</div>
+            <div className="tool-inventory-grid">
+              {props.lab.repoIntel.targets.map((target) => (
+                <div key={target.repoId} className="repo-intel-row">
+                  <div>
+                    <strong>{target.title}</strong>
+                    <p>{compactPath(target.path)}</p>
+                  </div>
+                  <div className="repo-intel-meta">
+                    <span>dirty {target.dirtyCount}</span>
+                    <span>ahead {target.ahead}</span>
+                    <span>symbols {target.symbolCount}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <SourceFootnote source={props.lab.repoIntel.source} label="repo intel" onOpen={props.onOpen} onCopy={props.onCopy} />
+          </article>
+        </div>
+      </section>
+
+      <section className="ai-lab-section">
+        <div className="ai-lab-section-head">
+          <div>
+            <div className="section-kicker">GPU / RAG / Graph / Codex</div>
+            <h4>Host gate and context pipeline status</h4>
+          </div>
+          <StatusBadge label={`${props.lab.hostHealth} / ${props.lab.localGpuLiveBenchStatus.status}`} tone={props.lab.hostHealth === "ok" && props.lab.localGpuLiveBenchStatus.status === "ok" ? "ok" : "attention"} />
+        </div>
+        <div className="ai-lab-signal-grid">
+          <article className="detail-card ai-lab-panel">
+            <div className="goal-capsule-head">
+              <div className="detail-card-title">Host + GPU gate</div>
+              <StatusBadge label={`${props.lab.hostHealth} / ${props.lab.localGpuLiveBenchStatus.status}`} tone={props.lab.hostHealth === "ok" && props.lab.localGpuLiveBenchStatus.status === "ok" ? "ok" : "attention"} />
+            </div>
+            <div className="class-grid">
+              <div className="class-row"><span>payload host</span><strong>{props.lab.hostHealth}</strong></div>
+              <div className="class-row"><span>sandbox host</span><strong>{props.lab.aiLab.control.sandboxStatus.hostHealth}</strong></div>
+              <div className="class-row"><span>tokens/sec</span><strong>{fmtRatio(props.lab.localGpuLiveBenchStatus.metrics.tokensPerSec)}</strong></div>
+              <div className="class-row"><span>GPU util avg</span><strong>{fmtPercent(props.lab.localGpuLiveBenchStatus.gpuSummary.gpuUtilAvgPct)}</strong></div>
+              <div className="class-row"><span>VRAM avg</span><strong>{fmtInteger(Math.round(props.lab.localGpuLiveBenchStatus.gpuSummary.memUsedAvgMib))} MiB</strong></div>
+              <div className="class-row"><span>offload</span><strong>{props.lab.localGpuLiveBenchStatus.offloadRecommendations.balanced || "missing"}</strong></div>
+            </div>
+            <ul className="note-list compact-note-list">
+              {props.lab.localGpuLiveBenchStatus.processorLine ? <li>{props.lab.localGpuLiveBenchStatus.processorLine}</li> : null}
+              {props.lab.localGpuLiveBenchStatus.gpuSummary.pstates.length ? <li>pstates: {props.lab.localGpuLiveBenchStatus.gpuSummary.pstates.join(" · ")}</li> : null}
+            </ul>
+          </article>
+
+          <article className="detail-card ai-lab-panel">
+            <div className="goal-capsule-head">
+              <div className="detail-card-title">RAG / Graph / Eval</div>
+              <StatusBadge label={props.lab.ragE2eEvalStatus.status} tone={telemetryStatusTone(props.lab.ragE2eEvalStatus.status)} />
+            </div>
+            <div className="class-grid">
+              <div className="class-row"><span>graph</span><strong>{props.lab.knowledgeGraphStatus.status}</strong></div>
+              <div className="class-row"><span>nodes / edges</span><strong>{fmtInteger(props.lab.knowledgeGraphStatus.nodeCount)} / {fmtInteger(props.lab.knowledgeGraphStatus.edgeCount)}</strong></div>
+              <div className="class-row"><span>context pack</span><strong>{props.lab.contextPackStatus.status}</strong></div>
+              <div className="class-row"><span>registry hits</span><strong>{fmtInteger(props.lab.contextPackStatus.sourceRegistryHitCount)}</strong></div>
+              <div className="class-row"><span>hit@1</span><strong>{fmtPercent(props.lab.ragE2eEvalStatus.hitAt1, true)}</strong></div>
+              <div className="class-row"><span>hit@3</span><strong>{fmtPercent(props.lab.ragE2eEvalStatus.hitAt3, true)}</strong></div>
+              <div className="class-row"><span>MRR</span><strong>{fmtRatio(props.lab.ragE2eEvalStatus.mrr)}</strong></div>
+              <div className="class-row"><span>fixtures</span><strong>{fmtInteger(props.lab.ragE2eEvalStatus.fixtureCount)}</strong></div>
+            </div>
+          </article>
+
+          <article className="detail-card ai-lab-panel">
+            <div className="goal-capsule-head">
+              <div className="detail-card-title">Codex context prompt</div>
+              <StatusBadge label={props.lab.codexContextEntrypointStatus.status} tone={telemetryStatusTone(props.lab.codexContextEntrypointStatus.status)} />
+            </div>
+            <div className="class-grid">
+              <div className="class-row"><span>scope</span><strong>{props.lab.codexContextEntrypointStatus.scope || "missing"}</strong></div>
+              <div className="class-row"><span>task hash</span><strong>{compactHash(props.lab.codexContextEntrypointStatus.taskHash, 10)}</strong></div>
+              <div className="class-row"><span>graph matches</span><strong>{fmtInteger(props.lab.codexContextEntrypointStatus.graphMatchCount)}</strong></div>
+              <div className="class-row"><span>source hits</span><strong>{fmtInteger(props.lab.codexContextEntrypointStatus.sourceRegistryHitCount)}</strong></div>
+              <div className="class-row"><span>local model</span><strong>{props.lab.localModelRagEntrypointStatus.model || "missing"}</strong></div>
+              <div className="class-row"><span>mode</span><strong>{props.lab.localModelRagEntrypointStatus.mode || "missing"}</strong></div>
+            </div>
+            <ul className="note-list compact-note-list">
+              <li>Prompt files stay out of the frontend bundle; Atlas only exposes status metadata.</li>
+              <li>{props.lab.localModelRagEntrypointStatus.dryRun ? "Local-model RAG entrypoint is currently dry-run." : "Local-model RAG entrypoint is live-ready."}</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section className="ai-lab-section">
+        <div className="ai-lab-section-head">
+          <div>
+            <div className="section-kicker">Tool Inventory</div>
+            <h4>Installed and missing tool state without launcher execution</h4>
+          </div>
+          <StatusBadge label={`${props.lab.aiLab.scientificTools.missing.length} missing`} tone={props.lab.aiLab.scientificTools.missing.length > 0 ? "attention" : "ok"} />
+        </div>
+        <div className="ai-lab-tool-summary">
+          <article className="detail-card ai-lab-panel">
+            <div className="detail-card-title">Installed</div>
+            <div className="goal-capsule-meta">
+              {props.lab.aiLab.scientificTools.installed.map((tool) => (
+                <span key={tool} className="health-pill">{tool}</span>
+              ))}
+              {props.lab.aiLab.scientificTools.installed.length === 0 ? <span className="health-pill">none</span> : null}
+            </div>
+          </article>
+          <article className="detail-card ai-lab-panel">
+            <div className="detail-card-title">Missing</div>
+            <div className="goal-capsule-meta">
+              {props.lab.aiLab.scientificTools.missing.map((tool) => (
+                <span key={tool} className={`health-pill ${toneClass("attention")}`}>{tool}</span>
+              ))}
+              {props.lab.aiLab.scientificTools.missing.length === 0 ? <span className="health-pill">none</span> : null}
+            </div>
+          </article>
+        </div>
+        <article className="detail-card ai-lab-panel">
           <div className="tool-inventory-grid">
             {props.lab.aiLab.scientificTools.inventory.map((entry) => (
               <div key={entry.id} className="repo-intel-row">
@@ -1514,179 +1859,69 @@ function LocalCodexLabPanel(props: {
             ))}
           </div>
         </article>
-      </div>
+      </section>
 
-      <div className="codex-lab-grid">
-        <article className="detail-card">
-          <div className="detail-card-title">Model routing baseline</div>
-          <div className="class-grid">
-            <div className="class-row"><span>fast</span><strong>{props.lab.modelRouting.fast}</strong></div>
-            <div className="class-row"><span>balanced</span><strong>{props.lab.modelRouting.balanced}</strong></div>
-            <div className="class-row"><span>planning</span><strong>{props.lab.modelRouting.planning}</strong></div>
-            <div className="class-row"><span>embedding</span><strong>{props.lab.modelRouting.embedding}</strong></div>
+      <section className="ai-lab-section">
+        <div className="ai-lab-section-head">
+          <div>
+            <div className="section-kicker">Active Runs</div>
+            <h4>Current tracked runs plus goal and summary context</h4>
           </div>
-          <SourceFootnote source={props.lab.modelRouting.source} label="model routing" onOpen={props.onOpen} onCopy={props.onCopy} />
-        </article>
-
-        <article className="detail-card">
-          <div className="detail-card-title">Retrieval policy</div>
-          <ul className="note-list compact-note-list">
-            {props.lab.retrievalPolicy.priorityOrder.slice(0, 4).map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-          <div className="goal-capsule-meta">
-            <span>denylisted {props.lab.retrievalPolicy.denylistedFiles}</span>
-            <span>{props.lab.retrievalPolicy.denylistedClasses.join(" · ")}</span>
-          </div>
-          <SourceFootnote source={props.lab.retrievalPolicy.source} label="retrieval policy" onOpen={props.onOpen} onCopy={props.onCopy} />
-        </article>
-
-        <article className="detail-card">
-          <div className="detail-card-title">Token-efficiency audit</div>
-          <div className="class-grid">
-            <div className="class-row"><span>files scanned</span><strong>{props.lab.tokenEfficiency.filesScanned}</strong></div>
-            <div className="class-row"><span>long goal runs</span><strong>{props.lab.tokenEfficiency.longGoalRuns}</strong></div>
-            <div className="class-row"><span>bridge noise</span><strong>{props.lab.tokenEfficiency.bridgeNoiseFiles}</strong></div>
-            <div className="class-row"><span>no reply</span><strong>{props.lab.tokenEfficiency.filesWithNoAssistantReply}</strong></div>
-          </div>
-          <SourceFootnote source={props.lab.tokenEfficiency.source} label="token waste metrics" onOpen={props.onOpen} onCopy={props.onCopy} />
-        </article>
-
-        <article className="detail-card">
-          <div className="detail-card-title">Token economy artifacts</div>
-          <div className="doc-list">
-            <QuickActionRow
-              label="High-waste capsules"
-              value={compactPath(props.lab.tokenEconomy.highWasteCapsulesPath || "missing")}
-              onOpen={props.lab.tokenEconomy.highWasteCapsulesPath ? () => props.onOpen("high-waste capsules", props.lab.tokenEconomy.highWasteCapsulesPath!) : undefined}
-              onCopy={props.lab.tokenEconomy.highWasteCapsulesPath ? () => props.onCopy("high-waste capsules", props.lab.tokenEconomy.highWasteCapsulesPath!) : undefined}
-            />
-            <QuickActionRow
-              label="Token economy report"
-              value={compactPath(props.lab.tokenEconomy.tokenEconomyReportPath || "missing")}
-              onOpen={props.lab.tokenEconomy.tokenEconomyReportPath ? () => props.onOpen("token economy report", props.lab.tokenEconomy.tokenEconomyReportPath!) : undefined}
-              onCopy={props.lab.tokenEconomy.tokenEconomyReportPath ? () => props.onCopy("token economy report", props.lab.tokenEconomy.tokenEconomyReportPath!) : undefined}
-            />
-            <QuickActionRow
-              label="Context budgets"
-              value={compactPath(props.lab.tokenEconomy.contextBudgetsPath)}
-              onOpen={() => props.onOpen("context budgets", props.lab.tokenEconomy.contextBudgetsPath)}
-              onCopy={() => props.onCopy("context budgets", props.lab.tokenEconomy.contextBudgetsPath)}
-            />
-          </div>
-          <SourceFootnote source={props.lab.tokenEconomy.source} label="token economy artifacts" onOpen={props.onOpen} onCopy={props.onCopy} />
-        </article>
-
-        <article className="detail-card">
-          <div className="detail-card-title">OpenClaw reliability classes</div>
-          <div className="class-grid">
-            {orderedClassifications.slice(0, 5).map(([name, count]) => (
-              <div key={name} className="class-row">
-                <span>{name}</span>
-                <strong>{count}</strong>
-              </div>
-            ))}
-          </div>
-          <ul className="note-list compact-note-list">
-            {props.lab.openclawReliability.recommendedActions.slice(0, 2).map((action) => (
-              <li key={action}>{action}</li>
-            ))}
-          </ul>
-          <SourceFootnote source={props.lab.openclawReliability.source} label="openclaw reliability" onOpen={props.onOpen} onCopy={props.onCopy} />
-        </article>
-
-        <article className="detail-card">
-          <div className="goal-capsule-head">
-            <div className="detail-card-title">Hermes runtime route</div>
-            <StatusBadge label={hermes.runtime_state || "missing"} tone={hermesRuntimeTone(hermes.runtime_state)} />
-          </div>
-          <div className="class-grid">
-            <div className="class-row"><span>selected runtime</span><strong>{hermes.selected_runtime || "missing"}</strong></div>
-            <div className="class-row"><span>delegation</span><strong>{hermes.delegation_status || "missing"}</strong></div>
-            <div className="class-row"><span>fallback</span><strong>{hermes.fallback_used ? (hermes.fallback_target || "used") : "not used"}</strong></div>
-            <div className="class-row"><span>saved context</span><strong>{fmtInteger(hermes.saved_context_chars_estimated || 0)} ch</strong></div>
-            <div className="class-row"><span>installed</span><strong>{hermes.hermes_installed ? "yes" : "no"}</strong></div>
-            <div className="class-row"><span>mode</span><strong>{hermes.preflight_mode_resolved || "missing"}</strong></div>
-          </div>
-          <ul className="note-list compact-note-list">
-            {hermes.state_reason ? <li>{hermes.state_reason}</li> : null}
-            {hermes.skip_reason ? <li>{hermes.skip_reason}</li> : null}
-            {hermes.failed_roles?.length ? <li>failed roles: {hermes.failed_roles.join(", ")}</li> : null}
-            {hermesModels.length ? <li>planned models: {hermesModels.join(" · ")}</li> : null}
-          </ul>
-          <div className="doc-list">
-            <QuickActionRow
-              label="policy"
-              value={compactPath(hermes.runtime_policy_path || "missing")}
-              onOpen={hermes.runtime_policy_path ? () => props.onOpen("Hermes runtime policy", hermes.runtime_policy_path) : undefined}
-              onCopy={hermes.runtime_policy_path ? () => props.onCopy("Hermes runtime policy", hermes.runtime_policy_path) : undefined}
-            />
-            <QuickActionRow
-              label="manifest"
-              value={compactPath(hermes.worker_manifest_path || "missing")}
-              onOpen={hermes.worker_manifest_path ? () => props.onOpen("Hermes worker manifest", hermes.worker_manifest_path) : undefined}
-              onCopy={hermes.worker_manifest_path ? () => props.onCopy("Hermes worker manifest", hermes.worker_manifest_path) : undefined}
-            />
-          </div>
-        </article>
-
-        <article className="detail-card">
-          <div className="detail-card-title">Commercial Readiness</div>
-          <div className="class-grid">
-            <div className="class-row"><span>status</span><strong>{props.commercial.overallStatus}</strong></div>
-            <div className="class-row"><span>host</span><strong>{props.commercial.hostHealth}</strong></div>
-            <div className="class-row"><span>dirty repos</span><strong>{props.commercial.summary.dirtyFocusRepos}</strong></div>
-            <div className="class-row"><span>blockers</span><strong>{props.commercial.summary.highRiskBlockers}</strong></div>
-          </div>
-          <ul className="note-list compact-note-list">
-            {props.commercial.highRiskBlockers.slice(0, 2).map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-            {props.commercial.nextAction ? <li>{props.commercial.nextAction}</li> : null}
-          </ul>
-          <SourceFootnote source={props.commercial.source} label="commercial readiness" onOpen={props.onOpen} onCopy={props.onCopy} />
-        </article>
-
-        <article className="detail-card">
-          <div className="detail-card-title">Repo-intel freshness</div>
-          <div className="repo-intel-list">
-            {props.lab.repoIntel.targets.map((target) => (
-              <div key={target.repoId} className="repo-intel-row">
-                <div>
-                  <strong>{target.title}</strong>
-                  <p>{compactPath(target.path)}</p>
-                </div>
-                <div className="repo-intel-meta">
-                  <span>dirty {target.dirtyCount}</span>
-                  <span>ahead {target.ahead}</span>
-                  <span>symbols {target.symbolCount}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <SourceFootnote source={props.lab.repoIntel.source} label="repo intel" onOpen={props.onOpen} onCopy={props.onCopy} />
-        </article>
-      </div>
-
-      <div className="detail-grid lab-detail-grid">
-        <div className="detail-card detail-card-wide">
-          <div className="detail-card-title">Active goal capsules</div>
-          <div className="goal-capsule-list">
-            {props.lab.goalCapsules.map((capsule) => (
-              <GoalCapsuleCard key={capsule.goalId} capsule={capsule} onOpen={props.onOpen} onCopy={props.onCopy} />
-            ))}
-          </div>
+          <StatusBadge label={`${aiLabRuns.length} tracked`} tone={aiLabRuns.length > 0 ? "attention" : "unknown"} />
         </div>
-        <div className="detail-card detail-card-wide">
-          <div className="detail-card-title">Run summaries</div>
-          <div className="goal-capsule-list">
-            {props.lab.runSummaries.map((summary) => (
-              <RunSummaryCard key={summary.runId} summary={summary} onOpen={props.onOpen} onCopy={props.onCopy} />
-            ))}
-          </div>
+        <div className="ai-lab-run-grid">
+          <article className="detail-card ai-lab-panel ai-lab-span-full">
+            <div className="repo-intel-list">
+              {aiLabRuns.length > 0 ? aiLabRuns.map((run) => (
+                <div key={run.runId} className="repo-intel-row">
+                  <div>
+                    <strong>{run.repoId || "unknown repo"}</strong>
+                    <p>{compactObjective(run.taskText || run.taskType || run.runId, 120)}</p>
+                  </div>
+                  <div className="repo-intel-meta">
+                    <span className={`health-pill ${toneClass(aiLabRunTone(run.status, run.failedChecks.length))}`}>{run.status}</span>
+                    <span>{run.contextBudget || "missing budget"}</span>
+                    <span>{run.delegationStatus || (run.dryRun ? "dry-run" : "manual")}</span>
+                  </div>
+                </div>
+              )) : <div className="empty-inline">no active runs reported</div>}
+            </div>
+          </article>
+          <article className="detail-card ai-lab-panel">
+            <div className="detail-card-title">Latest run reports</div>
+            <div className="repo-intel-list">
+              {latestRunReports.length > 0 ? latestRunReports.slice(0, 4).map((run) => (
+                <div key={run.runId} className="repo-intel-row">
+                  <div>
+                    <strong>{run.repoId || "unknown repo"}</strong>
+                    <p>{compactObjective(run.taskText || run.taskType || run.runId, 96)}</p>
+                  </div>
+                  <div className="repo-intel-meta">
+                    <span className={`health-pill ${toneClass(aiLabRunTone(run.status, run.failedChecks.length))}`}>{run.status}</span>
+                    <span>{run.failedChecks.length} checks</span>
+                  </div>
+                </div>
+              )) : <div className="empty-inline">no latest run reports exported</div>}
+            </div>
+          </article>
+          <article className="detail-card ai-lab-panel">
+            <div className="detail-card-title">Active goal capsules</div>
+            <div className="goal-capsule-list">
+              {props.lab.goalCapsules.map((capsule) => (
+                <GoalCapsuleCard key={capsule.goalId} capsule={capsule} onOpen={props.onOpen} onCopy={props.onCopy} />
+              ))}
+            </div>
+          </article>
+          <article className="detail-card ai-lab-panel ai-lab-span-full">
+            <div className="detail-card-title">Run summaries</div>
+            <div className="goal-capsule-list">
+              {props.lab.runSummaries.map((summary) => (
+                <RunSummaryCard key={summary.runId} summary={summary} onOpen={props.onOpen} onCopy={props.onCopy} />
+              ))}
+            </div>
+          </article>
         </div>
-      </div>
+      </section>
     </section>
   );
 }

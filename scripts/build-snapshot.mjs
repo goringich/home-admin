@@ -10,7 +10,8 @@ const overridesPath = path.join(rootDir, "data", "project-overrides.json");
 const outputPath = path.join(rootDir, "public", "snapshot.json");
 const canonicalLocalCodexRuntime = path.join(home, "__home_organized", "runtime", "local-codex-stack");
 const legacyLocalCodexRuntime = path.join(home, "__home_organized", "local-codex-stack", "runtime", "local-codex-stack");
-const localCodexAtlasPath = path.join(home, "__home_organized", "local-codex-stack", "atlas", "local-codex-lab.json");
+const canonicalLocalCodexAtlasPath = path.join(canonicalLocalCodexRuntime, "atlas", "local-codex-lab.json");
+const legacyLocalCodexAtlasPath = path.join(home, "__home_organized", "local-codex-stack", "atlas", "local-codex-lab.json");
 const localAiStatePath = path.join(home, "__home_organized", "runtime", "local-ai-control", "state.json");
 const agentHealthStatePath = path.join(home, "__home_organized", "runtime", "agent-health-gate", "state.json");
 const hostAuditOutputPath = path.join(canonicalLocalCodexRuntime, "host-audit-latest.json");
@@ -150,6 +151,34 @@ function goalStatusRank(status) {
   if (status === "blocked") return 2;
   if (status === "derived") return 3;
   return 4;
+}
+
+function toNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function mapAiLabRun(entry = {}) {
+  return {
+    runId: entry.run_id || "",
+    status: entry.status || "unknown",
+    dryRun: Boolean(entry.dry_run),
+    repoId: entry.repo_id || "",
+    taskType: entry.task_type || "",
+    taskText: entry.task_text || "",
+    contextBudget: entry.context_budget || "",
+    selectedAgent: entry.selected_agent || "",
+    sandboxBackend: entry.sandbox_backend || "",
+    generatedAt: entry.generated_at || "",
+    runReportPath: entry.run_report_path || "",
+    failedChecks: entry.failed_checks || [],
+    overBudget: Boolean(entry.over_budget),
+    delegationStatus: entry.delegation_status || "",
+    fallbackUsed: Boolean(entry.fallback_used),
+    savedContextCharsEstimated: toNumber(entry.saved_context_chars_estimated || 0),
+    plannedWorkerModels: entry.planned_worker_models || {},
+    nextBestAction: entry.next_best_action || "",
+  };
 }
 
 function parseInventory(markdown) {
@@ -453,7 +482,7 @@ function summarizeRepo(repoEntry) {
 }
 
 function buildLocalCodexLab() {
-  const lab = readJsonFirst([localCodexAtlasPath], {});
+  const lab = readJsonFirst([canonicalLocalCodexAtlasPath, legacyLocalCodexAtlasPath], {});
   const researchSummary = readJsonFirst(
     [
       path.join(canonicalLocalCodexRuntime, "research", "research-summary.json"),
@@ -576,15 +605,15 @@ function buildLocalCodexLab() {
       source: statMeta(retrievalPolicy.path, retrievalPolicy.payload?.generated_at || ""),
     },
     tokenEfficiency: {
-      filesScanned: Number(tokenWaste.payload?.number_of_codex_conversation_files_scanned || 0),
-      longGoalRuns: Number(tokenWaste.payload?.number_of_long_goal_runs || 0),
-      bridgeNoiseFiles: Number(tokenWaste.payload?.number_of_bridge_smoke_no_answer_files || 0),
-      repeatedHealthGateCount: Number(tokenWaste.payload?.repeated_health_gate_count || 0),
-      filesWithNoAssistantReply: Number(tokenWaste.payload?.files_with_no_assistant_reply || 0),
+      filesScanned: toNumber(tokenWaste.payload?.number_of_codex_conversation_files_scanned || 0),
+      longGoalRuns: toNumber(tokenWaste.payload?.number_of_long_goal_runs || 0),
+      bridgeNoiseFiles: toNumber(tokenWaste.payload?.number_of_bridge_smoke_no_answer_files || 0),
+      repeatedHealthGateCount: toNumber(tokenWaste.payload?.repeated_health_gate_count || 0),
+      filesWithNoAssistantReply: toNumber(tokenWaste.payload?.files_with_no_assistant_reply || 0),
       source: statMeta(tokenWaste.path, tokenWaste.payload?.generated_at || ""),
     },
     openclawReliability: {
-      warningCount: Number(openclawReliability.payload?.summary?.warning_count || 0),
+      warningCount: toNumber(openclawReliability.payload?.summary?.warning_count || 0),
       status: openclawReliability.payload?.summary?.status || "unknown",
       classifications: openclawReliability.payload?.summary?.classifications || {},
       recommendedActions: openclawReliability.payload?.recommended_actions || [],
@@ -594,24 +623,24 @@ function buildLocalCodexLab() {
       ),
     },
     repoIntel: {
-      targetCount: Number(repoIntel.payload?.target_count || 0),
+      targetCount: toNumber(repoIntel.payload?.target_count || 0),
       safeTargets: repoIntel.payload?.safe_targets || [],
       targets: (repoIntel.payload?.targets || []).map((entry) => ({
         repoId: entry.repo_id,
         title: entry.title,
         path: entry.path,
-        dirtyCount: Number(entry.git?.dirty_count || 0),
-        ahead: Number(entry.git?.ahead || 0),
-        symbolCount: Number(entry.symbol_count || 0),
-        testCount: Number(entry.test_count || 0),
-        dependencyManifestCount: Number(entry.dependency_manifest_count || 0),
+        dirtyCount: toNumber(entry.git?.dirty_count || 0),
+        ahead: toNumber(entry.git?.ahead || 0),
+        symbolCount: toNumber(entry.symbol_count || 0),
+        testCount: toNumber(entry.test_count || 0),
+        dependencyManifestCount: toNumber(entry.dependency_manifest_count || 0),
         source: statMeta(path.join(entry.canonical_dir || "", "repo-summary.json"), entry.generated_at || ""),
       })),
       source: statMeta(repoIntel.path, repoIntel.payload?.generated_at || ""),
     },
     research: {
-      runCount: Number(researchSummary.payload?.research_run_count || 0),
-      sourceCardCount: Number(researchSummary.payload?.source_card_count || 0),
+      runCount: toNumber(researchSummary.payload?.research_run_count || 0),
+      sourceCardCount: toNumber(researchSummary.payload?.source_card_count || 0),
       providers: researchSummary.payload?.providers || [],
       sourceDomains: researchSummary.payload?.source_domains || [],
       latestRun: researchSummary.payload?.latest_run || {},
@@ -621,7 +650,7 @@ function buildLocalCodexLab() {
     },
     memory: {
       workspaceFocus: workspaceMemory.payload?.workspace_focus || "",
-      activeGoalCount: Number(workspaceMemory.payload?.active_goal_count || 0),
+      activeGoalCount: toNumber(workspaceMemory.payload?.active_goal_count || 0),
       activeGoalIds: workspaceMemory.payload?.active_goal_ids || [],
       latestRunId: workspaceMemory.payload?.latest_run_id || "",
       latestTask: workspaceMemory.payload?.latest_task || "",
@@ -642,14 +671,112 @@ function buildLocalCodexLab() {
     failureAwareObservability: {
       hostHealth: lab.payload?.failure_aware_observability?.host_health || "unknown",
       safeMode: lab.payload?.failure_aware_observability?.safe_mode || "unknown",
-      openclawWarningCount: Number(lab.payload?.failure_aware_observability?.openclaw_warning_count || 0),
+      openclawWarningCount: toNumber(lab.payload?.failure_aware_observability?.openclaw_warning_count || 0),
       latestRunFailures: lab.payload?.failure_aware_observability?.latest_run_failures || [],
       sourcePaths: lab.payload?.failure_aware_observability?.source_paths || {},
       source: statMeta(lab.path, lab.payload?.generated_at || ""),
     },
-    activeRuns: lab.payload?.active_runs || [],
-    latestRunReports: lab.payload?.latest_run_reports || [],
+    activeRuns: (lab.payload?.active_runs || []).map((entry) => mapAiLabRun(entry)),
+    latestRunReports: (lab.payload?.latest_run_reports || []).map((entry) => mapAiLabRun(entry)),
     evalStatus: lab.payload?.eval_status || { status: "missing" },
+    knowledgeGraphStatus: {
+      status: lab.payload?.knowledge_graph_status?.status || "missing",
+      scope: lab.payload?.knowledge_graph_status?.scope || "",
+      generatedAt: lab.payload?.knowledge_graph_status?.generated_at || "",
+      nodeCount: toNumber(lab.payload?.knowledge_graph_status?.node_count || 0),
+      edgeCount: toNumber(lab.payload?.knowledge_graph_status?.edge_count || 0),
+      durationMs: toNumber(lab.payload?.knowledge_graph_status?.duration_ms || 0),
+      sanitized: Boolean(lab.payload?.knowledge_graph_status?.sanitized),
+    },
+    contextPackStatus: {
+      status: lab.payload?.context_pack_status?.status || "missing",
+      generatedAt: lab.payload?.context_pack_status?.generated_at || "",
+      scope: lab.payload?.context_pack_status?.scope || "",
+      agent: lab.payload?.context_pack_status?.agent || "",
+      taskHash: lab.payload?.context_pack_status?.task_hash || "",
+      contextBudget: lab.payload?.context_pack_status?.context_budget || "",
+      hybridStatus: lab.payload?.context_pack_status?.hybrid_status || "",
+      hybridMatchCount: toNumber(lab.payload?.context_pack_status?.hybrid_match_count || 0),
+      repoIntelStatus: lab.payload?.context_pack_status?.repo_intel_status || "",
+      repoCandidateCount: toNumber(lab.payload?.context_pack_status?.repo_candidate_count || 0),
+      goalCount: toNumber(lab.payload?.context_pack_status?.goal_count || 0),
+      runSummaryCount: toNumber(lab.payload?.context_pack_status?.run_summary_count || 0),
+      verificationCommandCount: toNumber(lab.payload?.context_pack_status?.verification_command_count || 0),
+      sourceRegistryHitCount: toNumber(lab.payload?.context_pack_status?.source_registry_hit_count || 0),
+      sanitized: Boolean(lab.payload?.context_pack_status?.sanitized),
+    },
+    ragE2eEvalStatus: {
+      status: lab.payload?.rag_e2e_eval_status?.status || "missing",
+      scope: lab.payload?.rag_e2e_eval_status?.scope || "",
+      limit: toNumber(lab.payload?.rag_e2e_eval_status?.limit || 0),
+      budget: lab.payload?.rag_e2e_eval_status?.budget || "",
+      fixtureCount: toNumber(lab.payload?.rag_e2e_eval_status?.metrics?.fixture_count || 0),
+      hitAt1: toNumber(lab.payload?.rag_e2e_eval_status?.metrics?.hit_at_1 || 0),
+      hitAt3: toNumber(lab.payload?.rag_e2e_eval_status?.metrics?.hit_at_3 || 0),
+      mrr: toNumber(lab.payload?.rag_e2e_eval_status?.metrics?.mrr || 0),
+      sanitized: Boolean(lab.payload?.rag_e2e_eval_status?.sanitized),
+    },
+    localModelRagEntrypointStatus: {
+      status: lab.payload?.local_model_rag_entrypoint_status?.status || "missing",
+      generatedAt: lab.payload?.local_model_rag_entrypoint_status?.generated_at || "",
+      taskHash: lab.payload?.local_model_rag_entrypoint_status?.task_hash || "",
+      scope: lab.payload?.local_model_rag_entrypoint_status?.scope || "",
+      model: lab.payload?.local_model_rag_entrypoint_status?.model || "",
+      mode: lab.payload?.local_model_rag_entrypoint_status?.mode || "",
+      graphMatchCount: toNumber(lab.payload?.local_model_rag_entrypoint_status?.graph_match_count || 0),
+      sourceRegistryHitCount: toNumber(lab.payload?.local_model_rag_entrypoint_status?.source_registry_hit_count || 0),
+      dryRun: Boolean(lab.payload?.local_model_rag_entrypoint_status?.dry_run),
+      sanitized: Boolean(lab.payload?.local_model_rag_entrypoint_status?.sanitized),
+    },
+    codexContextEntrypointStatus: {
+      status: lab.payload?.codex_context_entrypoint_status?.status || "missing",
+      generatedAt: lab.payload?.codex_context_entrypoint_status?.generated_at || "",
+      scope: lab.payload?.codex_context_entrypoint_status?.scope || "",
+      taskHash: lab.payload?.codex_context_entrypoint_status?.task_hash || "",
+      sourceRegistryHitCount: toNumber(lab.payload?.codex_context_entrypoint_status?.source_registry_hit_count || 0),
+      graphMatchCount: toNumber(lab.payload?.codex_context_entrypoint_status?.graph_match_count || 0),
+      sanitized: Boolean(lab.payload?.codex_context_entrypoint_status?.sanitized),
+    },
+    localGpuLiveBenchStatus: {
+      status: lab.payload?.local_gpu_live_bench_status?.status || "missing",
+      generatedAt: lab.payload?.local_gpu_live_bench_status?.generated_at || "",
+      model: lab.payload?.local_gpu_live_bench_status?.model || "",
+      numCtx: toNumber(lab.payload?.local_gpu_live_bench_status?.num_ctx || 0),
+      numPredict: toNumber(lab.payload?.local_gpu_live_bench_status?.num_predict || 0),
+      processorLine: lab.payload?.local_gpu_live_bench_status?.processor_line || "",
+      metrics: {
+        status: lab.payload?.local_gpu_live_bench_status?.metrics?.status || "missing",
+        elapsedSec: toNumber(lab.payload?.local_gpu_live_bench_status?.metrics?.elapsed_sec || 0),
+        promptEvalCount: toNumber(lab.payload?.local_gpu_live_bench_status?.metrics?.prompt_eval_count || 0),
+        promptEvalSec: toNumber(lab.payload?.local_gpu_live_bench_status?.metrics?.prompt_eval_sec || 0),
+        evalCount: toNumber(lab.payload?.local_gpu_live_bench_status?.metrics?.eval_count || 0),
+        evalSec: toNumber(lab.payload?.local_gpu_live_bench_status?.metrics?.eval_sec || 0),
+        tokensPerSec: toNumber(lab.payload?.local_gpu_live_bench_status?.metrics?.tokens_per_sec || 0),
+      },
+      gpuSummary: {
+        status: lab.payload?.local_gpu_live_bench_status?.gpu_summary?.status || "missing",
+        sampleCount: toNumber(lab.payload?.local_gpu_live_bench_status?.gpu_summary?.sample_count || 0),
+        gpuUtilAvgPct: toNumber(lab.payload?.local_gpu_live_bench_status?.gpu_summary?.gpu_util_avg_pct || 0),
+        gpuUtilMaxPct: toNumber(lab.payload?.local_gpu_live_bench_status?.gpu_summary?.gpu_util_max_pct || 0),
+        memUtilAvgPct: toNumber(lab.payload?.local_gpu_live_bench_status?.gpu_summary?.mem_util_avg_pct || 0),
+        memUtilMaxPct: toNumber(lab.payload?.local_gpu_live_bench_status?.gpu_summary?.mem_util_max_pct || 0),
+        memUsedAvgMib: toNumber(lab.payload?.local_gpu_live_bench_status?.gpu_summary?.mem_used_avg_mib || 0),
+        memUsedMaxMib: toNumber(lab.payload?.local_gpu_live_bench_status?.gpu_summary?.mem_used_max_mib || 0),
+        powerAvgW: toNumber(lab.payload?.local_gpu_live_bench_status?.gpu_summary?.power_avg_w || 0),
+        powerMaxW: toNumber(lab.payload?.local_gpu_live_bench_status?.gpu_summary?.power_max_w || 0),
+        tempMaxC: toNumber(lab.payload?.local_gpu_live_bench_status?.gpu_summary?.temp_max_c || 0),
+        pstates: lab.payload?.local_gpu_live_bench_status?.gpu_summary?.pstates || [],
+      },
+      offloadRecommendations: {
+        status: lab.payload?.local_gpu_offload_bench_status?.status || "missing",
+        fast: lab.payload?.local_gpu_offload_bench_status?.recommendations?.fast || "",
+        balanced: lab.payload?.local_gpu_offload_bench_status?.recommendations?.balanced || "",
+        heavy: lab.payload?.local_gpu_offload_bench_status?.recommendations?.heavy || "",
+        rankedCount: toNumber(lab.payload?.local_gpu_offload_bench_status?.recommendations?.ranked?.length || 0),
+        sanitized: Boolean(lab.payload?.local_gpu_offload_bench_status?.sanitized),
+      },
+      sanitized: Boolean(lab.payload?.local_gpu_live_bench_status?.sanitized),
+    },
     latestHermes: {
       status: lab.payload?.latest_hermes?.status || "missing",
       runtime_state: lab.payload?.latest_hermes?.runtime_state || "missing",
@@ -708,13 +835,13 @@ function buildLocalCodexLab() {
           rawConversationMirrorsAllowed: Boolean(aiLab.control?.sandbox_status?.raw_conversation_mirrors_allowed),
           hostHealth: aiLab.control?.sandbox_status?.host_health || "unknown",
         },
-        activeRuns: aiLab.control?.active_runs || [],
-        latestRunReports: aiLab.control?.latest_run_reports || [],
+        activeRuns: (aiLab.control?.active_runs || []).map((entry) => mapAiLabRun(entry)),
+        latestRunReports: (aiLab.control?.latest_run_reports || []).map((entry) => mapAiLabRun(entry)),
         tokenWasteMarkers: {
-          filesScanned: Number(aiLab.control?.token_waste_markers?.files_scanned || 0),
-          repeatedHealthGateCount: Number(aiLab.control?.token_waste_markers?.repeated_health_gate_count || 0),
-          bridgeNoiseFiles: Number(aiLab.control?.token_waste_markers?.bridge_noise_files || 0),
-          filesWithNoAssistantReply: Number(aiLab.control?.token_waste_markers?.files_with_no_assistant_reply || 0),
+          filesScanned: toNumber(aiLab.control?.token_waste_markers?.files_scanned || 0),
+          repeatedHealthGateCount: toNumber(aiLab.control?.token_waste_markers?.repeated_health_gate_count || 0),
+          bridgeNoiseFiles: toNumber(aiLab.control?.token_waste_markers?.bridge_noise_files || 0),
+          filesWithNoAssistantReply: toNumber(aiLab.control?.token_waste_markers?.files_with_no_assistant_reply || 0),
           highWasteCapsulesPath: aiLab.control?.token_waste_markers?.high_waste_capsules_path || "",
         },
         goalCapsules: (aiLab.control?.goal_capsules || []).map((entry) => ({

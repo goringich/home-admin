@@ -45,6 +45,19 @@ function loadSnapshotData() {
   return JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
 }
 
+function buildAiLabApiData(snapshot) {
+  return {
+    hostHealth: snapshot.localCodexLab?.hostHealth || "unknown",
+    aiLab: snapshot.localCodexLab?.aiLab ?? null,
+    knowledgeGraphStatus: snapshot.localCodexLab?.knowledgeGraphStatus ?? null,
+    contextPackStatus: snapshot.localCodexLab?.contextPackStatus ?? null,
+    ragE2eEvalStatus: snapshot.localCodexLab?.ragE2eEvalStatus ?? null,
+    localModelRagEntrypointStatus: snapshot.localCodexLab?.localModelRagEntrypointStatus ?? null,
+    codexContextEntrypointStatus: snapshot.localCodexLab?.codexContextEntrypointStatus ?? null,
+    localGpuLiveBenchStatus: snapshot.localCodexLab?.localGpuLiveBenchStatus ?? null,
+  };
+}
+
 const SAFE_OPEN_PREFIXES = ["/home/goringich/", "/usr/share/applications/", "/usr/bin/"];
 const CODEX_TASK_KEYWORDS = [
   "atlas",
@@ -332,7 +345,7 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/api/ai-lab") {
     try {
       const snapshot = loadSnapshotData();
-      sendJson(res, 200, { ok: true, data: snapshot.localCodexLab?.aiLab ?? null });
+      sendJson(res, 200, { ok: true, data: buildAiLabApiData(snapshot) });
     } catch (error) {
       send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
     }
@@ -342,7 +355,20 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/api/ai-lab/tool-inventory") {
     try {
       const snapshot = loadSnapshotData();
-      sendJson(res, 200, { ok: true, data: snapshot.localCodexLab?.aiLab?.scientificTools ?? null });
+      const scientificTools = snapshot.localCodexLab?.aiLab?.scientificTools ?? null;
+      sendJson(res, 200, {
+        ok: true,
+        data: scientificTools
+          ? {
+              generatedAt: scientificTools.generatedAt,
+              inventory: scientificTools.inventory,
+              installed: scientificTools.installed,
+              missing: scientificTools.missing,
+              launchers: scientificTools.launchers,
+              allowlistedLauncherIds: snapshot.localCodexLab?.aiLab?.prepareFlow?.launcherIds ?? [],
+            }
+          : null,
+      });
     } catch (error) {
       send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
     }
@@ -452,8 +478,17 @@ const server = http.createServer((req, res) => {
         if (!launcher || launcher.status === "missing" || !launcher.target) {
           throw new Error("launcher is not available");
         }
-        const target = openTarget(launcher.target);
-        sendJson(res, 200, { ok: true, launcherId, target });
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            launcherId: launcher.id,
+            label: launcher.label,
+            kind: launcher.kind,
+            status: launcher.status,
+            target: launcher.target,
+            execution: "disabled_metadata_only",
+          },
+        });
       } catch (error) {
         send(res, 400, `${error instanceof Error ? error.message : String(error)}\n`);
       }

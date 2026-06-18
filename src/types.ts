@@ -226,6 +226,131 @@ export interface AiLabLauncher {
   target: string;
 }
 
+export interface AiLabRunEntry {
+  runId: string;
+  status: string;
+  dryRun: boolean;
+  repoId: string;
+  taskType: string;
+  taskText: string;
+  contextBudget: string;
+  selectedAgent: string;
+  sandboxBackend: string;
+  generatedAt: string;
+  runReportPath: string;
+  failedChecks: string[];
+  overBudget: boolean;
+  delegationStatus: string;
+  fallbackUsed: boolean;
+  savedContextCharsEstimated: number;
+  plannedWorkerModels: Record<string, string>;
+  nextBestAction: string;
+}
+
+export interface ContextPackStatus {
+  status: string;
+  generatedAt: string;
+  scope: string;
+  agent: string;
+  taskHash: string;
+  contextBudget: string;
+  hybridStatus: string;
+  hybridMatchCount: number;
+  repoIntelStatus: string;
+  repoCandidateCount: number;
+  goalCount: number;
+  runSummaryCount: number;
+  verificationCommandCount: number;
+  sourceRegistryHitCount: number;
+  sanitized: boolean;
+}
+
+export interface KnowledgeGraphStatus {
+  status: string;
+  scope: string;
+  generatedAt: string;
+  nodeCount: number;
+  edgeCount: number;
+  durationMs: number;
+  sanitized: boolean;
+}
+
+export interface RagE2eEvalStatus {
+  status: string;
+  scope: string;
+  limit: number;
+  budget: string;
+  fixtureCount: number;
+  hitAt1: number;
+  hitAt3: number;
+  mrr: number;
+  sanitized: boolean;
+}
+
+export interface LocalModelRagEntrypointStatus {
+  status: string;
+  generatedAt: string;
+  taskHash: string;
+  scope: string;
+  model: string;
+  mode: string;
+  graphMatchCount: number;
+  sourceRegistryHitCount: number;
+  dryRun: boolean;
+  sanitized: boolean;
+}
+
+export interface CodexContextEntrypointStatus {
+  status: string;
+  generatedAt: string;
+  scope: string;
+  taskHash: string;
+  sourceRegistryHitCount: number;
+  graphMatchCount: number;
+  sanitized: boolean;
+}
+
+export interface LocalGpuLiveBenchStatus {
+  status: string;
+  generatedAt: string;
+  model: string;
+  numCtx: number;
+  numPredict: number;
+  processorLine: string;
+  metrics: {
+    status: string;
+    elapsedSec: number;
+    promptEvalCount: number;
+    promptEvalSec: number;
+    evalCount: number;
+    evalSec: number;
+    tokensPerSec: number;
+  };
+  gpuSummary: {
+    status: string;
+    sampleCount: number;
+    gpuUtilAvgPct: number;
+    gpuUtilMaxPct: number;
+    memUtilAvgPct: number;
+    memUtilMaxPct: number;
+    memUsedAvgMib: number;
+    memUsedMaxMib: number;
+    powerAvgW: number;
+    powerMaxW: number;
+    tempMaxC: number;
+    pstates: string[];
+  };
+  offloadRecommendations: {
+    status: string;
+    fast: string;
+    balanced: string;
+    heavy: string;
+    rankedCount: number;
+    sanitized: boolean;
+  };
+  sanitized: boolean;
+}
+
 export interface AiLabPrepareResponse {
   task: string;
   proposedBudget: string;
@@ -282,8 +407,8 @@ export interface AiLab {
       rawConversationMirrorsAllowed: boolean;
       hostHealth: string;
     };
-    activeRuns: Array<Record<string, unknown>>;
-    latestRunReports: Array<Record<string, unknown>>;
+    activeRuns: AiLabRunEntry[];
+    latestRunReports: AiLabRunEntry[];
     tokenWasteMarkers: {
       filesScanned: number;
       repeatedHealthGateCount: number;
@@ -407,36 +532,14 @@ export interface LocalCodexLab {
     sourcePaths: Record<string, string>;
     source: SourceMeta;
   };
-  activeRuns: Array<{
-    run_id: string;
-    status: string;
-    dry_run: boolean;
-    repo_id: string;
-    task_type: string;
-    task_text: string;
-    context_budget: string;
-    selected_agent: string;
-    generated_at: string;
-    run_report_path: string;
-    context_pack_path: string;
-    failed_checks: string[];
-    next_best_action: string;
-  }>;
-  latestRunReports: Array<{
-    run_id: string;
-    status: string;
-    dry_run: boolean;
-    repo_id: string;
-    task_type: string;
-    task_text: string;
-    context_budget: string;
-    selected_agent: string;
-    generated_at: string;
-    run_report_path: string;
-    context_pack_path: string;
-    failed_checks: string[];
-    next_best_action: string;
-  }>;
+  activeRuns: AiLabRunEntry[];
+  latestRunReports: AiLabRunEntry[];
+  knowledgeGraphStatus: KnowledgeGraphStatus;
+  contextPackStatus: ContextPackStatus;
+  ragE2eEvalStatus: RagE2eEvalStatus;
+  localModelRagEntrypointStatus: LocalModelRagEntrypointStatus;
+  codexContextEntrypointStatus: CodexContextEntrypointStatus;
+  localGpuLiveBenchStatus: LocalGpuLiveBenchStatus;
   evalStatus: {
     status: string;
     matched_spec_ids?: string[];

@@ -32,6 +32,9 @@ npm run dev
 - `scripts/build-snapshot.mjs` — генератор `public/snapshot.json`
 - `scripts/atlas-host.mjs` — local host с read-only API endpoints:
   - `/api/local-codex-lab`
+  - `/api/ai-lab`
+  - `/api/ai-lab/tool-inventory`
+  - `/api/ai-lab/prepare`
   - `/api/goal-capsules`
   - `/api/token-efficiency`
   - `/api/openclaw-reliability`
