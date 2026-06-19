@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "generated_on": "2026-06-20",
+  "codex_control_lab": [
+    {
+      "id": "research-registry",
+      "label": "Research Registry",
+      "status": "available",
+      "summary": "Deterministic README-derived AI/ML source registry; no automatic clone or install.",
+      "path": "/home/goringich/__home_organized/local-ai-research/source-registries"
+    },
+    {
+      "id": "mcp-gateways",
+      "label": "MCP Gateways",
+      "status": "disabled",
+      "summary": "DevSpace-compatible bridge design with narrow roots, modes, review, and redaction.",
+      "path": "/home/goringich/__home_organized/local-codex-stack/mcp-gateways"
+    },
+    {
+      "id": "secret-firewall",
+      "label": "Secret Firewall",
+      "status": "available",
+      "summary": "Fail-closed audit for unsafe roots, secret-like paths, wildcard hosts, logging, and tunnels.",
+      "path": "/home/goringich/__home_organized/scripts/audit_mcp_gateway_config.py"
+    },
+    {
+      "id": "codex-handoffs",
+      "label": "Codex Handoffs",
+      "status": "staged",
+      "summary": "Runtime-only reviewed task manifests; no authentication-file access required.",
+      "path": "/home/goringich/__home_organized/runtime/codex-handoffs"
+    }
+  ],
+  "scientific_visual_lab": [
+    {
+      "id": "visual-lab",
+      "label": "Visual Lab",
+      "status": "available",
+      "summary": "Schemas and policies for visual assets, spritesheets, scenes, experiments, and photo-to-3D.",
+      "path": "/home/goringich/__home_organized/runtime/visual-lab",
+      "primary_target": "/home/goringich/__home_organized/runtime/visual-lab/README.md",
+      "installed_tools": [],
+      "missing_tools": [],
+      "actions": []
+    }
+  ]
+}

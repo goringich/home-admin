@@ -18,6 +18,7 @@ const hostAuditOutputPath = path.join(canonicalLocalCodexRuntime, "host-audit-la
 const aiTelemetryExportPath = path.join(home, "__home_organized", "runtime", "ai-telemetry", "exports", "atlas.json");
 const commercialReadinessPath = path.join(canonicalLocalCodexRuntime, "commercial-readiness.json");
 const productIntelPath = path.join(canonicalLocalCodexRuntime, "product-intel.json");
+const aiLabRegistryPath = path.join(rootDir, "data", "ai-lab-registry.json");
 
 const overrides = JSON.parse(fs.readFileSync(overridesPath, "utf8"));
 
@@ -483,6 +484,7 @@ function summarizeRepo(repoEntry) {
 
 function buildLocalCodexLab() {
   const lab = readJsonFirst([canonicalLocalCodexAtlasPath, legacyLocalCodexAtlasPath], {});
+  const aiLabRegistry = readJsonFirst([aiLabRegistryPath], {});
   const researchSummary = readJsonFirst(
     [
       path.join(canonicalLocalCodexRuntime, "research", "research-summary.json"),
@@ -586,6 +588,14 @@ function buildLocalCodexLab() {
       source: runSummarySource,
     }));
   const aiLab = lab.payload?.ai_lab || {};
+  const codexControlLabCards = [
+    ...(aiLab.groups?.codex_control_lab || []),
+    ...(aiLabRegistry.payload?.codex_control_lab || []),
+  ].filter((entry, index, entries) => entries.findIndex((candidate) => candidate.id === entry.id) === index);
+  const scientificVisualLabCards = [
+    ...(aiLab.groups?.scientific_visual_lab || []),
+    ...(aiLabRegistry.payload?.scientific_visual_lab || []),
+  ].filter((entry, index, entries) => entries.findIndex((candidate) => candidate.id === entry.id) === index);
 
   return {
     generatedAt: lab.payload?.generated_at || new Date().toISOString(),
@@ -855,14 +865,14 @@ function buildLocalCodexLab() {
         nextBestAction: aiLab.control?.next_best_action || "",
       },
       groups: {
-        codexControlLab: (aiLab.groups?.codex_control_lab || []).map((entry) => ({
+        codexControlLab: codexControlLabCards.map((entry) => ({
           id: entry.id || "",
           label: entry.label || "",
           status: entry.status || "missing",
           summary: entry.summary || "",
           path: entry.path || "",
         })),
-        scientificVisualLab: (aiLab.groups?.scientific_visual_lab || []).map((entry) => ({
+        scientificVisualLab: scientificVisualLabCards.map((entry) => ({
           id: entry.id || "",
           label: entry.label || "",
           status: entry.status || "missing",
