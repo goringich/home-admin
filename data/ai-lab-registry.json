@@ -27,7 +27,7 @@
       "id": "credential-remediation",
       "label": "Credential Remediation",
       "status": "source_and_runtime_clean",
-      "summary": "49 fingerprints remediated; source and strict-runtime scans pass; manual credential rotation remains required.",
+      "summary": "108 distinct fingerprints remediated across bounded source/runtime/artifact roots; 49 source fingerprints require manual rotation review.",
       "path": "/home/goringich/__home_organized/local-codex-stack/reports/credential-remediation-report.md"
     },
     {
