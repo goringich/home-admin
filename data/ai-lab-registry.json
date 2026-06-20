@@ -12,16 +12,51 @@
     {
       "id": "mcp-gateways",
       "label": "MCP Gateways",
-      "status": "disabled",
-      "summary": "DevSpace-compatible bridge design with narrow roots, modes, review, and redaction.",
-      "path": "/home/goringich/__home_organized/local-codex-stack/mcp-gateways"
+      "status": "local_tested",
+      "summary": "Read-only redacted MCP gateway tested on 127.0.0.1:18765; public tunnel remains blocked.",
+      "path": "/home/goringich/__home_organized/local-codex-stack/mcp-gateways/chatgpt-readonly-bridge"
     },
     {
       "id": "secret-firewall",
       "label": "Secret Firewall",
-      "status": "available",
-      "summary": "Fail-closed audit for unsafe roots, secret-like paths, wildcard hosts, logging, and tunnels.",
+      "status": "pass",
+      "summary": "Fail-closed root/path audit passes for the read_only_redacted bridge configuration.",
       "path": "/home/goringich/__home_organized/scripts/audit_mcp_gateway_config.py"
+    },
+    {
+      "id": "credential-remediation",
+      "label": "Credential Remediation",
+      "status": "source_and_runtime_clean",
+      "summary": "49 fingerprints remediated; source and strict-runtime scans pass; manual credential rotation remains required.",
+      "path": "/home/goringich/__home_organized/local-codex-stack/reports/credential-remediation-report.md"
+    },
+    {
+      "id": "telegram-safe-logger",
+      "label": "Telegram Safe Logger",
+      "status": "tests_pass",
+      "summary": "Pre-write in-memory redaction verified across messages, captions, forwards, filenames, OCR, code, URLs, and headers.",
+      "path": "/home/goringich/__home_organized/scripts/telegram_safe_logger.py"
+    },
+    {
+      "id": "chatgpt-readonly-bridge",
+      "label": "ChatGPT Read-only Bridge",
+      "status": "local_e2e_pass",
+      "summary": "Nine read-only/status tools passed local redaction and denial tests; bridge is stopped after verification.",
+      "path": "/home/goringich/__home_organized/local-codex-stack/mcp-gateways/chatgpt-readonly-bridge"
+    },
+    {
+      "id": "mcp-gateway-status",
+      "label": "MCP Gateway Status",
+      "status": "loopback_ready",
+      "summary": "Local start/stop commands ready on port 18765; HTTPS/public exposure requires explicit later approval.",
+      "path": "/home/goringich/__home_organized/local-codex-stack/mcp-gateways/chatgpt-readonly-bridge/README.md"
+    },
+    {
+      "id": "audit-status",
+      "label": "Audit Status",
+      "status": "pass",
+      "summary": "Source scan 5721 files clean; strict runtime scan 1746 files clean; values never emitted.",
+      "path": "/home/goringich/__home_organized/runtime/secret-audit"
     },
     {
       "id": "codex-handoffs",
