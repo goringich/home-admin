@@ -604,8 +604,19 @@ function buildLocalCodexLab() {
     modelRouting: {
       fast: lab.payload?.fast_model || "unknown",
       balanced: lab.payload?.balanced_model || "unknown",
+      heavy: lab.payload?.heavy_model || "unknown",
       planning: lab.payload?.planning_model || "unknown",
       embedding: lab.payload?.embedding_model || "unknown",
+      evolution: {
+        status: lab.payload?.model_evolution?.status || "missing",
+        generatedAt: lab.payload?.model_evolution?.generated_at || "",
+        mode: lab.payload?.model_evolution?.mode || "",
+        evalPath: lab.payload?.model_evolution?.eval_path || "",
+        winners: lab.payload?.model_evolution?.winners || {},
+        promotionCandidates: lab.payload?.model_evolution?.promotion_candidates || {},
+        promoted: lab.payload?.model_evolution?.promoted || {},
+        sanitized: Boolean(lab.payload?.model_evolution?.sanitized),
+      },
       source: statMeta(lab.path, lab.payload?.generated_at || ""),
     },
     retrievalPolicy: {

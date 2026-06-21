@@ -453,8 +453,23 @@ export interface LocalCodexLab {
   modelRouting: {
     fast: string;
     balanced: string;
+    heavy: string;
     planning: string;
     embedding: string;
+    evolution: {
+      status: string;
+      generatedAt: string;
+      mode: string;
+      evalPath: string;
+      winners: Record<string, string>;
+      promotionCandidates: Record<string, {
+        model: string;
+        streak: number;
+        required: number;
+      }>;
+      promoted: Record<string, string>;
+      sanitized: boolean;
+    };
     source: SourceMeta;
   };
   retrievalPolicy: {

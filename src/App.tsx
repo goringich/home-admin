@@ -1521,8 +1521,19 @@ function LocalCodexLabPanel(props: {
                 <div className="class-grid">
                   <div className="class-row"><span>fast</span><strong>{props.lab.modelRouting.fast}</strong></div>
                   <div className="class-row"><span>balanced</span><strong>{props.lab.modelRouting.balanced}</strong></div>
+                  <div className="class-row"><span>heavy</span><strong>{props.lab.modelRouting.heavy}</strong></div>
                   <div className="class-row"><span>planning</span><strong>{props.lab.modelRouting.planning}</strong></div>
                   <div className="class-row"><span>embedding</span><strong>{props.lab.modelRouting.embedding}</strong></div>
+                  <div className="class-row">
+                    <span>daily evolution</span>
+                    <strong>{props.lab.modelRouting.evolution.status} · {props.lab.modelRouting.evolution.mode || "not run"}</strong>
+                  </div>
+                  {Object.entries(props.lab.modelRouting.evolution.promotionCandidates).map(([role, candidate]) => (
+                    <div className="class-row" key={role}>
+                      <span>{role}</span>
+                      <strong>{candidate.model} · {candidate.streak}/{candidate.required}</strong>
+                    </div>
+                  ))}
                 </div>
                 <SourceFootnote source={props.lab.modelRouting.source} label="model routing" onOpen={props.onOpen} onCopy={props.onCopy} />
               </article>
