@@ -12,6 +12,22 @@ const snapshotPath = path.join(rootDir, "public", "snapshot.json");
 const snapshotScript = path.join(rootDir, "scripts", "build-snapshot.mjs");
 const host = "127.0.0.1";
 const port = Number(process.env.PROJECT_ATLAS_PORT || 4174);
+const home = "/home/goringich";
+const codexOrchestratorRoot = path.join(home, "codex-orchestrator");
+const codexOrchestratorRuntime = path.join(home, "__home_organized", "runtime", "codex-orchestrator");
+const codexOrchestratorArtifacts = path.join(home, "__home_organized", "artifacts", "codex-orchestrator");
+const localCodexRuntime = path.join(home, "__home_organized", "runtime", "local-codex-stack");
+const sharedRunReportsRoot = path.join(localCodexRuntime, "run-reports");
+const codexEnqueueScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-enqueue");
+const codexRunReporterScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-run-report");
+const codexBridgeFixCommand = "cd /home/goringich/codex-orchestrator && ./install.sh";
+const codexBridgeAllowedRoots = [
+  path.join(home, "Desktop", "project-atlas"),
+  path.join(home, "system-bootstrap"),
+  path.join(home, "__home_organized"),
+  path.join(home, "codex-orchestrator"),
+  path.join(home, "Desktop", "Obsidian"),
+];
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -55,6 +71,302 @@ function buildAiLabApiData(snapshot) {
     localModelRagEntrypointStatus: snapshot.localCodexLab?.localModelRagEntrypointStatus ?? null,
     codexContextEntrypointStatus: snapshot.localCodexLab?.codexContextEntrypointStatus ?? null,
     localGpuLiveBenchStatus: snapshot.localCodexLab?.localGpuLiveBenchStatus ?? null,
+  };
+}
+
+function safeString(value, limit = 4000) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
+}
+
+function isAllowedBridgePath(targetPath) {
+  const resolved = path.resolve(String(targetPath || ""));
+  return codexBridgeAllowedRoots.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
+}
+
+function requireCodexBridge() {
+  if (!fs.existsSync(codexEnqueueScript) || !fs.existsSync(codexRunReporterScript)) {
+    throw new Error(`codex-orchestrator bridge unavailable; run: ${codexBridgeFixCommand}`);
+  }
+}
+
+function listFiles(targetPath) {
+  if (!fs.existsSync(targetPath)) {
+    return [];
+  }
+  try {
+    return fs
+      .readdirSync(targetPath, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => path.join(targetPath, entry.name))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function listDirs(targetPath) {
+  if (!fs.existsSync(targetPath)) {
+    return [];
+  }
+  try {
+    return fs
+      .readdirSync(targetPath, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(targetPath, entry.name))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function parseTaskHeader(targetPath) {
+  const header = {};
+  try {
+    const text = fs.readFileSync(targetPath, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      if (line.trim() === "---") {
+        break;
+      }
+      if (!line.includes(":")) {
+        continue;
+      }
+      const [key, ...rest] = line.split(":");
+      header[key.trim()] = rest.join(":").trim();
+    }
+  } catch {
+    return header;
+  }
+  return header;
+}
+
+function parseKeyValueFile(targetPath) {
+  const result = {};
+  try {
+    const text = fs.readFileSync(targetPath, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.includes("=")) {
+        continue;
+      }
+      const [key, ...rest] = line.split("=");
+      result[key.trim()] = rest.join("=").trim();
+    }
+  } catch {
+    return result;
+  }
+  return result;
+}
+
+function codexQueueCounts() {
+  return {
+    queued: listFiles(path.join(codexOrchestratorRuntime, "queue")).length,
+    running: listFiles(path.join(codexOrchestratorRuntime, "claims")).length,
+    done: listFiles(path.join(codexOrchestratorRuntime, "done")).length,
+    failed: listFiles(path.join(codexOrchestratorRuntime, "failed")).length,
+  };
+}
+
+function codexQueueEntries(kind, limit = 12) {
+  return listFiles(path.join(codexOrchestratorRuntime, kind))
+    .slice(-limit)
+    .reverse()
+    .map((targetPath) => {
+      const stats = fs.statSync(targetPath);
+      const header = parseTaskHeader(targetPath);
+      return {
+        id: path.basename(targetPath).replace(/\.(task|running|done|failed)$/, ""),
+        file: targetPath,
+        title: header.title || path.basename(targetPath),
+        workdir: header.workdir || "",
+        sandbox: header.sandbox || "",
+        model: header.model || "",
+        updatedAt: new Date(stats.mtimeMs).toISOString(),
+      };
+    });
+}
+
+function codexRecentRuns(limit = 12) {
+  return listDirs(codexOrchestratorArtifacts)
+    .slice(-limit)
+    .reverse()
+    .map((targetPath) => {
+      const stats = fs.statSync(targetPath);
+      const summary = parseKeyValueFile(path.join(targetPath, "summary.txt"));
+      return {
+        id: path.basename(targetPath),
+        title: summary.title || path.basename(targetPath),
+        workdir: summary.workdir || "",
+        sandbox: summary.sandbox || "",
+        model: summary.model || "",
+        exitCode: summary.exit_code === undefined ? null : Number(summary.exit_code),
+        artifactDir: targetPath,
+        updatedAt: new Date(stats.mtimeMs).toISOString(),
+      };
+    });
+}
+
+function readSharedRunReports(limit = 12) {
+  return listFiles(sharedRunReportsRoot)
+    .filter((targetPath) => targetPath.endsWith(".json"))
+    .map((targetPath) => {
+      try {
+        const stats = fs.statSync(targetPath);
+        const payload = JSON.parse(fs.readFileSync(targetPath, "utf8"));
+        return {
+          ...payload,
+          report_path: targetPath,
+          modified_at: new Date(stats.mtimeMs).toISOString(),
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => String(right.created_at || right.modified_at).localeCompare(String(left.created_at || left.modified_at)))
+    .slice(0, limit);
+}
+
+function codexStatusPayload() {
+  const available = fs.existsSync(codexEnqueueScript) && fs.existsSync(codexRunReporterScript);
+  return {
+    status: available ? "available" : "unavailable",
+    available,
+    fixCommand: available ? "" : codexBridgeFixCommand,
+    runtimeRoot: codexOrchestratorRuntime,
+    artifactRoot: codexOrchestratorArtifacts,
+    reportRoot: sharedRunReportsRoot,
+    scripts: {
+      enqueue: codexEnqueueScript,
+      reporter: codexRunReporterScript,
+    },
+    queueCounts: codexQueueCounts(),
+  };
+}
+
+function recommendedWorkdir(focusFiles = []) {
+  const file = focusFiles.find((entry) => typeof entry === "string" && isAllowedBridgePath(entry));
+  if (file) {
+    const root = codexBridgeAllowedRoots.find((allowedRoot) => path.resolve(file).startsWith(`${allowedRoot}${path.sep}`) || path.resolve(file) === allowedRoot);
+    if (root) {
+      return root;
+    }
+  }
+  return path.join(home, "Desktop", "project-atlas");
+}
+
+function recommendedAddDirs(focusFiles = []) {
+  const dirs = new Set([path.join(home, "system-bootstrap"), path.join(home, "__home_organized"), path.join(home, "codex-orchestrator"), path.join(home, "Desktop", "Obsidian")]);
+  for (const file of focusFiles) {
+    if (typeof file !== "string") {
+      continue;
+    }
+    const root = codexBridgeAllowedRoots.find((allowedRoot) => path.resolve(file).startsWith(`${allowedRoot}${path.sep}`) || path.resolve(file) === allowedRoot);
+    if (root) {
+      dirs.add(root);
+    }
+  }
+  return [...dirs].filter((entry) => entry !== path.join(home, "Desktop", "project-atlas"));
+}
+
+function buildCodexPrompt(payload) {
+  const task = safeString(payload.task || payload.prompt || "", 12000);
+  const focusFiles = Array.isArray(payload.focusFiles) ? payload.focusFiles.filter((entry) => typeof entry === "string").slice(0, 12) : [];
+  const verificationCommands = Array.isArray(payload.verificationCommands) ? payload.verificationCommands.filter((entry) => typeof entry === "string").slice(0, 12) : [];
+  return [
+    "Context scope: system_scope",
+    "Allowed context roots: /home/goringich/Desktop/project-atlas, /home/goringich/system-bootstrap, /home/goringich/__home_organized, /home/goringich/codex-orchestrator, /home/goringich/Desktop/Obsidian",
+    "Forbidden context: unrelated project internals, raw Codex sessions, auth/env/cookies/tokens/secrets.",
+    "",
+    "Task prepared by Project Atlas AI Lab.",
+    "",
+    task,
+    "",
+    "Focus files:",
+    ...(focusFiles.length ? focusFiles.map((entry) => `- ${entry}`) : ["- none"]),
+    "",
+    "Suggested verification commands:",
+    ...(verificationCommands.length ? verificationCommands.map((entry) => `- ${entry}`) : ["- none"]),
+    "",
+    "After the run, write or update the shared run report under /home/goringich/__home_organized/runtime/local-codex-stack/run-reports/ and keep Obsidian updates concise.",
+  ].join("\n");
+}
+
+function enqueueCodexTask(payload) {
+  requireCodexBridge();
+  const task = safeString(payload.task || payload.prompt || "", 12000);
+  if (!task) {
+    throw new Error("task is required");
+  }
+  const focusFiles = Array.isArray(payload.focusFiles) ? payload.focusFiles.filter((entry) => typeof entry === "string") : [];
+  const workdir = path.resolve(String(payload.workdir || recommendedWorkdir(focusFiles)));
+  if (!isAllowedBridgePath(workdir)) {
+    throw new Error(`workdir is outside allowed bridge roots: ${workdir}`);
+  }
+  const addDirs = (Array.isArray(payload.addDirs) ? payload.addDirs : recommendedAddDirs(focusFiles))
+    .filter((entry) => typeof entry === "string")
+    .map((entry) => path.resolve(entry))
+    .filter((entry) => isAllowedBridgePath(entry) && entry !== workdir);
+  const uniqueAddDirs = [...new Set(addDirs)].slice(0, 8);
+  const title = safeString(payload.title || "atlas-prepared-task", 120) || "atlas-prepared-task";
+  const sandbox = safeString(payload.sandbox || "workspace-write", 80) || "workspace-write";
+  const model = safeString(payload.model || "", 80);
+  const prompt = buildCodexPrompt({ ...payload, task, focusFiles });
+  const args = ["--title", title, "--workdir", workdir, "--sandbox", sandbox];
+  if (model) {
+    args.push("--model", model);
+  }
+  for (const dir of uniqueAddDirs) {
+    args.push("--add-dir", dir);
+  }
+  const stdout = execFileSync(codexEnqueueScript, args, {
+    cwd: codexOrchestratorRoot,
+    input: prompt,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"],
+    timeout: 20000,
+  }).trim();
+  const taskPath = stdout.match(/Queued task:\s*(.+)$/m)?.[1]?.trim() || "";
+  const runId = taskPath ? path.basename(taskPath).replace(/\.task$/, "") : `atlas-${Date.now()}`;
+  const reportArgs = [
+    "write",
+    "--run-id",
+    runId,
+    "--task-title",
+    title,
+    "--task-text",
+    task,
+    "--workdir",
+    workdir,
+    "--status",
+    "queued",
+    "--summary",
+    "Project Atlas queued this task through codex-agent-enqueue.",
+    "--next-action",
+    "Run `codex-agent-run` or wait for `codex-agent-orchestrator.timer`, then refresh Project Atlas snapshot.",
+  ];
+  if (taskPath) {
+    reportArgs.push("--queue-task-path", taskPath);
+  }
+  for (const file of focusFiles.filter((entry) => isAllowedBridgePath(entry)).slice(0, 12)) {
+    reportArgs.push("--source-file", file);
+  }
+  for (const command of (Array.isArray(payload.verificationCommands) ? payload.verificationCommands : []).filter((entry) => typeof entry === "string").slice(0, 12)) {
+    reportArgs.push("--verification-command", command);
+  }
+  const reportPath = execFileSync(codexRunReporterScript, reportArgs, {
+    cwd: codexOrchestratorRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 20000,
+  }).trim();
+  return {
+    mode: "queue",
+    runId,
+    title,
+    workdir,
+    addDirs: uniqueAddDirs,
+    taskPath,
+    reportPath,
+    stdout,
   };
 }
 
@@ -271,6 +583,7 @@ function buildAiLabPrepare(snapshot, task) {
     Array.isArray(entry) ? entry.join(" ") : String(entry),
   );
   const focusFiles = buildFocusFiles(normalizedTask, route, scientificAction);
+  const bridge = codexStatusPayload();
   const codexNecessary =
     selectedAgent === "codex" ||
     CODEX_TASK_KEYWORDS.some((keyword) => normalizedTask.includes(keyword)) ||
@@ -305,6 +618,14 @@ function buildAiLabPrepare(snapshot, task) {
     codexReason: codexNecessary
       ? "The task touches code, Atlas control-plane surfaces, or a route that already prefers Codex."
       : "The task currently maps to read-only preparation or a local scientific-viewer flow.",
+    recommendedWorkdir: recommendedWorkdir(focusFiles),
+    recommendedAddDirs: recommendedAddDirs(focusFiles),
+    enqueueEndpoint: "/api/codex-orchestrator/enqueue",
+    codexBridge: {
+      status: bridge.status,
+      available: bridge.available,
+      fixCommand: bridge.fixCommand,
+    },
     nextBestAction: aiLab?.control?.nextBestAction || lab?.nextBestAction || "",
   };
 }
@@ -409,6 +730,62 @@ const server = http.createServer((req, res) => {
     } catch (error) {
       send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
     }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/codex-orchestrator/status") {
+    try {
+      sendJson(res, 200, { ok: true, data: codexStatusPayload() });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/codex-orchestrator/queue") {
+    try {
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          queueCounts: codexQueueCounts(),
+          queued: codexQueueEntries("queue"),
+          running: codexQueueEntries("claims"),
+        },
+      });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/codex-orchestrator/recent-runs") {
+    try {
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          recentRuns: codexRecentRuns(),
+          sharedRunReports: readSharedRunReports(),
+        },
+      });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/codex-orchestrator/enqueue") {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => {
+      try {
+        const payload = JSON.parse(body || "{}");
+        sendJson(res, 200, { ok: true, data: enqueueCodexTask(payload) });
+      } catch (error) {
+        send(res, 400, `${error instanceof Error ? error.message : String(error)}\n`);
+      }
+    });
     return;
   }
 

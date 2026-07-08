@@ -19,6 +19,13 @@ const aiTelemetryExportPath = path.join(home, "__home_organized", "runtime", "ai
 const commercialReadinessPath = path.join(canonicalLocalCodexRuntime, "commercial-readiness.json");
 const productIntelPath = path.join(canonicalLocalCodexRuntime, "product-intel.json");
 const aiLabRegistryPath = path.join(rootDir, "data", "ai-lab-registry.json");
+const codexOrchestratorRoot = path.join(home, "codex-orchestrator");
+const codexOrchestratorRuntime = path.join(home, "__home_organized", "runtime", "codex-orchestrator");
+const codexOrchestratorArtifacts = path.join(home, "__home_organized", "artifacts", "codex-orchestrator");
+const sharedRunReportsRoot = path.join(canonicalLocalCodexRuntime, "run-reports");
+const codexEnqueueScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-enqueue");
+const codexRunReporterScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-run-report");
+const codexBridgeFixCommand = "cd /home/goringich/codex-orchestrator && ./install.sh";
 
 const overrides = JSON.parse(fs.readFileSync(overridesPath, "utf8"));
 
@@ -179,6 +186,195 @@ function mapAiLabRun(entry = {}) {
     savedContextCharsEstimated: toNumber(entry.saved_context_chars_estimated || 0),
     plannedWorkerModels: entry.planned_worker_models || {},
     nextBestAction: entry.next_best_action || "",
+  };
+}
+
+function parseSimpleKeyValueFile(targetPath) {
+  const result = {};
+  for (const line of readText(targetPath).split(/\r?\n/)) {
+    if (!line.includes("=")) {
+      continue;
+    }
+    const [key, ...rest] = line.split("=");
+    result[key.trim()] = rest.join("=").trim();
+  }
+  return result;
+}
+
+function parseCodexTaskHeader(targetPath) {
+  const header = {};
+  for (const line of readText(targetPath).split(/\r?\n/)) {
+    if (line.trim() === "---") {
+      break;
+    }
+    if (!line.includes(":")) {
+      continue;
+    }
+    const [key, ...rest] = line.split(":");
+    header[key.trim()] = rest.join(":").trim();
+  }
+  return header;
+}
+
+function listFiles(targetPath) {
+  if (!fileExists(targetPath)) {
+    return [];
+  }
+  try {
+    return fs
+      .readdirSync(targetPath, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => path.join(targetPath, entry.name))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function listDirs(targetPath) {
+  if (!fileExists(targetPath)) {
+    return [];
+  }
+  try {
+    return fs
+      .readdirSync(targetPath, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(targetPath, entry.name))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function codexQueueCounts() {
+  return {
+    queued: listFiles(path.join(codexOrchestratorRuntime, "queue")).length,
+    running: listFiles(path.join(codexOrchestratorRuntime, "claims")).length,
+    done: listFiles(path.join(codexOrchestratorRuntime, "done")).length,
+    failed: listFiles(path.join(codexOrchestratorRuntime, "failed")).length,
+  };
+}
+
+function codexQueueEntries(kind, limit = 8) {
+  return listFiles(path.join(codexOrchestratorRuntime, kind))
+    .slice(-limit)
+    .reverse()
+    .map((targetPath) => {
+      const stats = fs.statSync(targetPath);
+      const header = parseCodexTaskHeader(targetPath);
+      return {
+        id: path.basename(targetPath).replace(/\.(task|running|done|failed)$/, ""),
+        file: targetPath,
+        title: header.title || path.basename(targetPath),
+        workdir: header.workdir || "",
+        sandbox: header.sandbox || "",
+        model: header.model || "",
+        updatedAt: new Date(stats.mtimeMs).toISOString(),
+      };
+    });
+}
+
+function codexRecentRuns(limit = 8) {
+  return listDirs(codexOrchestratorArtifacts)
+    .slice(-limit)
+    .reverse()
+    .map((targetPath) => {
+      const stats = fs.statSync(targetPath);
+      const summary = parseSimpleKeyValueFile(path.join(targetPath, "summary.txt"));
+      return {
+        id: path.basename(targetPath),
+        title: summary.title || path.basename(targetPath),
+        workdir: summary.workdir || "",
+        sandbox: summary.sandbox || "",
+        model: summary.model || "",
+        exitCode: summary.exit_code === undefined ? null : Number(summary.exit_code),
+        artifactDir: targetPath,
+        updatedAt: new Date(stats.mtimeMs).toISOString(),
+      };
+    });
+}
+
+function normalizeSharedRunReport(targetPath, payload = {}) {
+  const stats = fs.statSync(targetPath);
+  const verificationResults = Array.isArray(payload.verification_results) ? payload.verification_results : [];
+  const failedVerification = verificationResults.filter((entry) => ["failed", "blocked"].includes(String(entry?.status || "")));
+  const dirtyAfter = toNumber(payload.dirty_after || 0);
+  return {
+    runId: payload.run_id || path.basename(targetPath, ".json"),
+    createdAt: payload.created_at || new Date(stats.mtimeMs).toISOString(),
+    taskTitle: payload.task_title || "",
+    taskText: payload.task_text || "",
+    workdir: payload.workdir || "",
+    repo: payload.repo || {},
+    branchBefore: payload.branch_before || "",
+    branchAfter: payload.branch_after || "",
+    dirtyBefore: toNumber(payload.dirty_before || 0),
+    dirtyAfter,
+    commitBefore: payload.commit_before || "",
+    commitAfter: payload.commit_after || "",
+    filesChanged: Array.isArray(payload.files_changed) ? payload.files_changed : [],
+    verificationCommands: Array.isArray(payload.verification_commands) ? payload.verification_commands : [],
+    verificationResults,
+    failedVerificationCount: failedVerification.length,
+    status: payload.status || "unknown",
+    summary: payload.summary || "",
+    nextAction: payload.next_action || "",
+    sourceFiles: Array.isArray(payload.source_files) ? payload.source_files : [],
+    reportPath: targetPath,
+    dirtyAfterRun: dirtyAfter > 0,
+    source: statMeta(targetPath, payload.created_at || ""),
+  };
+}
+
+function readSharedRunReports(limit = 8) {
+  return listFiles(sharedRunReportsRoot)
+    .filter((targetPath) => targetPath.endsWith(".json"))
+    .map((targetPath) => {
+      try {
+        return normalizeSharedRunReport(targetPath, JSON.parse(fs.readFileSync(targetPath, "utf8")));
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+    .slice(0, limit);
+}
+
+function buildCodexOrchestratorBridge() {
+  const available = fileExists(codexEnqueueScript) && fileExists(codexRunReporterScript);
+  const latestRunReports = readSharedRunReports(10);
+  const failedVerification = latestRunReports.filter((report) => report.failedVerificationCount > 0);
+  const dirtyAfterRun = latestRunReports.filter((report) => report.dirtyAfterRun);
+  return {
+    status: available ? "available" : "unavailable",
+    available,
+    fixCommand: available ? "" : codexBridgeFixCommand,
+    endpoints: {
+      status: "/api/codex-orchestrator/status",
+      queue: "/api/codex-orchestrator/queue",
+      recentRuns: "/api/codex-orchestrator/recent-runs",
+      enqueue: "/api/codex-orchestrator/enqueue",
+    },
+    scripts: {
+      enqueue: codexEnqueueScript,
+      reporter: codexRunReporterScript,
+    },
+    runtimeRoot: codexOrchestratorRuntime,
+    reportRoot: sharedRunReportsRoot,
+    queueCounts: codexQueueCounts(),
+    queue: codexQueueEntries("queue"),
+    running: codexQueueEntries("claims"),
+    recentRuns: codexRecentRuns(),
+    latestRunReports,
+    failedVerification,
+    dirtyAfterRun,
+    nextExactAction:
+      latestRunReports[0]?.nextAction ||
+      (available
+        ? "Prepare in Atlas, enqueue through `/api/codex-orchestrator/enqueue`, run `codex-agent-run`, then refresh the Atlas snapshot."
+        : codexBridgeFixCommand),
+    source: statMeta(sharedRunReportsRoot, ""),
   };
 }
 
@@ -483,6 +679,7 @@ function summarizeRepo(repoEntry) {
 }
 
 function buildLocalCodexLab() {
+  const codexOrchestratorBridge = buildCodexOrchestratorBridge();
   const lab = readJsonFirst([canonicalLocalCodexAtlasPath, legacyLocalCodexAtlasPath], {});
   const aiLabRegistry = readJsonFirst([aiLabRegistryPath], {});
   const researchSummary = readJsonFirst(
@@ -699,6 +896,8 @@ function buildLocalCodexLab() {
     },
     activeRuns: (lab.payload?.active_runs || []).map((entry) => mapAiLabRun(entry)),
     latestRunReports: (lab.payload?.latest_run_reports || []).map((entry) => mapAiLabRun(entry)),
+    sharedRunReports: codexOrchestratorBridge.latestRunReports,
+    codexOrchestratorBridge,
     evalStatus: lab.payload?.eval_status || { status: "missing" },
     knowledgeGraphStatus: {
       status: lab.payload?.knowledge_graph_status?.status || "missing",

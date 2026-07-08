@@ -645,6 +645,40 @@ async function prepareAiLabTask(task: string): Promise<AiLabPrepareResponse> {
   return payload.data;
 }
 
+type CodexEnqueueResponse = {
+  mode: string;
+  runId: string;
+  title: string;
+  workdir: string;
+  taskPath: string;
+  reportPath: string;
+  stdout: string;
+};
+
+async function enqueuePreparedCodexTask(prepared: AiLabPrepareResponse): Promise<CodexEnqueueResponse> {
+  const response = await fetch("./api/codex-orchestrator/enqueue", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      title: `atlas-${prepared.routeId || "prepared-task"}`,
+      task: prepared.task,
+      workdir: prepared.recommendedWorkdir,
+      addDirs: prepared.recommendedAddDirs,
+      verificationCommands: prepared.verificationCommands,
+      focusFiles: prepared.focusFiles,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  const payload = (await response.json()) as { data: CodexEnqueueResponse };
+  return payload.data;
+}
+
 function QuickActionRow(props: {
   label: string;
   value: string;
@@ -1279,6 +1313,9 @@ function LocalCodexLabPanel(props: {
   const [prepareBusy, setPrepareBusy] = useState(false);
   const [prepareResult, setPrepareResult] = useState<AiLabPrepareResponse | null>(null);
   const [prepareError, setPrepareError] = useState("");
+  const [enqueueBusy, setEnqueueBusy] = useState(false);
+  const [enqueueResult, setEnqueueResult] = useState<CodexEnqueueResponse | null>(null);
+  const [enqueueError, setEnqueueError] = useState("");
   const aiLabRuns = props.lab.aiLab.control.activeRuns.length > 0 ? props.lab.aiLab.control.activeRuns : props.lab.activeRuns;
   const latestRunReports = props.lab.aiLab.control.latestRunReports.length > 0 ? props.lab.aiLab.control.latestRunReports : props.lab.latestRunReports;
   const launcherLookup = new Map(props.lab.aiLab.scientificTools.launchers.map((launcher) => [launcher.id, launcher]));
@@ -1314,6 +1351,7 @@ function LocalCodexLabPanel(props: {
             <span className={`health-pill ${toneClass(aiLabStatusTone(props.lab.aiLab.status))}`}>Lab {props.lab.aiLab.status}</span>
             <span className={`health-pill ${toneClass(props.lab.localGpuLiveBenchStatus.status === "ok" ? "ok" : "attention")}`}>GPU {props.lab.localGpuLiveBenchStatus.status}</span>
             <span className={`health-pill ${toneClass(aiLabRuns.length > 0 ? "attention" : "unknown")}`}>Runs {aiLabRuns.length}</span>
+            <span className={`health-pill ${toneClass(props.lab.codexOrchestratorBridge.available ? "ok" : "risk")}`}>Bridge {props.lab.codexOrchestratorBridge.status}</span>
             <span className="health-pill">Allowlist {allowlistedLaunchers.length}</span>
           </div>
           <div className="ai-lab-hero-grid">
@@ -1402,6 +1440,8 @@ function LocalCodexLabPanel(props: {
                     try {
                       const result = await prepareAiLabTask(prepareTask.trim());
                       setPrepareResult(result);
+                      setEnqueueResult(null);
+                      setEnqueueError("");
                     } catch (error) {
                       setPrepareError(error instanceof Error ? error.message : String(error));
                     } finally {
@@ -1433,8 +1473,13 @@ function LocalCodexLabPanel(props: {
                     <div className="class-row"><span>mode</span><strong>{prepareResult.sandboxStatus.mode}</strong></div>
                     <div className="class-row"><span>tier</span><strong>{prepareResult.sandboxStatus.permissionTier}</strong></div>
                     <div className="class-row"><span>codex</span><strong>{prepareResult.codexNecessary ? "needed" : "not needed"}</strong></div>
+                    <div className="class-row"><span>bridge</span><strong>{prepareResult.codexBridge.status}</strong></div>
+                    <div className="class-row"><span>workdir</span><strong>{compactPath(prepareResult.recommendedWorkdir)}</strong></div>
                   </div>
                   <p>{prepareResult.codexReason}</p>
+                  {!prepareResult.codexBridge.available ? (
+                    <div className="empty-inline">fix: {prepareResult.codexBridge.fixCommand}</div>
+                  ) : null}
                 </article>
                 <article className="detail-card">
                   <div className="detail-card-title">Retrieval sources</div>
@@ -1472,7 +1517,55 @@ function LocalCodexLabPanel(props: {
                     {prepareResult.verificationCommands.map((entry) => (
                       <li key={entry}>{entry}</li>
                     ))}
+                    {prepareResult.verificationCommands.length === 0 ? <li>none exported by route</li> : null}
                   </ul>
+                </article>
+                <article className="detail-card">
+                  <div className="detail-card-title">Codex queue bridge</div>
+                  <div className="class-grid">
+                    <div className="class-row"><span>endpoint</span><strong>{prepareResult.enqueueEndpoint}</strong></div>
+                    <div className="class-row"><span>add dirs</span><strong>{prepareResult.recommendedAddDirs.length}</strong></div>
+                    <div className="class-row"><span>queue</span><strong>{props.lab.codexOrchestratorBridge.queueCounts.queued}</strong></div>
+                    <div className="class-row"><span>running</span><strong>{props.lab.codexOrchestratorBridge.queueCounts.running}</strong></div>
+                  </div>
+                  <div className="prepare-actions">
+                    <button
+                      className="ghost-action"
+                      type="button"
+                      disabled={enqueueBusy || !prepareResult.codexBridge.available || !prepareResult.codexNecessary}
+                      onClick={async () => {
+                        setEnqueueBusy(true);
+                        setEnqueueError("");
+                        try {
+                          const result = await enqueuePreparedCodexTask(prepareResult);
+                          setEnqueueResult(result);
+                        } catch (error) {
+                          setEnqueueError(error instanceof Error ? error.message : String(error));
+                        } finally {
+                          setEnqueueBusy(false);
+                        }
+                      }}
+                    >
+                      {enqueueBusy ? "queueing..." : "queue in Codex"}
+                    </button>
+                  </div>
+                  {enqueueError ? <div className="empty-inline">{enqueueError}</div> : null}
+                  {enqueueResult ? (
+                    <div className="doc-list">
+                      <QuickActionRow
+                        label="queued task"
+                        value={compactPath(enqueueResult.taskPath)}
+                        onOpen={() => props.onOpen("queued task", enqueueResult.taskPath)}
+                        onCopy={() => props.onCopy("queued task", enqueueResult.taskPath)}
+                      />
+                      <QuickActionRow
+                        label="run report"
+                        value={compactPath(enqueueResult.reportPath)}
+                        onOpen={() => props.onOpen("run report", enqueueResult.reportPath)}
+                        onCopy={() => props.onCopy("run report", enqueueResult.reportPath)}
+                      />
+                    </div>
+                  ) : null}
                 </article>
                 <article className="detail-card">
                   <div className="detail-card-title">Scientific target</div>
@@ -1882,6 +1975,29 @@ function LocalCodexLabPanel(props: {
         </div>
         <div className="ai-lab-run-grid">
           <article className="detail-card ai-lab-panel ai-lab-span-full">
+            <div className="goal-capsule-head">
+              <div>
+                <div className="detail-card-title">Codex orchestrator bridge</div>
+                <strong>{props.lab.codexOrchestratorBridge.available ? "queue bridge available" : "bridge unavailable"}</strong>
+              </div>
+              <StatusBadge label={props.lab.codexOrchestratorBridge.status} tone={props.lab.codexOrchestratorBridge.available ? "ok" : "risk"} />
+            </div>
+            <div className="class-grid">
+              <div className="class-row"><span>queued</span><strong>{props.lab.codexOrchestratorBridge.queueCounts.queued}</strong></div>
+              <div className="class-row"><span>running</span><strong>{props.lab.codexOrchestratorBridge.queueCounts.running}</strong></div>
+              <div className="class-row"><span>done</span><strong>{props.lab.codexOrchestratorBridge.queueCounts.done}</strong></div>
+              <div className="class-row"><span>failed</span><strong>{props.lab.codexOrchestratorBridge.queueCounts.failed}</strong></div>
+              <div className="class-row"><span>failed verification</span><strong>{props.lab.codexOrchestratorBridge.failedVerification.length}</strong></div>
+              <div className="class-row"><span>dirty after run</span><strong>{props.lab.codexOrchestratorBridge.dirtyAfterRun.length}</strong></div>
+            </div>
+            <p>{props.lab.codexOrchestratorBridge.nextExactAction}</p>
+            {!props.lab.codexOrchestratorBridge.available ? (
+              <div className="empty-inline">fix: {props.lab.codexOrchestratorBridge.fixCommand}</div>
+            ) : null}
+            <SourceFootnote source={props.lab.codexOrchestratorBridge.source} label="codex bridge reports" onOpen={props.onOpen} onCopy={props.onCopy} />
+          </article>
+
+          <article className="detail-card ai-lab-panel ai-lab-span-full">
             <div className="repo-intel-list">
               {aiLabRuns.length > 0 ? aiLabRuns.map((run) => (
                 <div key={run.runId} className="repo-intel-row">
@@ -1896,6 +2012,26 @@ function LocalCodexLabPanel(props: {
                   </div>
                 </div>
               )) : <div className="empty-inline">no active runs reported</div>}
+            </div>
+          </article>
+          <article className="detail-card ai-lab-panel ai-lab-span-full">
+            <div className="detail-card-title">Shared run-report contract</div>
+            <div className="repo-intel-list">
+              {props.lab.sharedRunReports.length > 0 ? props.lab.sharedRunReports.slice(0, 5).map((report) => (
+                <div key={report.runId} className="repo-intel-row">
+                  <div>
+                    <strong>{report.taskTitle || report.runId}</strong>
+                    <p>{compactObjective(report.summary || report.taskText || report.runId, 120)}</p>
+                    {report.nextAction ? <p>{compactObjective(report.nextAction, 120)}</p> : null}
+                  </div>
+                  <div className="repo-intel-meta">
+                    <span className={`health-pill ${toneClass(aiLabRunTone(report.status, report.failedVerificationCount))}`}>{report.status}</span>
+                    <span>{report.failedVerificationCount} failed verification</span>
+                    <span>{report.dirtyAfterRun ? "dirty after run" : "clean after run"}</span>
+                    <span>{compactPath(report.reportPath)}</span>
+                  </div>
+                </div>
+              )) : <div className="empty-inline">no shared run reports exported</div>}
             </div>
           </article>
           <article className="detail-card ai-lab-panel">

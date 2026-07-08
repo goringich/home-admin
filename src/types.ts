@@ -247,6 +247,100 @@ export interface AiLabRunEntry {
   nextBestAction: string;
 }
 
+export interface SharedRunReport {
+  runId: string;
+  createdAt: string;
+  taskTitle: string;
+  taskText: string;
+  workdir: string;
+  repo: {
+    id?: string;
+    path?: string;
+    remote?: string;
+  };
+  branchBefore: string;
+  branchAfter: string;
+  dirtyBefore: number;
+  dirtyAfter: number;
+  commitBefore: string;
+  commitAfter: string;
+  filesChanged: string[];
+  verificationCommands: string[];
+  verificationResults: Array<{
+    command?: string;
+    display?: string;
+    status?: string;
+    exit_code?: number;
+    exitCode?: number;
+    summary?: string;
+  }>;
+  failedVerificationCount: number;
+  status: string;
+  summary: string;
+  nextAction: string;
+  sourceFiles: string[];
+  reportPath: string;
+  dirtyAfterRun: boolean;
+  source: SourceMeta;
+}
+
+export interface CodexOrchestratorBridge {
+  status: string;
+  available: boolean;
+  fixCommand: string;
+  endpoints: {
+    status: string;
+    queue: string;
+    recentRuns: string;
+    enqueue: string;
+  };
+  scripts: {
+    enqueue: string;
+    reporter: string;
+  };
+  runtimeRoot: string;
+  reportRoot: string;
+  queueCounts: {
+    queued: number;
+    running: number;
+    done: number;
+    failed: number;
+  };
+  queue: Array<{
+    id: string;
+    file: string;
+    title: string;
+    workdir: string;
+    sandbox: string;
+    model: string;
+    updatedAt: string;
+  }>;
+  running: Array<{
+    id: string;
+    file: string;
+    title: string;
+    workdir: string;
+    sandbox: string;
+    model: string;
+    updatedAt: string;
+  }>;
+  recentRuns: Array<{
+    id: string;
+    title: string;
+    workdir: string;
+    sandbox: string;
+    model: string;
+    exitCode: number | null;
+    artifactDir: string;
+    updatedAt: string;
+  }>;
+  latestRunReports: SharedRunReport[];
+  failedVerification: SharedRunReport[];
+  dirtyAfterRun: SharedRunReport[];
+  nextExactAction: string;
+  source: SourceMeta;
+}
+
 export interface ContextPackStatus {
   status: string;
   generatedAt: string;
@@ -379,6 +473,14 @@ export interface AiLabPrepareResponse {
   verificationCommands: string[];
   codexNecessary: boolean;
   codexReason: string;
+  recommendedWorkdir: string;
+  recommendedAddDirs: string[];
+  enqueueEndpoint: string;
+  codexBridge: {
+    status: string;
+    available: boolean;
+    fixCommand: string;
+  };
   nextBestAction: string;
 }
 
@@ -549,6 +651,8 @@ export interface LocalCodexLab {
   };
   activeRuns: AiLabRunEntry[];
   latestRunReports: AiLabRunEntry[];
+  sharedRunReports: SharedRunReport[];
+  codexOrchestratorBridge: CodexOrchestratorBridge;
   knowledgeGraphStatus: KnowledgeGraphStatus;
   contextPackStatus: ContextPackStatus;
   ragE2eEvalStatus: RagE2eEvalStatus;
