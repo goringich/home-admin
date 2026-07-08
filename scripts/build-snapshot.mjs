@@ -624,6 +624,8 @@ function summarizeRepo(repoEntry) {
   });
   const summary = override.summary ?? `${repoKey} · ${tags.join(" / ") || "repository"}`;
   const domain = override.domain ?? inferDomain(repoPath, repoEntry.section);
+  const commercialRole = override.commercialRole || override.monetizationLabel || "technical-only";
+  const moneyPath = Array.isArray(override.moneyPath) ? override.moneyPath : [];
   const commitAgeHours = commit.timestamp ? Math.max(0, Math.round((Date.now() - commit.timestamp) / 36e5)) : null;
   const docs = [
     ...(override.docs ?? []),
@@ -639,6 +641,9 @@ function summarizeRepo(repoEntry) {
     domain,
     focus: overrides.focus.includes(repoKey),
     summary,
+    commercialRole,
+    monetizationLabel: commercialRole,
+    moneyPath,
     remote: repoEntry.remote,
     branch: repoEntry.branch || "unknown",
     dirtyCount: git.dirtyCount || Number(repoEntry.dirty || 0),
@@ -1260,7 +1265,17 @@ function buildCommercialReadiness() {
       id: "unknown",
       title: "unknown",
       path: "",
+      monetization_label: "technical-only",
+      money_path: [],
     },
+    targetProducts: report.payload?.target_products || [],
+    monetizationLabel: report.payload?.monetization_label || report.payload?.target_product?.monetization_label || "technical-only",
+    moneyPath: report.payload?.money_path || report.payload?.target_product?.money_path || [],
+    topMoneyBlockers: report.payload?.top_money_blockers || [],
+    topOwnerBlockers: report.payload?.top_owner_blockers || [],
+    nextMoneyAction: report.payload?.next_money_action || report.payload?.next_exact_action || "",
+    monetizationStatus: report.payload?.monetization_status || {},
+    monetizationPriorityPath: report.payload?.monetization_priority_path || productIntel.payload?.monetization_priority_path || "",
     summary: {
       implemented: Number(report.payload?.summary?.implemented || 0),
       scaffolded: Number(report.payload?.summary?.scaffolded || 0),

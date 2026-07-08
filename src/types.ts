@@ -51,6 +51,9 @@ export interface ProjectRecord {
   domain: ProjectDomain;
   focus: boolean;
   summary: string;
+  commercialRole: string;
+  monetizationLabel: string;
+  moneyPath: string[];
   remote: string;
   branch: string;
   dirtyCount: number;
@@ -1675,7 +1678,42 @@ export interface CommercialReadiness {
     id: string;
     title: string;
     path: string;
+    monetization_label?: string;
+    money_path?: string[];
   };
+  targetProducts: Array<{
+    id: string;
+    title: string;
+    monetization_label: string;
+    money_path: string[];
+    critical_routes: string[];
+  }>;
+  monetizationLabel: string;
+  moneyPath: string[];
+  topMoneyBlockers: string[];
+  topOwnerBlockers: string[];
+  nextMoneyAction: string;
+  monetizationStatus: {
+    elizabet_first_money?: {
+      status: string;
+      money_path: string[];
+      critical_routes: string[];
+      evidence: string[];
+    };
+    elizabet_premium_yookassa?: {
+      status: string;
+      evidence: string[];
+      not_ready_without: string[];
+    };
+    local_ai_os_offer?: {
+      status: string;
+      money_path: string[];
+      evidence: string[];
+    };
+    top_owner_blockers?: string[];
+    next_money_action?: string;
+  };
+  monetizationPriorityPath: string;
   summary: {
     implemented: number;
     scaffolded: number;
@@ -1708,6 +1746,8 @@ export interface CommercialReadiness {
     dirty_count: number;
     dirty_preview: string[];
     status: string;
+    monetization_label?: string;
+    money_path?: string[];
   }>;
   source: SourceMeta;
   productIntelSource: SourceMeta;

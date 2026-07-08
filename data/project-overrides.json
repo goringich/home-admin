@@ -7,6 +7,9 @@
     "esp",
     "codex-orchestrator",
     "system-bootstrap",
+    "local-ai-os",
+    "local-codex-stack",
+    "project-atlas",
     "codesight",
     "OpenHarness"
   ],
@@ -45,6 +48,9 @@
         "изменены auth / home / api client, нужен реальный smoke после следующего прохода"
       ],
       "release": { "label": "v1.25.0", "days": 7, "confidence": 78 },
+      "commercialRole": "commercial-critical",
+      "monetizationLabel": "commercial-critical",
+      "moneyPath": ["Gift Room", "Personal Setup", "Premium"],
       "tasks": [
         {
           "title": "Дожать auth + home правки и прогнать prod smoke",
@@ -279,6 +285,9 @@
         "нужна аккуратная интеграция с существующим orchestration flow"
       ],
       "release": { "label": "v0.4.0", "days": 14, "confidence": 67 },
+      "commercialRole": "commercial-supporting",
+      "monetizationLabel": "commercial-supporting",
+      "moneyPath": [],
       "tasks": [
         {
           "title": "Привязать Project Atlas как новый snapshot surface",
@@ -335,6 +344,53 @@
           "note": "Большой объём грязи прямо сейчас мешает чистому baseline."
         }
       ]
+    },
+
+    "local-ai-os": {
+      "title": "LOCAL AI OS",
+      "domain": "local-ai",
+      "summary": "Commercial local-first AI workstation offer: Diagnostic, Pilot and delivery evidence.",
+      "position": { "x": 78, "y": 18 },
+      "tags": ["Local AI", "Obsidian", "RAG", "Diagnostics"],
+      "related": ["local-codex-stack", "project-atlas", "system-bootstrap"],
+      "commercialRole": "commercial-critical",
+      "monetizationLabel": "commercial-critical",
+      "moneyPath": ["Diagnostic", "Pilot", "delivery evidence"],
+      "docs": [
+        { "label": "README", "path": "/home/goringich/Desktop/local-ai-os/README.md" },
+        { "label": "Offer", "path": "/home/goringich/Desktop/local-ai-os/docs/offer.md" }
+      ],
+      "tasks": [
+        {
+          "title": "Package diagnostic and pilot delivery evidence",
+          "status": "active",
+          "priority": "high",
+          "area": "commercial",
+          "note": "Tie Diagnostic/Pilot offer to acceptance report and anonymized screenshots."
+        }
+      ]
+    },
+    "local-codex-stack": {
+      "title": "Local Codex Stack",
+      "domain": "local-ai",
+      "summary": "Commercial-supporting evidence and readiness exporter for Elizabeth and LOCAL AI OS.",
+      "position": { "x": 70, "y": 30 },
+      "tags": ["Local AI", "Readiness", "Atlas"],
+      "related": ["elizabet", "local-ai-os", "project-atlas"],
+      "commercialRole": "commercial-supporting",
+      "monetizationLabel": "commercial-supporting",
+      "moneyPath": []
+    },
+    "project-atlas": {
+      "title": "Project Atlas",
+      "domain": "local-ai",
+      "summary": "Commercial-supporting read-only visibility surface for monetization readiness.",
+      "position": { "x": 86, "y": 30 },
+      "tags": ["Atlas", "Read-only", "Commercial readiness"],
+      "related": ["elizabet", "local-ai-os", "local-codex-stack"],
+      "commercialRole": "commercial-supporting",
+      "monetizationLabel": "commercial-supporting",
+      "moneyPath": []
     },
     "codesight": {
       "title": "codesight",

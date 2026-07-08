@@ -1024,8 +1024,8 @@ function CommandDeckPanel(props: {
             <StatusBadge label={snapshot.commercialReadiness.overallStatus} tone={commercialTone(snapshot.commercialReadiness.overallStatus)} />
             <div className="rail-hero-number rail-hero-status">{snapshot.commercialReadiness.score}</div>
             <p>
-              {snapshot.commercialReadiness.targetProduct.title} · {snapshot.commercialReadiness.summary.implemented} implemented ·{" "}
-              {snapshot.commercialReadiness.summary.scaffolded} scaffolded · {snapshot.commercialReadiness.summary.missing} missing
+              {snapshot.commercialReadiness.targetProduct.title} · {snapshot.commercialReadiness.monetizationLabel} ·{" "}
+              {snapshot.commercialReadiness.moneyPath.join(" / ") || "money path missing"}
             </p>
             <SourceFootnote
               source={snapshot.commercialReadiness.source}
@@ -1816,17 +1816,40 @@ function LocalCodexLabPanel(props: {
           <article className="detail-card ai-lab-panel">
             <div className="detail-card-title">Commercial readiness</div>
             <div className="class-grid">
+              <div className="class-row"><span>target</span><strong>{props.commercial.targetProduct.title}</strong></div>
+              <div className="class-row"><span>label</span><strong>{props.commercial.monetizationLabel}</strong></div>
+              <div className="class-row"><span>money path</span><strong>{props.commercial.moneyPath.join(" / ") || "missing"}</strong></div>
+              <div className="class-row"><span>score</span><strong>{props.commercial.score}</strong></div>
               <div className="class-row"><span>status</span><strong>{props.commercial.overallStatus}</strong></div>
               <div className="class-row"><span>host</span><strong>{props.commercial.hostHealth}</strong></div>
+              <div className="class-row"><span>first money</span><strong>{props.commercial.monetizationStatus.elizabet_first_money?.status || "missing"}</strong></div>
+              <div className="class-row"><span>Premium/YooKassa</span><strong>{props.commercial.monetizationStatus.elizabet_premium_yookassa?.status || "missing"}</strong></div>
+              <div className="class-row"><span>LOCAL AI OS</span><strong>{props.commercial.monetizationStatus.local_ai_os_offer?.status || "missing"}</strong></div>
               <div className="class-row"><span>dirty repos</span><strong>{props.commercial.summary.dirtyFocusRepos}</strong></div>
-              <div className="class-row"><span>blockers</span><strong>{props.commercial.summary.highRiskBlockers}</strong></div>
             </div>
             <ul className="note-list compact-note-list">
-              {props.commercial.highRiskBlockers.slice(0, 2).map((item) => (
+              {props.commercial.topMoneyBlockers.slice(0, 4).map((item) => (
                 <li key={item}>{item}</li>
               ))}
-              {props.commercial.nextAction ? <li>{props.commercial.nextAction}</li> : null}
+              {props.commercial.nextMoneyAction ? <li>{props.commercial.nextMoneyAction}</li> : null}
             </ul>
+            <div className="doc-list">
+              {props.commercial.targetProducts.map((product) => (
+                <QuickActionRow
+                  key={product.id}
+                  label={product.title}
+                  value={`${product.monetization_label} · ${product.money_path.join(" / ")}`}
+                />
+              ))}
+              {props.commercial.monetizationPriorityPath ? (
+                <QuickActionRow
+                  label="Monetization contract"
+                  value={compactPath(props.commercial.monetizationPriorityPath)}
+                  onOpen={() => props.onOpen("monetization contract", props.commercial.monetizationPriorityPath)}
+                  onCopy={() => props.onCopy("monetization contract", props.commercial.monetizationPriorityPath)}
+                />
+              ) : null}
+            </div>
             <SourceFootnote source={props.commercial.source} label="commercial readiness" onOpen={props.onOpen} onCopy={props.onCopy} />
           </article>
 
