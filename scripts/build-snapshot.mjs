@@ -11,6 +11,7 @@ const outputPath = path.join(rootDir, "public", "snapshot.json");
 const canonicalLocalCodexRuntime = path.join(home, "__home_organized", "runtime", "local-codex-stack");
 const legacyLocalCodexRuntime = path.join(home, "__home_organized", "local-codex-stack", "runtime", "local-codex-stack");
 const canonicalLocalCodexAtlasPath = path.join(canonicalLocalCodexRuntime, "atlas", "local-codex-lab.json");
+const codexHistorySummaryPath = path.join(canonicalLocalCodexRuntime, "atlas", "codex-history-summary.json");
 const legacyLocalCodexAtlasPath = path.join(home, "__home_organized", "local-codex-stack", "atlas", "local-codex-lab.json");
 const localAiStatePath = path.join(home, "__home_organized", "runtime", "local-ai-control", "state.json");
 const agentHealthStatePath = path.join(home, "__home_organized", "runtime", "agent-health-gate", "state.json");
@@ -1252,6 +1253,19 @@ function buildAiTelemetry() {
   };
 }
 
+function buildCodexHistory() {
+  const exportState = readJsonFirst([codexHistorySummaryPath], { schema_version: "v1", runs: [] });
+  const payload = sanitizeSensitiveExportMetadata(exportState.payload || {});
+  return {
+    status: exportState.path ? "ok" : "missing",
+    schemaVersion: payload.schema_version || "v1",
+    generatedAt: payload.generated_at || "",
+    source: statMeta(exportState.path, payload.generated_at || ""),
+    sourceOfTruth: payload.source_of_truth || "normalized-codex-history-metadata",
+    runs: Array.isArray(payload.runs) ? payload.runs : [],
+  };
+}
+
 function buildCommercialReadiness() {
   const report = readJsonFirst([commercialReadinessPath], {});
   const productIntel = readJsonFirst([productIntelPath], {});
@@ -1483,6 +1497,7 @@ const system = systemSnapshot();
 const localCodexLab = buildLocalCodexLab();
 const localAiControl = buildLocalAiControl();
 const aiTelemetry = buildAiTelemetry();
+const codexHistory = buildCodexHistory();
 const commercialReadiness = buildCommercialReadiness();
 const hostAudit = buildHostAudit(system, localAiControl);
 
@@ -1509,6 +1524,7 @@ const snapshot = {
   localCodexLab,
   localAiControl,
   aiTelemetry,
+  codexHistory,
   commercialReadiness,
 };
 

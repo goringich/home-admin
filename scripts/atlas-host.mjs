@@ -663,6 +663,16 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/codex-history") {
+    try {
+      const snapshot = loadSnapshotData();
+      sendJson(res, 200, { ok: true, data: snapshot.codexHistory ?? null });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/ai-lab") {
     try {
       const snapshot = loadSnapshotData();
