@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
+import { normalizeRevenueAutopilot } from "./commercial-summary.mjs";
 
 const home = os.homedir();
 const rootDir = path.join(home, "Desktop", "project-atlas");
@@ -19,6 +20,9 @@ const hostAuditOutputPath = path.join(canonicalLocalCodexRuntime, "host-audit-la
 const aiTelemetryExportPath = path.join(home, "__home_organized", "runtime", "ai-telemetry", "exports", "atlas.json");
 const commercialReadinessPath = path.join(canonicalLocalCodexRuntime, "commercial-readiness.json");
 const productIntelPath = path.join(canonicalLocalCodexRuntime, "product-intel.json");
+const productOperatingStandardPath = path.join(canonicalLocalCodexRuntime, "atlas", "product-operating-standard.json");
+const operationPolicySummaryPath = path.join(canonicalLocalCodexRuntime, "atlas", "operation-policy-summary.json");
+const revenueAutopilotPath = path.join(canonicalLocalCodexRuntime, "atlas", "revenue-autopilot.json");
 const aiLabRegistryPath = path.join(rootDir, "data", "ai-lab-registry.json");
 const codexOrchestratorRoot = path.join(home, "codex-orchestrator");
 const codexOrchestratorRuntime = path.join(home, "__home_organized", "runtime", "codex-orchestrator");
@@ -1269,6 +1273,8 @@ function buildCodexHistory() {
 function buildCommercialReadiness() {
   const report = readJsonFirst([commercialReadinessPath], {});
   const productIntel = readJsonFirst([productIntelPath], {});
+  const productOperatingStandard = readJsonFirst([productOperatingStandardPath], {});
+  const revenueAutopilot = readJsonFirst([revenueAutopilotPath], {});
   return {
     generatedAt: report.payload?.generated_at || new Date().toISOString(),
     overallStatus: report.payload?.overall_status || "unknown",
@@ -1290,6 +1296,9 @@ function buildCommercialReadiness() {
     nextMoneyAction: report.payload?.next_money_action || report.payload?.next_exact_action || "",
     monetizationStatus: report.payload?.monetization_status || {},
     monetizationPriorityPath: report.payload?.monetization_priority_path || productIntel.payload?.monetization_priority_path || "",
+    firstMoneyContractPath: report.payload?.first_money_operating_contract_path || productIntel.payload?.first_money_operating_contract_path || "",
+    firstMoney: report.payload?.first_money || { status: "missing", primary_offer: {}, readiness: { current_state: "missing", reasons: [] }, verified_blockers: [], owner_required_blockers: [], aggregate_funnel_counters: { status: "missing", counters: {} }, active_experiment: {}, next_exact_revenue_action: "" },
+    firstMoneySummary: report.payload?.first_money_summary || {},
     summary: {
       implemented: Number(report.payload?.summary?.implemented || 0),
       scaffolded: Number(report.payload?.summary?.scaffolded || 0),
@@ -1309,6 +1318,25 @@ function buildCommercialReadiness() {
     focusRepos: productIntel.payload?.focus_repos || [],
     source: statMeta(report.path, report.payload?.generated_at || ""),
     productIntelSource: statMeta(productIntel.path, productIntel.payload?.generated_at || ""),
+    productOperatingStandard: productOperatingStandard.payload?.safe_to_expose === true ? productOperatingStandard.payload : null,
+    productOperatingStandardSource: statMeta(productOperatingStandard.path, productOperatingStandard.payload?.generated_at || ""),
+    revenueAutopilot: normalizeRevenueAutopilot(revenueAutopilot.payload),
+    revenueAutopilotSource: statMeta(revenueAutopilot.path, revenueAutopilot.payload?.generated_at || ""),
+  };
+}
+
+function buildOperationPolicy() {
+  const record = readJsonFirst([operationPolicySummaryPath], {});
+  const payload = sanitizeSensitiveExportMetadata(record.payload || {});
+  return {
+    status: record.path ? "recorded" : "not_evaluated",
+    decision: payload.decision || "not_evaluated",
+    mode: payload.mode || "observe",
+    enforcement: payload.enforcement || "record_only",
+    reasons: payload.reasons || [],
+    requiredChecks: payload.required_checks || [],
+    evidenceFreshness: payload.evidence_freshness || "unknown",
+    source: statMeta(record.path, payload.evaluated_at || ""),
   };
 }
 
@@ -1499,6 +1527,7 @@ const localAiControl = buildLocalAiControl();
 const aiTelemetry = buildAiTelemetry();
 const codexHistory = buildCodexHistory();
 const commercialReadiness = buildCommercialReadiness();
+const operationPolicy = buildOperationPolicy();
 const hostAudit = buildHostAudit(system, localAiControl);
 
 const snapshot = {
@@ -1526,6 +1555,7 @@ const snapshot = {
   aiTelemetry,
   codexHistory,
   commercialReadiness,
+  operationPolicy,
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });

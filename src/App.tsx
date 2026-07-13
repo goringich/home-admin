@@ -4,6 +4,7 @@ import type {
   AiTelemetryExport,
   CommercialReadiness,
   DetailTab,
+  FirstMoneySummary,
   HealthTone,
   HostAudit,
   LocalAiControl,
@@ -12,6 +13,7 @@ import type {
   LocalCodexRunSummary,
   ProjectDomain,
   ProjectRecord,
+  RevenueAutopilotStatus,
   Snapshot,
   SourceMeta,
   TaskItem,
@@ -20,6 +22,7 @@ import type {
 
 const NAV_ITEMS = [
   { id: "command-deck", label: "Command Deck" },
+  { id: "revenue", label: "Revenue Orbit" },
   { id: "local-codex", label: "Codex Lab" },
   { id: "reliability", label: "Reliability" },
   { id: "remote-ops", label: "Remote Ops" },
@@ -366,7 +369,8 @@ function telemetryStatusTone(status: string): HealthTone {
 
 function commercialTone(status: string): HealthTone {
   if (status === "ready_for_live_checks") return "ok";
-  if (status === "scaffolded_waiting_for_live_checks") return "attention";
+  if (status === "allow") return "ok";
+  if (status === "human_required" || status === "scaffolded_waiting_for_live_checks") return "attention";
   return "risk";
 }
 
@@ -1033,6 +1037,13 @@ function CommandDeckPanel(props: {
               onOpen={props.onOpen}
               onCopy={props.onCopy}
             />
+          </article>
+
+          <article className="rail-card">
+            <div className="rail-title">Operation policy</div>
+            <StatusBadge label={snapshot.operationPolicy.decision} tone={commercialTone(snapshot.operationPolicy.decision)} />
+            <p>{snapshot.operationPolicy.mode} · {snapshot.operationPolicy.enforcement} · evidence {snapshot.operationPolicy.evidenceFreshness}</p>
+            <SourceFootnote source={snapshot.operationPolicy.source} label="operation policy record" onOpen={props.onOpen} onCopy={props.onCopy} />
           </article>
 
           <article className="rail-card">
@@ -1853,6 +1864,28 @@ function LocalCodexLabPanel(props: {
             <SourceFootnote source={props.commercial.source} label="commercial readiness" onOpen={props.onOpen} onCopy={props.onCopy} />
           </article>
 
+          <article className="detail-card ai-lab-panel">
+            <div className="detail-card-title">First Money</div>
+            <div className="class-grid">
+              <div className="class-row"><span>primary offer</span><strong>{props.commercial.firstMoney.primary_offer.offer || "missing"}</strong></div>
+              <div className="class-row"><span>state</span><strong>{props.commercial.firstMoney.readiness.current_state}</strong></div>
+              <div className="class-row"><span>price hypothesis</span><strong>{props.commercial.firstMoney.price_hypothesis_rub ? `${props.commercial.firstMoney.price_hypothesis_rub} RUB` : "missing"}</strong></div>
+              <div className="class-row"><span>funnel evidence</span><strong>{props.commercial.firstMoney.aggregate_funnel_counters.status}</strong></div>
+              <div className="class-row"><span>experiment</span><strong>{props.commercial.firstMoney.active_experiment.id || "missing"}</strong></div>
+              <div className="class-row"><span>spend cap</span><strong>{props.commercial.firstMoney.spend_cap_rub ?? "missing"} RUB</strong></div>
+            </div>
+            <ul className="note-list compact-note-list">
+              {props.commercial.firstMoney.readiness.reasons.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
+              {props.commercial.firstMoney.owner_required_blockers.slice(0, 2).map((item) => <li key={item}>{item}</li>)}
+              {props.commercial.firstMoney.next_exact_revenue_action ? <li>{props.commercial.firstMoney.next_exact_revenue_action}</li> : null}
+              {props.commercial.firstMoney.active_experiment.owner_action ? <li>{props.commercial.firstMoney.active_experiment.owner_action}</li> : null}
+            </ul>
+            {props.commercial.firstMoneyContractPath ? (
+              <QuickActionRow label="First Money contract" value={compactPath(props.commercial.firstMoneyContractPath)} onOpen={() => props.onOpen("First Money contract", props.commercial.firstMoneyContractPath)} onCopy={() => props.onCopy("First Money contract", props.commercial.firstMoneyContractPath)} />
+            ) : null}
+            <SourceFootnote source={props.commercial.source} label="first money source-linked contract" onOpen={props.onOpen} onCopy={props.onCopy} />
+          </article>
+
           <article className="detail-card ai-lab-panel ai-lab-span-full">
             <div className="detail-card-title">Repo-intel freshness</div>
             <div className="tool-inventory-grid">
@@ -2092,6 +2125,162 @@ function LocalCodexLabPanel(props: {
           </article>
         </div>
       </section>
+    </section>
+  );
+}
+
+function firstMoneyValue(value: number | string | null | undefined) {
+  if (value === 0) return "0";
+  if (typeof value === "number" || (typeof value === "string" && value.trim())) return String(value);
+  return "Нет проверенных данных";
+}
+
+function FirstMoneyPanel(props: { summary: FirstMoneySummary | null; revenue: RevenueAutopilotStatus }) {
+  const summary = props.summary;
+  const sourceUnavailable = !summary || summary.source_status === "unavailable";
+  const stale = summary?.freshness === "stale";
+  const funnel = summary?.funnel;
+  const offer = summary?.primary_offer;
+  const sourceLabel = sourceUnavailable ? "Источник недоступен" : "Elizabeth — авторитетная агрегированная БД";
+  return (
+    <section id="first-money" className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">First Money</div>
+          <h3>Операционная сводка Gift Room</h3>
+          <p>Только агрегаты жизненного цикла; данные клиентов, материалы и платёжные реквизиты не показываются.</p>
+        </div>
+        <StatusBadge label={sourceUnavailable ? "Источник недоступен" : stale ? "Данные устарели" : "Проверенные данные"} tone={sourceUnavailable ? "risk" : stale ? "attention" : "ok"} />
+      </div>
+      {stale ? <div className="notice-banner">Данные устарели</div> : null}
+      <div className="detail-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Продукт и источник</div>
+          <div className="class-grid">
+            <div className="class-row"><span>Продукт</span><strong>{firstMoneyValue(offer?.title)}</strong></div>
+            <div className="class-row"><span>Предложение</span><strong>{firstMoneyValue(offer?.offer_id)}</strong></div>
+            <div className="class-row"><span>Начальная цена</span><strong>{typeof offer?.starting_price_rub === "number" ? `${offer.starting_price_rub} ₽` : "Нет проверенных данных"}</strong></div>
+            <div className="class-row"><span>Источник</span><strong>{sourceLabel}</strong></div>
+            <div className="class-row"><span>Свежесть</span><strong>{sourceUnavailable ? "Источник недоступен" : stale ? "Данные устарели" : "Свежие"}</strong></div>
+            <div className="class-row"><span>Время обновления</span><strong>{firstMoneyValue(summary?.generated_at)}</strong></div>
+          </div>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Воронка заказов</div>
+          <div className="class-grid">
+            <div className="class-row"><span>Обращения</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.leads)}</strong></div>
+            <div className="class-row"><span>Квалифицированные лиды</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.qualified_leads)}</strong></div>
+            <div className="class-row"><span>Отправленные предложения</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.quotes_sent)}</strong></div>
+            <div className="class-row"><span>Ожидающие проверки оплаты</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.payments_pending)}</strong></div>
+            <div className="class-row"><span>Подтверждённые оплаты</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.payments_verified)}</strong></div>
+            <div className="class-row"><span>Заказы в работе</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.orders_in_fulfillment)}</strong></div>
+            <div className="class-row"><span>Выполненные заказы</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.orders_delivered)}</strong></div>
+            <div className="class-row"><span>Отменённые</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.orders_canceled)}</strong></div>
+            <div className="class-row"><span>Возвращённые</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.orders_refunded)}</strong></div>
+          </div>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Операционные ограничения</div>
+          <div className="class-grid">
+            <div className="class-row"><span>Состояние публикации</span><strong>{firstMoneyValue(summary?.publication_state)}</strong></div>
+            <div className="class-row"><span>Состояние Telegram-приёма</span><strong>{firstMoneyValue(summary?.telegram_intake_state)}</strong></div>
+            <div className="class-row"><span>Активный эксперимент</span><strong>{firstMoneyValue(summary?.active_experiment)}</strong></div>
+            <div className="class-row"><span>Следующее действие системы</span><strong>{firstMoneyValue(summary?.next_machine_action)}</strong></div>
+            <div className="class-row"><span>Следующее действие владельца</span><strong>{firstMoneyValue(summary?.next_human_action)}</strong></div>
+          </div>
+          <ul className="note-list compact-note-list">
+            {(summary?.blockers ?? []).map((blocker) => <li key={blocker}>{blocker}</li>)}
+            {sourceUnavailable ? <li>Источник недоступен</li> : null}
+          </ul>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Revenue Autopilot</div>
+          <div className="class-grid">
+            <div className="class-row"><span>Активная линия</span><strong>{firstMoneyValue(props.revenue.active_revenue_lane)}</strong></div>
+            <div className="class-row"><span>Эксперимент</span><strong>{firstMoneyValue(props.revenue.active_experiment)}</strong></div>
+            <div className="class-row"><span>Лимит</span><strong>{typeof props.revenue.current_spend_cap_rub === "number" ? `${props.revenue.current_spend_cap_rub} ₽` : "Нет проверенных данных"}</strong></div>
+            <div className="class-row"><span>Готовность продукта</span><strong>{firstMoneyValue(props.revenue.product_readiness)}</strong></div>
+            <div className="class-row"><span>Готовность кампании</span><strong>{firstMoneyValue(props.revenue.campaign_readiness)}</strong></div>
+            <div className="class-row"><span>Аналитика</span><strong>{firstMoneyValue(props.revenue.analytics_status)}</strong></div>
+            <div className="class-row"><span>Решение цикла</span><strong>{firstMoneyValue(props.revenue.experiment_action)}</strong></div>
+            <div className="class-row"><span>Safe mode</span><strong>{props.revenue.host_safe_mode ? "ON" : "OFF"}</strong></div>
+          </div>
+          <ul className="note-list compact-note-list">
+            {(props.revenue.blocked_gates ?? []).slice(0, 5).map((gate) => <li key={`gate:${gate}`}>gate: {gate}</li>)}
+            {(props.revenue.owner_approvals_needed ?? []).slice(0, 3).map((item) => <li key={`approval:${item}`}>owner: {item}</li>)}
+            {props.revenue.next_exact_money_action ? <li>{props.revenue.next_exact_money_action}</li> : null}
+          </ul>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function RevenueOrbitPanel(props: {
+  revenue: RevenueAutopilotStatus;
+  source: SourceMeta;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const factory = props.revenue.creative_factory;
+  const status = factory?.status ?? "unavailable";
+  const approvalLabel = factory?.publish_policy === "owner_approval_required" ? "owner gate" : factory?.publish_policy ?? "unavailable";
+  return (
+    <section id="revenue" className="revenue-orbit panel">
+      <div className="revenue-orbit-glow" aria-hidden="true" />
+      <div className="panel-head revenue-orbit-head">
+        <div>
+          <div className="section-kicker">Revenue Orbit</div>
+          <h3>Креативы — только после доказуемого asset gate</h3>
+          <p>Atlas показывает безопасный operational status, а не сырой контент, лиды или выдуманную эффективность.</p>
+        </div>
+        <StatusBadge label={status} tone={status.includes("blocked") || status === "unavailable" ? "attention" : "ok"} />
+      </div>
+
+      <div className="revenue-orbit-layout">
+        <article className="revenue-hero-card">
+          <div className="revenue-hero-topline">
+            <span className="orbit-eyebrow">ACTIVE REVENUE LANE</span>
+            <StatusBadge label={props.revenue.product_readiness ?? "unavailable"} tone={commercialTone(props.revenue.product_readiness ?? "")} />
+          </div>
+          <div className="revenue-hero-title">{props.revenue.active_revenue_lane ?? "unavailable"}</div>
+          <p>{props.revenue.next_exact_money_action ?? "Нет безопасно сформированного следующего действия."}</p>
+          <div className="revenue-hero-meta">
+            <span>experiment: {props.revenue.active_experiment ?? "unavailable"}</span>
+            <span>analytics: {props.revenue.analytics_status ?? "unavailable"}</span>
+            <span>spend cap: {typeof props.revenue.current_spend_cap_rub === "number" ? `${props.revenue.current_spend_cap_rub} ₽` : "unavailable"}</span>
+          </div>
+        </article>
+
+        <div className="revenue-gate-rail" aria-label="Creative factory delivery flow">
+          {[
+            ["01", "Assets", factory?.asset_status ?? "unavailable"],
+            ["02", "Scripts", `${factory?.primary_angle_count ?? "—"} primary angles`],
+            ["03", "Render jobs", `${factory?.planned_render_jobs ?? "—"} planned · ${factory?.rendered_video_count ?? "—"} rendered`],
+            ["04", "Publish", approvalLabel],
+            ["05", "Learn", factory?.analytics_status ?? "unavailable"],
+          ].map(([index, label, detail]) => (
+            <div className="revenue-gate" key={index}>
+              <span className="revenue-gate-index">{index}</span>
+              <div><strong>{label}</strong><span>{detail}</span></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="revenue-orbit-metrics">
+        <MetricCard label="Approved assets" value={factory?.approved_asset_count ?? "unavailable"} detail="only public-safe and commercially cleared" />
+        <MetricCard label="Capture tasks" value={factory?.capture_task_ids.length ?? "unavailable"} detail={factory?.capture_task_ids.join(" · ") || "no capture task exported"} />
+        <MetricCard label="Planned test videos" value={factory?.planned_render_jobs ?? "unavailable"} detail="plans only until public-safe assets are approved" />
+        <MetricCard label="Rendered videos" value={factory?.rendered_video_count ?? "unavailable"} detail="zero is intentional before the asset gate" />
+      </div>
+
+      <div className="revenue-policy-strip">
+        <strong>Autonomy boundary</strong>
+        <span>Rendering, publishing, contact and spend are not implied by this view. Owner approval and product gates remain mandatory.</span>
+        <StatusBadge label={props.revenue.host_safe_mode ? "host safe mode" : "host mode unknown"} tone={props.revenue.host_safe_mode ? "attention" : "unknown"} />
+      </div>
+      <SourceFootnote source={props.source} label="sanitized Revenue Autopilot export" onOpen={props.onOpen} onCopy={props.onCopy} />
     </section>
   );
 }
@@ -3531,6 +3720,7 @@ function RegistryTable(props: {
 
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [firstMoneySummary, setFirstMoneySummary] = useState<FirstMoneySummary | null>(null);
   const [remoteState, setRemoteState] = useState<RemoteControlState | null>(null);
   const [remoteBusy, setRemoteBusy] = useState(false);
   const [theme, setTheme] = useState<AtlasTheme>(() => readInitialTheme());
@@ -3619,6 +3809,13 @@ export function App() {
   useEffect(() => {
     refreshSnapshot();
     refreshRemoteState();
+    fetch("./api/first-money-summary", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error(`first-money: ${response.status}`);
+        return response.json();
+      })
+      .then((payload: { data?: FirstMoneySummary }) => setFirstMoneySummary(payload.data ?? null))
+      .catch(() => setFirstMoneySummary({ source_status: "unavailable", freshness: "unavailable" }));
   }, []);
 
   useEffect(() => {
@@ -3899,6 +4096,15 @@ export function App() {
               detail={snapshot.system.topIssue}
             />
           </section>
+
+          <FirstMoneyPanel summary={firstMoneySummary ?? snapshot.commercialReadiness.firstMoneySummary ?? null} revenue={snapshot.commercialReadiness.revenueAutopilot} />
+
+          <RevenueOrbitPanel
+            revenue={snapshot.commercialReadiness.revenueAutopilot}
+            source={snapshot.commercialReadiness.revenueAutopilotSource}
+            onOpen={open}
+            onCopy={copy}
+          />
 
           {mission ? (
             <div id="local-codex" className="panel-stack">

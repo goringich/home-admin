@@ -155,6 +155,7 @@ export interface Snapshot {
   localAiControl: LocalAiControl;
   aiTelemetry: AiTelemetryExport;
   commercialReadiness: CommercialReadiness;
+  operationPolicy: OperationPolicy;
 }
 
 export interface SourceMeta {
@@ -1714,6 +1715,23 @@ export interface CommercialReadiness {
     next_money_action?: string;
   };
   monetizationPriorityPath: string;
+  firstMoneyContractPath: string;
+  firstMoney: {
+    status: string;
+    primary_offer: Record<string, string>;
+    readiness: { current_state: string; reasons: string[] };
+    price_hypothesis_rub?: number | null;
+    fulfillment_steps: string[];
+    verified_blockers: string[];
+    owner_required_blockers: string[];
+    aggregate_funnel_counters: { status: string; observed_at?: string; source?: string; counters: Record<string, number | null> };
+    active_experiment: Record<string, string>;
+    spend_cap_rub?: number | null;
+    next_exact_revenue_action: string;
+  };
+  firstMoneySummary: FirstMoneySummary;
+  revenueAutopilot: RevenueAutopilotStatus;
+  revenueAutopilotSource: SourceMeta;
   summary: {
     implemented: number;
     scaffolded: number;
@@ -1751,4 +1769,76 @@ export interface CommercialReadiness {
   }>;
   source: SourceMeta;
   productIntelSource: SourceMeta;
+}
+
+export interface FirstMoneySummary {
+  generated_at?: string;
+  source_updated_at?: string | null;
+  freshness?: "fresh" | "stale" | "unavailable";
+  source_status?: "available" | "unavailable";
+  error?: string;
+  primary_offer?: {
+    product_id?: string;
+    offer_id?: string;
+    title?: string;
+    starting_price_rub?: number | null;
+  };
+  funnel?: {
+    leads?: number | null;
+    qualified_leads?: number | null;
+    quotes_sent?: number | null;
+    payments_pending?: number | null;
+    payments_verified?: number | null;
+    orders_in_fulfillment?: number | null;
+    orders_delivered?: number | null;
+    orders_canceled?: number | null;
+    orders_refunded?: number | null;
+  };
+  publication_state?: string;
+  telegram_intake_state?: string;
+  active_experiment?: string;
+  blockers?: string[];
+  next_machine_action?: string;
+  next_human_action?: string;
+}
+
+export interface RevenueAutopilotStatus {
+  status: "available" | "unavailable";
+  generated_at?: string | null;
+  active_revenue_lane: string | null;
+  active_experiment?: string | null;
+  current_spend_cap_rub?: number | null;
+  product_readiness?: string;
+  campaign_readiness?: string;
+  funnel_counters: Record<string, number | null>;
+  analytics_status?: string;
+  experiment_classification?: string | null;
+  experiment_action?: string | null;
+  blocked_gates?: string[];
+  next_exact_money_action?: string | null;
+  last_autonomous_run?: string | null;
+  owner_approvals_needed?: string[];
+  host_safe_mode?: boolean;
+  creative_factory?: {
+    status: string;
+    asset_status: string;
+    approved_asset_count: number | null;
+    capture_task_ids: string[];
+    primary_angle_count: number | null;
+    planned_render_jobs: number | null;
+    rendered_video_count: number | null;
+    analytics_status: string;
+    publish_policy: string;
+  } | null;
+}
+
+export interface OperationPolicy {
+  status: string;
+  decision: string;
+  mode: string;
+  enforcement: string;
+  reasons: string[];
+  requiredChecks: string[];
+  evidenceFreshness: string;
+  source: SourceMeta;
 }

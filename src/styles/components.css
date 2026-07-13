@@ -85,15 +85,16 @@
   height: 2.75rem;
   border-radius: var(--radius-md);
   border: var(--border-thin) solid var(--color-border-strong);
-  background: linear-gradient(180deg, var(--color-surface-2), var(--color-bg-elevated));
+  background: linear-gradient(145deg, var(--color-accent), color-mix(in srgb, var(--color-info) 56%, var(--color-accent)));
   color: var(--color-text-primary);
   font-weight: 700;
+  box-shadow: 0 0.8rem 2rem color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .brand-name {
   font-size: 0.88rem;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
 }
 
 .brand-subtitle,
@@ -188,6 +189,8 @@
 .nav-item {
   text-align: left;
   font-weight: 600;
+  position: relative;
+  overflow: hidden;
 }
 
 .nav-item:hover,
@@ -199,6 +202,14 @@
   color: var(--color-text-primary);
   border-color: var(--color-border-strong);
   background: var(--color-surface-3);
+}
+
+.nav-item-active::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.2rem;
+  content: "";
+  background: linear-gradient(var(--color-info), var(--color-accent));
 }
 
 .theme-switcher {
@@ -231,10 +242,10 @@
   border: 0;
   border-radius: var(--radius-md);
   padding: 0.9rem 1.1rem;
-  background: linear-gradient(180deg, var(--color-accent), var(--color-accent-strong));
-  color: var(--color-bg-app);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-info));
+  color: #0a0920;
   font-weight: 700;
-  box-shadow: 0 12px 28px var(--color-shadow);
+  box-shadow: 0 1rem 2.2rem color-mix(in srgb, var(--color-accent) 26%, transparent);
 }
 
 .ghost-button,
@@ -339,6 +350,44 @@
 .task-column {
   display: grid;
   gap: var(--space-2);
+}
+
+.panel,
+.selected-panel,
+.sidebar-card,
+.rail-card,
+.detail-card,
+.metric-card,
+.answer-card,
+.spotlight-stat,
+.timeline-item,
+.project-node,
+.registry-row,
+.related-card,
+.task-card,
+.task-vertical,
+.command-row,
+.remote-service-card,
+.alt-tool-card,
+.goal-capsule-card,
+.run-summary-card,
+.quick-row,
+.notice,
+.theme-switcher,
+.release-card,
+.task-column,
+.command-deck,
+.hero-spotlight,
+.local-codex-lab,
+.token-panel,
+.reliability-panel,
+.fallback-panel,
+.timeline-panel,
+.task-matrix,
+.project-map,
+.registry,
+.remote-ops {
+  backdrop-filter: blur(14px) saturate(1.06);
 }
 
 .metric-value,
@@ -450,6 +499,199 @@
   margin-top: 0.35rem;
   font-size: 0.94rem;
   line-height: 1.45;
+}
+
+/* Revenue Orbit: a read-only visual control surface for the existing
+   Revenue Autopilot export. It intentionally shows states, not private data. */
+.revenue-orbit {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-border-soft));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-accent-soft) 84%, transparent), transparent 49%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-2) 90%, black), var(--color-surface-1));
+}
+
+.revenue-orbit::before,
+.revenue-orbit::after,
+.revenue-orbit-glow {
+  position: absolute;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+  border-radius: 999px;
+}
+
+.revenue-orbit::before {
+  width: 31rem;
+  height: 31rem;
+  top: -23rem;
+  right: -11rem;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 44%, transparent);
+  box-shadow: 0 0 0 3.5rem color-mix(in srgb, var(--color-accent) 5%, transparent), 0 0 0 8rem color-mix(in srgb, var(--color-info) 4%, transparent);
+}
+
+.revenue-orbit::after {
+  width: 18rem;
+  height: 18rem;
+  left: -9rem;
+  bottom: -10rem;
+  background: color-mix(in srgb, var(--color-info) 10%, transparent);
+  filter: blur(16px);
+}
+
+.revenue-orbit-glow {
+  width: 0.7rem;
+  height: 0.7rem;
+  top: 5.5rem;
+  right: 14.2rem;
+  background: var(--color-info);
+  box-shadow: 0 0 1.5rem 0.3rem var(--color-info);
+}
+
+.revenue-orbit-head {
+  position: relative;
+}
+
+.revenue-orbit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.85fr);
+  gap: var(--space-4);
+}
+
+.revenue-hero-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  min-height: 16.5rem;
+  padding: clamp(1.25rem, 2vw, 2.25rem);
+  border: var(--border-thin) solid color-mix(in srgb, var(--color-accent) 35%, var(--color-border-soft));
+  border-radius: calc(var(--radius-xl) + 0.25rem);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-surface-3) 74%, transparent), color-mix(in srgb, var(--color-surface-2) 76%, transparent));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 12%, transparent), 0 1.5rem 5rem color-mix(in srgb, black 28%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.revenue-hero-topline,
+.revenue-hero-meta,
+.revenue-policy-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.revenue-hero-topline {
+  justify-content: space-between;
+}
+
+.orbit-eyebrow {
+  color: var(--color-info);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+
+.revenue-hero-title {
+  color: var(--color-text-primary);
+  font-size: clamp(2.45rem, 4vw, 5.4rem);
+  font-weight: 750;
+  letter-spacing: -0.075em;
+  line-height: 0.86;
+  text-wrap: balance;
+}
+
+.revenue-hero-card p {
+  max-width: 62ch;
+  color: var(--color-text-secondary);
+  font-size: 1.01rem;
+  line-height: 1.55;
+}
+
+.revenue-hero-meta {
+  padding-top: var(--space-3);
+  border-top: var(--border-thin) solid var(--color-border-soft);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+}
+
+.revenue-gate-rail {
+  display: grid;
+  align-content: stretch;
+  gap: var(--space-2);
+}
+
+.revenue-gate {
+  display: grid;
+  grid-template-columns: 2.2rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-thin) solid color-mix(in srgb, var(--color-border-soft) 84%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface-3) 78%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.revenue-gate-index {
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  aspect-ratio: 1;
+  border: var(--border-thin) solid color-mix(in srgb, var(--color-accent) 45%, var(--color-border-soft));
+  border-radius: 50%;
+  color: var(--color-accent-strong);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.revenue-gate div {
+  display: grid;
+  gap: 0.14rem;
+}
+
+.revenue-gate strong { color: var(--color-text-primary); }
+.revenue-gate span:not(.revenue-gate-index) { color: var(--color-text-secondary); font-size: 0.82rem; overflow-wrap: anywhere; }
+
+.revenue-orbit-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.revenue-orbit-metrics .metric-card {
+  min-height: 8.5rem;
+  background: color-mix(in srgb, var(--color-surface-3) 74%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.revenue-policy-strip {
+  justify-content: space-between;
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-thin) solid color-mix(in srgb, var(--color-warning) 30%, var(--color-border-soft));
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-warning-soft) 58%, transparent), transparent);
+}
+
+.revenue-policy-strip strong { color: var(--color-warning); }
+.revenue-policy-strip > span { flex: 1 1 28rem; color: var(--color-text-secondary); font-size: 0.9rem; }
+
+@media (max-width: 1050px) {
+  .revenue-orbit-layout { grid-template-columns: 1fr; }
+  .revenue-gate-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .revenue-orbit-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .revenue-gate-rail,
+  .revenue-orbit-metrics { grid-template-columns: 1fr; }
+  .revenue-hero-title { font-size: 2.8rem; }
 }
 
 .ai-lab-shell {

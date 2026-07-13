@@ -20,8 +20,9 @@ body {
   font-family: var(--font-sans);
   color: var(--color-text-primary);
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0)),
-    linear-gradient(180deg, var(--color-bg-app), var(--color-bg-canvas));
+    radial-gradient(circle at 84% -6%, color-mix(in srgb, var(--color-accent) 24%, transparent), transparent 32rem),
+    radial-gradient(circle at 2% 22%, color-mix(in srgb, var(--color-info) 13%, transparent), transparent 28rem),
+    linear-gradient(145deg, var(--color-bg-app), var(--color-bg-canvas));
 }
 
 body::before {
@@ -33,8 +34,9 @@ body::before {
   background:
     linear-gradient(transparent 0 calc(100% - 1px), var(--color-border-soft) calc(100% - 1px)),
     linear-gradient(90deg, transparent 0 calc(100% - 1px), var(--color-border-soft) calc(100% - 1px));
-  background-size: 1.5rem 1.5rem;
-  opacity: 0.14;
+  background-size: 2rem 2rem;
+  mask-image: linear-gradient(to bottom, black, transparent 76%);
+  opacity: 0.1;
 }
 
 ::selection {
@@ -123,6 +125,7 @@ div {
 }
 
 #command-deck,
+#revenue,
 #local-codex,
 #reliability,
 #remote-ops,
