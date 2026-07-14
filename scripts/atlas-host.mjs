@@ -5,6 +5,7 @@ import process from "node:process";
 import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getRemoteState, runRemoteAction } from "./remote-control.mjs";
+import { normalizeCommercialSummary } from "./commercial-summary.mjs";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const distDir = path.join(rootDir, "dist");
@@ -805,6 +806,26 @@ const server = http.createServer((req, res) => {
       sendJson(res, 200, { ok: true, data: snapshot.commercialReadiness ?? null });
     } catch (error) {
       send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/product-operating-standard") {
+    try {
+      const snapshot = loadSnapshotData();
+      sendJson(res, 200, { ok: true, data: snapshot.commercialReadiness?.productOperatingStandard ?? null });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/first-money-summary") {
+    try {
+      const snapshot = loadSnapshotData();
+      sendJson(res, 200, { ok: true, data: normalizeCommercialSummary(snapshot.commercialReadiness?.firstMoneySummary) });
+    } catch {
+      sendJson(res, 200, { ok: true, data: normalizeCommercialSummary(null) });
     }
     return;
   }

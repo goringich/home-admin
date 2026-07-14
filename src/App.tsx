@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import type {
   AiLabPrepareResponse,
   AiTelemetryExport,
   CommercialReadiness,
   DetailTab,
+  FirstMoneySummary,
   HealthTone,
   HostAudit,
   LocalAiControl,
@@ -12,20 +14,44 @@ import type {
   LocalCodexRunSummary,
   ProjectDomain,
   ProjectRecord,
+  RevenueAutopilotStatus,
   Snapshot,
   SourceMeta,
   TaskItem,
   TaskStatus,
 } from "./types";
 
-const NAV_ITEMS = [
-  { id: "command-deck", label: "Command Deck" },
-  { id: "local-codex", label: "Codex Lab" },
-  { id: "reliability", label: "Reliability" },
-  { id: "remote-ops", label: "Remote Ops" },
-  { id: "project-map", label: "Projects" },
-  { id: "registry", label: "Registry" },
+type WorkspaceId = "overview" | "revenue" | "ai-control" | "work" | "runs" | "remote";
+type AiControlSection = "runtime" | "context" | "efficiency" | "trust" | "advanced";
+
+const WORKSPACES: Array<{
+  id: WorkspaceId;
+  label: string;
+  shortLabel: string;
+  description: string;
+  glyph: string;
+}> = [
+  { id: "overview", label: "Обзор", shortLabel: "Today", description: "Что важно прямо сейчас", glyph: "01" },
+  { id: "revenue", label: "Revenue", shortLabel: "Money", description: "Воронка, эксперименты и gates", glyph: "02" },
+  { id: "ai-control", label: "AI Control", shortLabel: "System", description: "Runtime, context и trust", glyph: "03" },
+  { id: "work", label: "Проекты", shortLabel: "Work", description: "Репозитории, задачи и релизы", glyph: "04" },
+  { id: "runs", label: "Запуски", shortLabel: "Runs", description: "Codex, traces и проверки", glyph: "05" },
+  { id: "remote", label: "Remote", shortLabel: "Ops", description: "Удалённый доступ и сервисы", glyph: "06" },
 ];
+
+const AI_CONTROL_SECTIONS: Array<{ id: AiControlSection; label: string; description: string }> = [
+  { id: "runtime", label: "Runtime", description: "Host, services and model routing" },
+  { id: "context", label: "Context", description: "Retrieval, RAG and code search" },
+  { id: "efficiency", label: "Efficiency", description: "Tokens, cache and repeated work" },
+  { id: "trust", label: "Trust", description: "Security, reliability and skills" },
+  { id: "advanced", label: "Advanced", description: "Full laboratory detail" },
+];
+
+function initialWorkspace(): WorkspaceId {
+  if (typeof window === "undefined") return "overview";
+  const candidate = window.location.hash.replace(/^#\/?/, "").split("/")[0];
+  return WORKSPACES.some((workspace) => workspace.id === candidate) ? candidate as WorkspaceId : "overview";
+}
 
 const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [
   { id: "overview", label: "Обзор" },
@@ -366,7 +392,8 @@ function telemetryStatusTone(status: string): HealthTone {
 
 function commercialTone(status: string): HealthTone {
   if (status === "ready_for_live_checks") return "ok";
-  if (status === "scaffolded_waiting_for_live_checks") return "attention";
+  if (status === "allow") return "ok";
+  if (status === "human_required" || status === "scaffolded_waiting_for_live_checks") return "attention";
   return "risk";
 }
 
@@ -496,26 +523,6 @@ function deriveMissionState(snapshot: Snapshot): MissionState {
   };
 }
 
-function miniSparkline(values: number[]) {
-  const width = 96;
-  const height = 26;
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values, 0);
-  const points = values
-    .map((value, index) => {
-      const x = (index / Math.max(values.length - 1, 1)) * width;
-      const y = height - ((value - min) / Math.max(max - min, 1)) * height;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-
-  return (
-    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-      <polyline points={points} />
-    </svg>
-  );
-}
-
 function MetricCard(props: { label: string; value: string | number; detail: string }) {
   return (
     <article className="metric-card">
@@ -528,79 +535,6 @@ function MetricCard(props: { label: string; value: string | number; detail: stri
 
 function StatusBadge(props: { label: string; tone: HealthTone | string }) {
   return <span className={`health-pill ${toneClass(props.tone)}`}>{props.label}</span>;
-}
-
-function ProjectNode(props: {
-  project: ProjectRecord;
-  active: boolean;
-  onSelect: (id: string) => void;
-}) {
-  const { project, active, onSelect } = props;
-  const position = project.position ?? { x: 0, y: 0 };
-
-  return (
-    <button
-      className={`project-node ${active ? "project-node-active" : ""}`}
-      style={{ left: `${position.x}%`, top: `${position.y}%` }}
-      onClick={() => onSelect(project.id)}
-      type="button"
-    >
-      <div className="project-node-head">
-        <div>
-          <div className="project-node-name">{project.name}</div>
-          <div className="project-node-tags">
-            {project.tags.slice(0, 4).map((tag) => (
-              <span key={tag} className="chip chip-subtle">
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
-        <span className={`health-pill ${toneClass(project.healthTone)}`}>
-          {HEALTH_LABELS[project.healthTone]}
-        </span>
-      </div>
-      <div className="project-node-meta">
-        <span>{project.branch}</span>
-        <span>dirty {project.dirtyCount}</span>
-        <span>{project.deploy?.environment ?? "local"}</span>
-      </div>
-      <div className="project-node-footer">
-        <span>{fmtRelative(project.lastCommit.timestamp)}</span>
-        {miniSparkline(project.sparkline)}
-      </div>
-    </button>
-  );
-}
-
-function GraphLinks(props: { projects: ProjectRecord[] }) {
-  const lookup = new Map(props.projects.map((project) => [project.id, project]));
-  const edges = props.projects.flatMap((project) =>
-    project.related
-      .filter((target) => lookup.has(target) && project.id < target)
-      .map((target) => ({ from: project, to: lookup.get(target)! })),
-  );
-
-  return (
-    <svg className="graph-links" viewBox="0 0 100 100" preserveAspectRatio="none">
-      {edges.map((edge) => {
-        const from = edge.from.position ?? { x: 0, y: 0 };
-        const to = edge.to.position ?? { x: 0, y: 0 };
-        const startX = from.x + 9;
-        const startY = from.y + 7;
-        const endX = to.x + 9;
-        const endY = to.y + 7;
-        const bend = (startX + endX) / 2;
-
-        return (
-          <path
-            key={`${edge.from.id}-${edge.to.id}`}
-            d={`M ${startX} ${startY} C ${bend} ${startY}, ${bend} ${endY}, ${endX} ${endY}`}
-          />
-        );
-      })}
-    </svg>
-  );
 }
 
 function copyText(value: string) {
@@ -922,133 +856,6 @@ function SourceFootnote(props: {
       <code>{compactPath(props.source.path)}</code>
       <span>{sourceAge(props.source)}</span>
     </div>
-  );
-}
-
-function CommandDeckPanel(props: {
-  snapshot: Snapshot;
-  mission: MissionState;
-  onOpen: (label: string, target: string) => void;
-  onCopy: (label: string, value: string) => void;
-}) {
-  const { mission, snapshot } = props;
-
-  return (
-    <section id="command-deck" className="command-deck panel">
-      <div className="panel-head">
-        <div>
-          <div className="section-kicker">Mission Control</div>
-          <h3>Command Deck</h3>
-          <p>Первый экран должен отвечать, что делать дальше, насколько надёжен локальный стек и где самый большой риск.</p>
-        </div>
-        <StatusBadge label={mission.fallbackLabel} tone={mission.fallbackTone} />
-      </div>
-
-      <div className="command-deck-grid">
-        <div className="command-deck-main">
-          <article className="answer-card answer-card-lead">
-            <div className="answer-card-head">
-              <div>
-                <div className="answer-label">Current active goal</div>
-                <h2>{mission.activeGoal ? compactObjective(mission.activeGoal.objective) : "Goal capsule missing"}</h2>
-              </div>
-              {mission.activeGoal ? <StatusBadge label={mission.activeGoal.status} tone={goalToneClass(mission.activeGoal.status)} /> : null}
-            </div>
-            <p>{mission.localAiSummary}</p>
-            <div className="answer-action-row">
-              <MetricCard label="Next exact action" value="Now" detail={mission.nextAction} />
-              <MetricCard label="Can local handle safe tasks?" value={mission.safeTaskAnswer} detail={mission.fallbackSummary} />
-            </div>
-            {mission.activeGoal ? (
-              <SourceFootnote
-                source={mission.activeGoal.source}
-                label={`goal ${mission.activeGoal.goalId}`}
-                onOpen={props.onOpen}
-                onCopy={props.onCopy}
-              />
-            ) : (
-              <SourceFootnote
-                source={snapshot.localCodexLab.source}
-                label="local codex lab"
-                onOpen={props.onOpen}
-                onCopy={props.onCopy}
-              />
-            )}
-          </article>
-
-          <div className="answer-grid">
-            <article className="answer-card">
-              <div className="answer-label">Is local AI healthy?</div>
-              <div className="answer-value">
-                <StatusBadge label={snapshot.localCodexLab.hostHealth} tone={snapshot.system.overall === "ok" ? "ok" : "risk"} />
-              </div>
-              <p>{mission.localAiSummary}</p>
-            </article>
-
-            <article className="answer-card">
-              <div className="answer-label">Is Codex wasting tokens?</div>
-              <div className="answer-value">
-                <StatusBadge label={mission.tokenLabel} tone={mission.tokenTone} />
-              </div>
-              <p>{mission.tokenDetail}</p>
-            </article>
-
-            <article className="answer-card">
-              <div className="answer-label">Is OpenClaw reliable right now?</div>
-              <div className="answer-value">
-                <StatusBadge label={mission.openclawLabel} tone={mission.openclawTone} />
-              </div>
-              <p>{mission.openclawDetail}</p>
-            </article>
-
-            <article className="answer-card">
-              <div className="answer-label">Biggest risk</div>
-              <div className="answer-value">
-                <StatusBadge label={snapshot.system.systemStatus} tone={mission.biggestRiskTone} />
-              </div>
-              <p>{mission.biggestRisk}</p>
-            </article>
-          </div>
-        </div>
-
-        <aside className="command-deck-rail">
-          <article className="rail-card">
-            <div className="rail-title">Fallback readiness</div>
-            <div className="rail-hero-number rail-hero-status">{mission.fallbackLabel}</div>
-            <p>{mission.fallbackSummary}</p>
-            <SourceFootnote source={snapshot.localCodexLab.source} label="fallback source" onOpen={props.onOpen} onCopy={props.onCopy} />
-          </article>
-
-          <article className="rail-card">
-            <div className="rail-title">Commercial Readiness</div>
-            <StatusBadge label={snapshot.commercialReadiness.overallStatus} tone={commercialTone(snapshot.commercialReadiness.overallStatus)} />
-            <div className="rail-hero-number rail-hero-status">{snapshot.commercialReadiness.score}</div>
-            <p>
-              {snapshot.commercialReadiness.targetProduct.title} · {snapshot.commercialReadiness.monetizationLabel} ·{" "}
-              {snapshot.commercialReadiness.moneyPath.join(" / ") || "money path missing"}
-            </p>
-            <SourceFootnote
-              source={snapshot.commercialReadiness.source}
-              label="commercial readiness"
-              onOpen={props.onOpen}
-              onCopy={props.onCopy}
-            />
-          </article>
-
-          <article className="rail-card">
-            <div className="rail-title">Risk rail</div>
-            <div className="risk-list">
-              {mission.riskItems.map((item) => (
-                <article key={item} className="risk-item">
-                  <StatusBadge label="risk" tone="risk" />
-                  <p>{item}</p>
-                </article>
-              ))}
-            </div>
-          </article>
-        </aside>
-      </div>
-    </section>
   );
 }
 
@@ -1853,6 +1660,28 @@ function LocalCodexLabPanel(props: {
             <SourceFootnote source={props.commercial.source} label="commercial readiness" onOpen={props.onOpen} onCopy={props.onCopy} />
           </article>
 
+          <article className="detail-card ai-lab-panel">
+            <div className="detail-card-title">First Money</div>
+            <div className="class-grid">
+              <div className="class-row"><span>primary offer</span><strong>{props.commercial.firstMoney.primary_offer.offer || "missing"}</strong></div>
+              <div className="class-row"><span>state</span><strong>{props.commercial.firstMoney.readiness.current_state}</strong></div>
+              <div className="class-row"><span>price hypothesis</span><strong>{props.commercial.firstMoney.price_hypothesis_rub ? `${props.commercial.firstMoney.price_hypothesis_rub} RUB` : "missing"}</strong></div>
+              <div className="class-row"><span>funnel evidence</span><strong>{props.commercial.firstMoney.aggregate_funnel_counters.status}</strong></div>
+              <div className="class-row"><span>experiment</span><strong>{props.commercial.firstMoney.active_experiment.id || "missing"}</strong></div>
+              <div className="class-row"><span>spend cap</span><strong>{props.commercial.firstMoney.spend_cap_rub ?? "missing"} RUB</strong></div>
+            </div>
+            <ul className="note-list compact-note-list">
+              {props.commercial.firstMoney.readiness.reasons.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
+              {props.commercial.firstMoney.owner_required_blockers.slice(0, 2).map((item) => <li key={item}>{item}</li>)}
+              {props.commercial.firstMoney.next_exact_revenue_action ? <li>{props.commercial.firstMoney.next_exact_revenue_action}</li> : null}
+              {props.commercial.firstMoney.active_experiment.owner_action ? <li>{props.commercial.firstMoney.active_experiment.owner_action}</li> : null}
+            </ul>
+            {props.commercial.firstMoneyContractPath ? (
+              <QuickActionRow label="First Money contract" value={compactPath(props.commercial.firstMoneyContractPath)} onOpen={() => props.onOpen("First Money contract", props.commercial.firstMoneyContractPath)} onCopy={() => props.onCopy("First Money contract", props.commercial.firstMoneyContractPath)} />
+            ) : null}
+            <SourceFootnote source={props.commercial.source} label="first money source-linked contract" onOpen={props.onOpen} onCopy={props.onCopy} />
+          </article>
+
           <article className="detail-card ai-lab-panel ai-lab-span-full">
             <div className="detail-card-title">Repo-intel freshness</div>
             <div className="tool-inventory-grid">
@@ -2092,6 +1921,164 @@ function LocalCodexLabPanel(props: {
           </article>
         </div>
       </section>
+    </section>
+  );
+}
+
+function firstMoneyValue(value: number | string | null | undefined) {
+  if (value === 0) return "0";
+  if (typeof value === "number" || (typeof value === "string" && value.trim())) return String(value);
+  return "Нет проверенных данных";
+}
+
+function FirstMoneyPanel(props: { summary: FirstMoneySummary | null; revenue: RevenueAutopilotStatus }) {
+  const summary = props.summary;
+  const sourceUnavailable = !summary || summary.source_status === "unavailable";
+  const stale = summary?.freshness === "stale";
+  const funnel = summary?.funnel;
+  const offer = summary?.primary_offer;
+  const sourceLabel = sourceUnavailable ? "Источник недоступен" : "Elizabeth — авторитетная агрегированная БД";
+  return (
+    <section id="first-money" className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">First Money</div>
+          <h3>Операционная сводка Gift Room</h3>
+          <p>Только агрегаты жизненного цикла; данные клиентов, материалы и платёжные реквизиты не показываются.</p>
+        </div>
+        <StatusBadge label={sourceUnavailable ? "Источник недоступен" : stale ? "Данные устарели" : "Проверенные данные"} tone={sourceUnavailable ? "risk" : stale ? "attention" : "ok"} />
+      </div>
+      {stale ? <div className="notice-banner">Данные устарели</div> : null}
+      <div className="detail-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Продукт и источник</div>
+          <div className="class-grid">
+            <div className="class-row"><span>Продукт</span><strong>{firstMoneyValue(offer?.title)}</strong></div>
+            <div className="class-row"><span>Предложение</span><strong>{firstMoneyValue(offer?.offer_id)}</strong></div>
+            <div className="class-row"><span>Начальная цена</span><strong>{typeof offer?.starting_price_rub === "number" ? `${offer.starting_price_rub} ₽` : "Нет проверенных данных"}</strong></div>
+            <div className="class-row"><span>Источник</span><strong>{sourceLabel}</strong></div>
+            <div className="class-row"><span>Свежесть</span><strong>{sourceUnavailable ? "Источник недоступен" : stale ? "Данные устарели" : "Свежие"}</strong></div>
+            <div className="class-row"><span>Время обновления</span><strong>{firstMoneyValue(summary?.generated_at)}</strong></div>
+          </div>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Воронка заказов</div>
+          <div className="class-grid">
+            <div className="class-row"><span>Обращения</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.leads)}</strong></div>
+            <div className="class-row"><span>Квалифицированные лиды</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.qualified_leads)}</strong></div>
+            <div className="class-row"><span>Отправленные предложения</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.quotes_sent)}</strong></div>
+            <div className="class-row"><span>Ожидающие проверки оплаты</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.payments_pending)}</strong></div>
+            <div className="class-row"><span>Подтверждённые оплаты</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.payments_verified)}</strong></div>
+            <div className="class-row"><span>Заказы в работе</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.orders_in_fulfillment)}</strong></div>
+            <div className="class-row"><span>Выполненные заказы</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.orders_delivered)}</strong></div>
+            <div className="class-row"><span>Отменённые</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.orders_canceled)}</strong></div>
+            <div className="class-row"><span>Возвращённые</span><strong>{sourceUnavailable ? "Источник недоступен" : firstMoneyValue(funnel?.orders_refunded)}</strong></div>
+          </div>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Операционные ограничения</div>
+          <div className="class-grid">
+            <div className="class-row"><span>Состояние публикации</span><strong>{firstMoneyValue(summary?.publication_state)}</strong></div>
+            <div className="class-row"><span>Состояние Telegram-приёма</span><strong>{firstMoneyValue(summary?.telegram_intake_state)}</strong></div>
+            <div className="class-row"><span>Активный эксперимент</span><strong>{firstMoneyValue(summary?.active_experiment)}</strong></div>
+            <div className="class-row"><span>Следующее действие системы</span><strong>{firstMoneyValue(summary?.next_machine_action)}</strong></div>
+            <div className="class-row"><span>Следующее действие владельца</span><strong>{firstMoneyValue(summary?.next_human_action)}</strong></div>
+          </div>
+          <ul className="note-list compact-note-list">
+            {(summary?.blockers ?? []).map((blocker) => <li key={blocker}>{blocker}</li>)}
+            {sourceUnavailable ? <li>Источник недоступен</li> : null}
+          </ul>
+        </article>
+        <article className="detail-card">
+          <div className="detail-card-title">Revenue Autopilot</div>
+          <div className="class-grid">
+            <div className="class-row"><span>Активная линия</span><strong>{firstMoneyValue(props.revenue.active_revenue_lane)}</strong></div>
+            <div className="class-row"><span>Эксперимент</span><strong>{firstMoneyValue(props.revenue.active_experiment)}</strong></div>
+            <div className="class-row"><span>Лимит</span><strong>{typeof props.revenue.current_spend_cap_rub === "number" ? `${props.revenue.current_spend_cap_rub} ₽` : "Нет проверенных данных"}</strong></div>
+            <div className="class-row"><span>Готовность продукта</span><strong>{firstMoneyValue(props.revenue.product_readiness)}</strong></div>
+            <div className="class-row"><span>Готовность кампании</span><strong>{firstMoneyValue(props.revenue.campaign_readiness)}</strong></div>
+            <div className="class-row"><span>Аналитика</span><strong>{firstMoneyValue(props.revenue.analytics_status)}</strong></div>
+            <div className="class-row"><span>Решение цикла</span><strong>{firstMoneyValue(props.revenue.experiment_action)}</strong></div>
+            <div className="class-row"><span>Safe mode</span><strong>{props.revenue.host_safe_mode ? "ON" : "OFF"}</strong></div>
+          </div>
+          <ul className="note-list compact-note-list">
+            {(props.revenue.blocked_gates ?? []).slice(0, 5).map((gate) => <li key={`gate:${gate}`}>gate: {gate}</li>)}
+            {(props.revenue.owner_approvals_needed ?? []).slice(0, 3).map((item) => <li key={`approval:${item}`}>owner: {item}</li>)}
+            {props.revenue.next_exact_money_action ? <li>{props.revenue.next_exact_money_action}</li> : null}
+          </ul>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function RevenueOrbitPanel(props: {
+  revenue: RevenueAutopilotStatus;
+  source: SourceMeta;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const factory = props.revenue.creative_factory;
+  const status = factory?.status ?? "unavailable";
+  const statusLabel = status.includes("blocked") ? "asset gate blocked" : status === "unavailable" ? "status unavailable" : "ready for review";
+  const assetLabel = factory?.asset_status?.includes("blocked") ? "waiting for approved media" : factory?.asset_status ?? "unavailable";
+  const approvalLabel = factory?.publish_policy === "owner_approval_required" ? "owner gate" : factory?.publish_policy ?? "unavailable";
+  return (
+    <section id="revenue" className="revenue-orbit panel">
+      <div className="revenue-orbit-glow" aria-hidden="true" />
+      <div className="panel-head revenue-orbit-head">
+        <div>
+          <div className="section-kicker">Revenue Orbit</div>
+          <h3>Креативы — только после доказуемого asset gate</h3>
+          <p>Atlas показывает безопасный operational status, а не сырой контент, лиды или выдуманную эффективность.</p>
+        </div>
+        <StatusBadge label={statusLabel} tone={status.includes("blocked") || status === "unavailable" ? "attention" : "ok"} />
+      </div>
+
+      <div className="revenue-orbit-layout">
+        <article className="revenue-hero-card">
+          <div className="revenue-hero-topline">
+            <span className="orbit-eyebrow">ACTIVE REVENUE LANE</span>
+            <StatusBadge label={props.revenue.product_readiness ?? "unavailable"} tone={commercialTone(props.revenue.product_readiness ?? "")} />
+          </div>
+          <div className="revenue-hero-title">{props.revenue.active_revenue_lane ?? "unavailable"}</div>
+          <p>{props.revenue.next_exact_money_action ?? "Нет безопасно сформированного следующего действия."}</p>
+          <div className="revenue-hero-meta">
+            <span>experiment: {props.revenue.active_experiment ?? "unavailable"}</span>
+            <span>analytics: {props.revenue.analytics_status ?? "unavailable"}</span>
+            <span>spend cap: {typeof props.revenue.current_spend_cap_rub === "number" ? `${props.revenue.current_spend_cap_rub} ₽` : "unavailable"}</span>
+          </div>
+        </article>
+
+        <div className="revenue-gate-rail" aria-label="Creative factory delivery flow">
+          {[
+            ["01", "Assets", assetLabel],
+            ["02", "Scripts", `${factory?.primary_angle_count ?? "—"} primary angles`],
+            ["03", "Render jobs", `${factory?.planned_render_jobs ?? "—"} planned · ${factory?.rendered_video_count ?? "—"} rendered`],
+            ["04", "Publish", approvalLabel],
+            ["05", "Learn", factory?.analytics_status ?? "unavailable"],
+          ].map(([index, label, detail]) => (
+            <div className="revenue-gate" key={index}>
+              <span className="revenue-gate-index">{index}</span>
+              <div><strong>{label}</strong><span>{detail}</span></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="revenue-orbit-metrics">
+        <MetricCard label="Approved assets" value={factory?.approved_asset_count ?? "unavailable"} detail="only public-safe and commercially cleared" />
+        <MetricCard label="Capture tasks" value={factory?.capture_task_ids.length ?? "unavailable"} detail={factory?.capture_task_ids.join(" · ") || "no capture task exported"} />
+        <MetricCard label="Planned test videos" value={factory?.planned_render_jobs ?? "unavailable"} detail="plans only until public-safe assets are approved" />
+        <MetricCard label="Rendered videos" value={factory?.rendered_video_count ?? "unavailable"} detail="zero is intentional before the asset gate" />
+      </div>
+
+      <div className="revenue-policy-strip">
+        <strong>Autonomy boundary</strong>
+        <span>Rendering, publishing, contact and spend are not implied by this view. Owner approval and product gates remain mandatory.</span>
+        <StatusBadge label={props.revenue.host_safe_mode ? "host safe mode" : "host mode unknown"} tone={props.revenue.host_safe_mode ? "attention" : "unknown"} />
+      </div>
+      <SourceFootnote source={props.source} label="sanitized Revenue Autopilot export" onOpen={props.onOpen} onCopy={props.onCopy} />
     </section>
   );
 }
@@ -3292,107 +3279,6 @@ function SelectedProjectPanel(props: {
   );
 }
 
-function IntelligenceRail(props: {
-  snapshot: Snapshot;
-  projects: ProjectRecord[];
-}) {
-  const blockers = props.snapshot.tasks
-    .filter((task) => task.status === "blocked" || (task.status === "active" && task.priority === "high"))
-    .slice(0, 5);
-
-  return (
-    <aside className="intel-rail">
-      <section className="rail-card">
-        <div className="rail-title">Пульс деплоев</div>
-        <div className="bar-strip">
-          {props.snapshot.summary.deployPulse.map((value, index) => (
-            <span key={index} style={{ height: `${value * 8}px` }} />
-          ))}
-        </div>
-        <div className="rail-footnote">
-          Контуры с deploy script: {props.snapshot.summary.deployConfigured}
-        </div>
-      </section>
-
-      <section className="rail-card">
-        <div className="rail-title">Активные блокеры</div>
-        <div className="blocker-list">
-          {blockers.map((task) => (
-            <article key={task.id} className="blocker-item">
-              <div>
-                <strong>{task.project}</strong>
-                <p>{task.title}</p>
-              </div>
-              <span className={`health-pill ${task.status === "blocked" ? "tone-risk" : "tone-attention"}`}>
-                {STATUS_LABELS[task.status]}
-              </span>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="rail-card rail-card-slim">
-        <div className="rail-title">Недельная скорость</div>
-        <div className={`velocity ${props.snapshot.summary.weeklyVelocity >= 0 ? "velocity-up" : "velocity-down"}`}>
-          {props.snapshot.summary.weeklyVelocity >= 0 ? "+" : ""}
-          {props.snapshot.summary.weeklyVelocity}%
-        </div>
-        <p>
-          done {props.snapshot.summary.completedTasks} · active {props.snapshot.summary.activeTasks}
-        </p>
-      </section>
-
-      <section className="rail-card rail-card-slim">
-        <div className="rail-title">Грязные репозитории</div>
-        <div className="rail-hero-number">{props.snapshot.summary.dirtyRepos}</div>
-        <p>из {props.snapshot.summary.totalRepos} реп в inventory</p>
-      </section>
-
-      <section className="rail-card">
-        <div className="rail-title">Система / GPU</div>
-        <div className="system-grid">
-          <div>
-            <span>system</span>
-            <strong>{props.snapshot.system.systemStatus}</strong>
-          </div>
-          <div>
-            <span>mode</span>
-            <strong>{props.snapshot.system.safeMode ? "safe mode" : "normal"}</strong>
-          </div>
-          <div>
-            <span>GPU</span>
-            <strong>{props.snapshot.system.gpu.memoryTotal ? `${props.snapshot.system.gpu.temperature}°C` : "n/a"}</strong>
-          </div>
-          <div>
-            <span>VRAM</span>
-            <strong>
-              {props.snapshot.system.gpu.memoryTotal
-                ? `${props.snapshot.system.gpu.memoryUsed} / ${props.snapshot.system.gpu.memoryTotal} MiB`
-                : "n/a"}
-            </strong>
-          </div>
-        </div>
-        <p className="system-note">{props.snapshot.system.topIssue}</p>
-      </section>
-
-      <section className="rail-card">
-        <div className="rail-title">Последние коммиты</div>
-        <div className="commit-list">
-          {props.snapshot.recentCommits.map((commit) => (
-            <article key={`${commit.project}-${commit.sha}`} className="commit-item">
-              <div>
-                <strong>{commit.project}</strong>
-                <p>{commit.subject}</p>
-              </div>
-              <span>{fmtRelative(commit.timestamp)}</span>
-            </article>
-          ))}
-        </div>
-      </section>
-    </aside>
-  );
-}
-
 function TaskMatrix(props: { tasks: TaskItem[] }) {
   const columns: TaskStatus[] = ["planned", "active", "review", "blocked", "done"];
 
@@ -3481,60 +3367,229 @@ function ReleaseRadar(props: { projects: ProjectRecord[] }) {
   );
 }
 
-function RegistryTable(props: {
-  projects: ProjectRecord[];
-  onCopy: (label: string, value: string) => void;
-  onOpen: (label: string, target: string) => void;
-  onSelect: (projectId: string) => void;
+function WorkspaceHeader(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  status?: { label: string; tone: HealthTone | string };
+  actions?: ReactNode;
 }) {
   return (
-    <section className="registry panel">
-      <div className="panel-head">
-        <div>
-          <div className="section-kicker">Registry</div>
-          <h3>Все репозитории</h3>
-        </div>
+    <header className="workspace-header">
+      <div className="workspace-header-copy">
+        <div className="section-kicker">{props.eyebrow}</div>
+        <h1>{props.title}</h1>
+        <p>{props.description}</p>
       </div>
-      <div className="registry-table">
-        {props.projects.map((project) => (
-          <article key={`${project.id}:${project.repoPath}`} className="registry-row">
-            <div>
-              <strong>{project.name}</strong>
-              <p>{project.summary}</p>
+      <div className="workspace-header-actions">
+        {props.status ? <StatusBadge label={props.status.label} tone={props.status.tone} /> : null}
+        {props.actions}
+      </div>
+    </header>
+  );
+}
+
+function OverviewWorkspace(props: {
+  snapshot: Snapshot;
+  mission: MissionState;
+  selectedProject: ProjectRecord;
+  onNavigate: (workspace: WorkspaceId) => void;
+  onOpen: (label: string, target: string) => void;
+}) {
+  const { snapshot, mission, selectedProject } = props;
+  const revenue = snapshot.commercialReadiness.revenueAutopilot;
+  const activeGoal = mission.activeGoal;
+  const openTasks = snapshot.tasks.filter((task) => task.status !== "done").length;
+  const latestCommit = snapshot.recentCommits[0];
+  const urgentSignals = [
+    snapshot.system.topIssue,
+    snapshot.commercialReadiness.topOwnerBlockers[0],
+    activeGoal?.knownBlockers[0],
+  ].filter(Boolean) as string[];
+
+  return (
+    <div className="workspace-stack workspace-overview">
+      <WorkspaceHeader
+        eyebrow="Atlas / Today"
+        title="Один экран. Один следующий шаг."
+        description="Сводка оставляет только решения, которые требуют внимания сейчас. Детали разнесены по отдельным рабочим пространствам."
+        status={{ label: snapshot.system.safeMode ? "safe mode" : snapshot.system.overall, tone: snapshot.system.safeMode ? "attention" : snapshot.system.overall === "ok" ? "ok" : "risk" }}
+      />
+
+      <section className="today-hero">
+        <div className="today-hero-copy">
+          <span className="orbit-eyebrow">NEXT EXACT ACTION</span>
+          <h2>{mission.nextAction}</h2>
+          <p>{activeGoal ? compactObjective(activeGoal.objective, 260) : "Активная goal capsule не найдена."}</p>
+          <div className="today-actions">
+            <button className="primary-button" type="button" onClick={() => props.onNavigate("runs")}>Открыть запуски</button>
+            <button className="ghost-button" type="button" onClick={() => props.onOpen(selectedProject.name, selectedProject.quickOpen.vscode || selectedProject.paths.root)}>Открыть текущий проект</button>
+          </div>
+        </div>
+        <div className="today-focus-ring" aria-label="Current system readiness">
+          <span>LOCAL AI</span>
+          <strong>{mission.fallbackLabel}</strong>
+          <small>{mission.safeTaskAnswer}</small>
+        </div>
+      </section>
+
+      <section className="pulse-grid" aria-label="Key signals">
+        <button className="pulse-card" type="button" onClick={() => props.onNavigate("revenue")}>
+          <span>Revenue lane</span><strong>{revenue.active_revenue_lane ?? "unavailable"}</strong><p>{revenue.product_readiness ?? "no readiness"}</p>
+        </button>
+        <button className="pulse-card" type="button" onClick={() => props.onNavigate("ai-control")}>
+          <span>Host</span><strong>{snapshot.system.systemStatus}</strong><p>{snapshot.system.hyprlandOnline ? "Hyprland online" : "Hyprland unconfirmed"}</p>
+        </button>
+        <button className="pulse-card" type="button" onClick={() => props.onNavigate("work")}>
+          <span>Work</span><strong>{openTasks} open</strong><p>{snapshot.summary.dirtyRepos} dirty repositories</p>
+        </button>
+        <button className="pulse-card" type="button" onClick={() => props.onNavigate("runs")}>
+          <span>Codex</span><strong>{snapshot.localCodexLab.runSummaries.length} runs</strong><p>{mission.tokenLabel}</p>
+        </button>
+      </section>
+
+      <section className="overview-split">
+        <article className="focus-panel">
+          <div className="focus-panel-head"><div><span className="section-kicker">Attention queue</span><h3>Что мешает двигаться</h3></div><span>{urgentSignals.length}</span></div>
+          <div className="attention-list">
+            {urgentSignals.length ? urgentSignals.map((signal, index) => (
+              <div className="attention-row" key={`${index}:${signal}`}><span>{String(index + 1).padStart(2, "0")}</span><p>{signal}</p></div>
+            )) : <div className="empty-inline">Нет активных критических сигналов.</div>}
+          </div>
+        </article>
+        <article className="focus-panel">
+          <div className="focus-panel-head"><div><span className="section-kicker">Recent pulse</span><h3>Последнее изменение</h3></div><StatusBadge label={latestCommit ? fmtRelative(latestCommit.timestamp) : "missing"} tone="unknown" /></div>
+          {latestCommit ? (
+            <div className="recent-change">
+              <strong>{latestCommit.title}</strong>
+              <p>{latestCommit.subject}</p>
+              <div><code>{latestCommit.sha}</code><span>{latestCommit.branch}</span></div>
             </div>
-            <div>{DOMAIN_LABELS[project.domain]}</div>
-            <div>
-              <span className={`health-pill ${toneClass(project.healthTone)}`}>{HEALTH_LABELS[project.healthTone]}</span>
-            </div>
-            <div>{project.dirtyCount}</div>
-            <div>{fmtRelative(project.lastCommit.timestamp)}</div>
-            <div className="registry-actions">
-              <button type="button" onClick={() => props.onSelect(project.id)}>
-                focus
-              </button>
-              <button
-                type="button"
-                onClick={() => props.onOpen(project.name, project.quickOpen.vscode || project.quickOpen.root)}
-              >
-                code
-              </button>
-              <button type="button" onClick={() => props.onCopy(project.name, project.paths.root)}>
-                path
-              </button>
-            </div>
-          </article>
+          ) : <div className="empty-inline">История коммитов недоступна.</div>}
+        </article>
+      </section>
+    </div>
+  );
+}
+
+function AiControlWorkspace(props: {
+  snapshot: Snapshot;
+  mission: MissionState;
+  section: AiControlSection;
+  onSectionChange: (section: AiControlSection) => void;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const { snapshot, mission, section, onOpen, onCopy } = props;
+  return (
+    <div className="workspace-stack">
+      <WorkspaceHeader eyebrow="Atlas / AI Control" title="Локальная AI-система без перегруза" description="Выберите слой системы. Atlas покажет только связанные сигналы, источники и следующие действия." status={{ label: snapshot.hostAudit.overall, tone: snapshot.hostAudit.overall === "ok" ? "ok" : "risk" }} />
+      <div className="subnav" role="tablist" aria-label="AI Control sections">
+        {AI_CONTROL_SECTIONS.map((item) => (
+          <button key={item.id} className={`subnav-item ${section === item.id ? "subnav-item-active" : ""}`} type="button" role="tab" aria-selected={section === item.id} onClick={() => props.onSectionChange(item.id)}>
+            <strong>{item.label}</strong><span>{item.description}</span>
+          </button>
         ))}
       </div>
-    </section>
+      <div className="workspace-panel-stack" role="tabpanel">
+        {section === "runtime" ? <>
+          <HostHealthPanel audit={snapshot.hostAudit} onOpen={onOpen} onCopy={onCopy} />
+          <RuntimeRegistryPanel control={snapshot.localAiControl} onOpen={onOpen} onCopy={onCopy} />
+          <ModelRoleMapPanel telemetry={snapshot.aiTelemetry} control={snapshot.localAiControl} onOpen={onOpen} onCopy={onCopy} />
+        </> : null}
+        {section === "context" ? <>
+          <RetrievalQualityPanel telemetry={snapshot.aiTelemetry} onOpen={onOpen} onCopy={onCopy} />
+          <CodeContextSearchPanel telemetry={snapshot.aiTelemetry} onOpen={onOpen} onCopy={onCopy} />
+          <CacheLedgerPanel telemetry={snapshot.aiTelemetry} onOpen={onOpen} onCopy={onCopy} />
+        </> : null}
+        {section === "efficiency" ? <>
+          <TokenEconomyPanel telemetry={snapshot.aiTelemetry} onOpen={onOpen} onCopy={onCopy} />
+          <RedundantWorkPanel telemetry={snapshot.aiTelemetry} onOpen={onOpen} onCopy={onCopy} />
+          <BudgetDriftPanel telemetry={snapshot.aiTelemetry} onOpen={onOpen} onCopy={onCopy} />
+        </> : null}
+        {section === "trust" ? <>
+          <OpenClawSecurityPanelV2 control={snapshot.localAiControl} onOpen={onOpen} onCopy={onCopy} />
+          <OpenClawReliabilityPanel lab={snapshot.localCodexLab} mission={mission} onOpen={onOpen} onCopy={onCopy} />
+          <SkillsRegistryPanel telemetry={snapshot.aiTelemetry} onOpen={onOpen} onCopy={onCopy} />
+          <SkillUsagePanel telemetry={snapshot.aiTelemetry} onOpen={onOpen} onCopy={onCopy} />
+        </> : null}
+        {section === "advanced" ? <>
+          <LocalFallbackPanel mission={mission} source={snapshot.localCodexLab.source} onOpen={onOpen} onCopy={onCopy} />
+          <TokenWastePanel telemetry={snapshot.aiTelemetry} lab={snapshot.localCodexLab} mission={mission} onOpen={onOpen} onCopy={onCopy} />
+          <LocalCodexLabPanel lab={snapshot.localCodexLab} commercial={snapshot.commercialReadiness} onOpen={onOpen} onCopy={onCopy} />
+        </> : null}
+      </div>
+    </div>
+  );
+}
+
+function WorkWorkspace(props: {
+  snapshot: Snapshot;
+  projects: ProjectRecord[];
+  selectedProject: ProjectRecord;
+  query: string;
+  domainFilter: ProjectDomain | "all";
+  detailTab: DetailTab;
+  onQueryChange: (value: string) => void;
+  onDomainChange: (value: ProjectDomain | "all") => void;
+  onSelect: (id: string) => void;
+  onTabChange: (tab: DetailTab) => void;
+  onCopy: (label: string, value: string) => void;
+  onOpen: (label: string, target: string) => void;
+}) {
+  return (
+    <div className="workspace-stack">
+      <WorkspaceHeader eyebrow="Atlas / Work" title="Проекты и задачи" description="Сначала выберите репозиторий, затем работайте только с его состоянием, командами, документами и задачами." status={{ label: `${props.projects.length} repositories`, tone: props.projects.length ? "ok" : "attention" }} />
+      <div className="work-toolbar">
+        <label className="searchbar"><span className="visually-hidden">Поиск проектов</span><input type="search" value={props.query} placeholder="Найти проект, тег или ветку…" onChange={(event) => props.onQueryChange(event.target.value)} /></label>
+        <select aria-label="Фильтр домена" value={props.domainFilter} onChange={(event) => props.onDomainChange(event.target.value as ProjectDomain | "all")}>
+          <option value="all">Все домены</option>
+          {Object.entries(DOMAIN_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select>
+      </div>
+      <div className="work-browser">
+        <aside className="project-list" aria-label="Project list">
+          {props.projects.map((project) => (
+            <button key={project.id} className={`project-list-item ${project.id === props.selectedProject.id ? "project-list-item-active" : ""}`} type="button" onClick={() => props.onSelect(project.id)}>
+              <span className={`project-health-dot ${toneClass(project.healthTone)}`} />
+              <span><strong>{project.name}</strong><small>{DOMAIN_LABELS[project.domain]} · {project.branch}</small></span>
+              <em>{project.dirtyCount}</em>
+            </button>
+          ))}
+          {!props.projects.length ? <div className="empty-inline">Ничего не найдено.</div> : null}
+        </aside>
+        <SelectedProjectPanel project={props.selectedProject} allProjects={props.snapshot.projects} activeTab={props.detailTab} onTabChange={props.onTabChange} onCopy={props.onCopy} onOpen={props.onOpen} />
+      </div>
+      <div className="lower-grid"><TaskMatrix tasks={props.snapshot.tasks} /><ReleaseRadar projects={props.snapshot.projects.filter((project) => project.focus)} /></div>
+    </div>
+  );
+}
+
+function RunsWorkspace(props: {
+  snapshot: Snapshot;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  return (
+    <div className="workspace-stack">
+      <WorkspaceHeader eyebrow="Atlas / Runs" title="Запуски и проверяемый результат" description="История исполнения, traces, usage и отчёты находятся отдельно от runtime-конфигурации." status={{ label: `${props.snapshot.localCodexLab.runSummaries.length} recent`, tone: props.snapshot.localCodexLab.runSummaries.length ? "ok" : "unknown" }} />
+      <AgentBoardPanel control={props.snapshot.localAiControl} onOpen={props.onOpen} onCopy={props.onCopy} />
+      <AgentTracePanel telemetry={props.snapshot.aiTelemetry} onOpen={props.onOpen} onCopy={props.onCopy} />
+      <AiActivityExplorerPanel telemetry={props.snapshot.aiTelemetry} onOpen={props.onOpen} onCopy={props.onCopy} />
+      <CodexProductivityPanel telemetry={props.snapshot.aiTelemetry} onOpen={props.onOpen} onCopy={props.onCopy} />
+      <TimelinePanel runSummaries={props.snapshot.localCodexLab.runSummaries} onOpen={props.onOpen} onCopy={props.onCopy} />
+    </div>
   );
 }
 
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [firstMoneySummary, setFirstMoneySummary] = useState<FirstMoneySummary | null>(null);
   const [remoteState, setRemoteState] = useState<RemoteControlState | null>(null);
   const [remoteBusy, setRemoteBusy] = useState(false);
   const [theme, setTheme] = useState<AtlasTheme>(() => readInitialTheme());
-  const [activeNav, setActiveNav] = useState(NAV_ITEMS[0].id);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(() => initialWorkspace());
+  const [aiControlSection, setAiControlSection] = useState<AiControlSection>("runtime");
   const [query, setQuery] = useState("");
   const [domainFilter, setDomainFilter] = useState<ProjectDomain | "all">("all");
   const [selectedId, setSelectedId] = useState("");
@@ -3619,6 +3674,13 @@ export function App() {
   useEffect(() => {
     refreshSnapshot();
     refreshRemoteState();
+    fetch("./api/first-money-summary", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error(`first-money: ${response.status}`);
+        return response.json();
+      })
+      .then((payload: { data?: FirstMoneySummary }) => setFirstMoneySummary(payload.data ?? null))
+      .catch(() => setFirstMoneySummary({ source_status: "unavailable", freshness: "unavailable" }));
   }, []);
 
   useEffect(() => {
@@ -3627,6 +3689,12 @@ export function App() {
       window.localStorage.setItem(THEME_STORAGE_KEY, theme);
     }
   }, [theme]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.history.replaceState(null, "", `#/${activeWorkspace}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [activeWorkspace]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -3675,11 +3743,6 @@ export function App() {
     }
   }, [focusProjects, selectedProject]);
 
-  const jumpToSection = (sectionId: string) => {
-    setActiveNav(sectionId);
-    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   const copy = (label: string, value: string) => {
     copyText(value)
       .then(() => setNotice(`Скопировано: ${label}`))
@@ -3693,17 +3756,6 @@ export function App() {
   if (!snapshot || !selectedProject) {
     return <main className="boot-state">Собираю Project Atlas…</main>;
   }
-
-  const gpuSummary = snapshot.system.gpu.memoryTotal
-    ? `${snapshot.system.gpu.temperature}°C · ${snapshot.system.gpu.memoryUsed}/${snapshot.system.gpu.memoryTotal} MiB`
-    : snapshot.system.gpuNote || "host telemetry unavailable in current shell";
-  const selectedOpenTasks = selectedProject.tasks.filter((task) => task.status !== "done").length;
-  const selectedHotTasks = selectedProject.tasks.filter(
-    (task) => task.status === "active" || task.status === "review",
-  ).length;
-  const selectedReleaseLabel = selectedProject.release
-    ? `${selectedProject.release.label} · ${selectedProject.release.confidence}% confidence`
-    : "релизное окно ещё не зафиксировано";
 
   const open = (label: string, target: string) => {
     const normalizedTarget = normalizeOpenTarget(target);
@@ -3719,291 +3771,87 @@ export function App() {
       });
   };
 
+  const currentWorkspace = WORKSPACES.find((workspace) => workspace.id === activeWorkspace) ?? WORKSPACES[0];
+
   return (
     <div className="atlas-shell">
       <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">△</div>
+        <button className="brand brand-button" type="button" onClick={() => setActiveWorkspace("overview")} aria-label="Открыть обзор Atlas">
+          <div className="brand-mark">A</div>
           <div>
             <div className="brand-name">PROJECT ATLAS</div>
-            <div className="brand-subtitle">local-first command center</div>
+            <div className="brand-subtitle">local mission control</div>
           </div>
-          </div>
+        </button>
 
-        <nav className="sidebar-nav">
-          {NAV_ITEMS.map((item) => (
+        <div className="sidebar-caption">
+          <span>WORKSPACES</span>
+          <small>Один контекст за раз</small>
+        </div>
+
+        <nav className="sidebar-nav" aria-label="Atlas workspaces">
+          {WORKSPACES.map((item) => (
             <button
               key={item.id}
-              className={`nav-item ${item.id === activeNav ? "nav-item-active" : ""}`}
+              className={`nav-item ${item.id === activeWorkspace ? "nav-item-active" : ""}`}
               type="button"
-              onClick={() => jumpToSection(item.id)}
+              onClick={() => setActiveWorkspace(item.id)}
+              aria-current={item.id === activeWorkspace ? "page" : undefined}
             >
-              {item.label}
+              <span className="nav-glyph">{item.glyph}</span>
+              <span className="nav-copy"><strong>{item.label}</strong><small>{item.description}</small></span>
             </button>
           ))}
         </nav>
 
-        <section className="sidebar-card">
-          <div className="section-kicker">Быстрые действия</div>
-          <button className="sidebar-cta" type="button" onClick={() => refreshSnapshot(true)}>
-            Обновить снимок
-          </button>
-          <button
-            className="sidebar-ghost"
-            type="button"
-            onClick={() => open("project", selectedProject.quickOpen.vscode || selectedProject.quickOpen.root)}
-          >
-            Открыть проект в code
-          </button>
-          <button className="sidebar-ghost" type="button" onClick={() => copy("selected repo", selectedProject.paths.root)}>
-            Копировать путь текущего проекта
-          </button>
+        <section className="sidebar-status" aria-label="Current status">
+          <div><span className={`sync-dot ${snapshot.system.safeMode ? "sync-dot-warn" : ""}`} /><span>Host</span><strong>{snapshot.system.systemStatus}</strong></div>
+          <div><span className={`sync-dot ${snapshot.commercialReadiness.revenueAutopilot.product_readiness === "blocked" ? "sync-dot-warn" : ""}`} /><span>Revenue</span><strong>{snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "unknown"}</strong></div>
         </section>
 
         <footer className="sidebar-footer">
           <div className="avatar">GA</div>
           <div>
-            <strong>dev-on-adrenaline</strong>
-            <span>локальный режим</span>
+            <strong>Local workspace</strong>
+            <span>{fmtRelative(new Date(snapshot.generatedAt).getTime())}</span>
           </div>
         </footer>
       </aside>
 
       <div className="main-frame">
         <header className="topbar">
-          <div className="topbar-search-row">
-            <label className="searchbar">
-              <input
-                type="text"
-                value={query}
-                placeholder="Поиск по проектам, тегам, задачам"
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </label>
-
-            <div className="topbar-filters">
-              <select value={domainFilter} onChange={(event) => setDomainFilter(event.target.value as ProjectDomain | "all")}>
-                <option value="all">Все домены</option>
-                {Object.entries(DOMAIN_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="workspace-breadcrumb">
+            <span>{currentWorkspace.shortLabel}</span>
+            <div><strong>{currentWorkspace.label}</strong><small>{currentWorkspace.description}</small></div>
           </div>
 
-          <div className="topbar-meta">
-            <div className="sync-meta">
-              <div>Синхронизировано {fmtRelative(new Date(snapshot.generatedAt).getTime())}</div>
-              <div className={`sync-dot ${snapshot.system.safeMode ? "sync-dot-warn" : ""}`} />
-            </div>
-
-            <div className="topbar-ribbon">
-              <span className="ribbon-pill">goal {mission?.activeGoal?.goalId || "unknown"}</span>
-              <span className={`ribbon-pill ${snapshot.system.safeMode ? "ribbon-pill-warn" : "ribbon-pill-ok"}`}>
-                {snapshot.system.safeMode ? "safe mode" : "runtime normal"}
-              </span>
-              <span className={`ribbon-pill ${mission?.openclawTone === "risk" ? "ribbon-pill-warn" : ""}`}>
-                OpenClaw {mission?.openclawLabel || "unknown"}
-              </span>
-              <span className="ribbon-pill">tokens {mission?.tokenLabel || "unknown"}</span>
-            </div>
+          <div className="topbar-context">
+            <span>Snapshot</span>
+            <strong>{fmtRelative(new Date(snapshot.generatedAt).getTime())}</strong>
           </div>
 
           <div className="topbar-actions">
             <ThemeSwitcher theme={theme} onChange={setTheme} />
-            <button className="primary-button" type="button" onClick={() => refreshSnapshot(true)}>
-              Обновить снимок
-            </button>
+            <button className="refresh-button" type="button" onClick={() => refreshSnapshot(true)} aria-label="Обновить snapshot">↻</button>
           </div>
         </header>
 
-        {notice ? <div className="notice">{notice}</div> : null}
+        {notice ? <div className="notice" role="status">{notice}</div> : null}
 
-        <main className="dashboard">
-          {mission ? <CommandDeckPanel snapshot={snapshot} mission={mission} onOpen={open} onCopy={copy} /> : null}
-
-          <section className="hero-spotlight panel">
-            <div className="hero-spotlight-copy">
-              <div>
-                <div className="section-kicker">Focus deck</div>
-                <h1>{selectedProject.title}</h1>
-                <p>{selectedProject.summary}</p>
-              </div>
-              <div className="spotlight-actions">
-                <button
-                  className="primary-button"
-                  type="button"
-                  onClick={() => open("project", selectedProject.quickOpen.vscode || selectedProject.quickOpen.root)}
-                >
-                  Открыть проект
-                </button>
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() =>
-                    open(
-                      "docs",
-                      selectedProject.quickOpen.docs || selectedProject.quickOpen.readme || selectedProject.paths.root,
-                    )
-                  }
-                >
-                  Открыть docs
-                </button>
-              </div>
-            </div>
-            <div className="spotlight-grid">
-              <article className="spotlight-stat">
-                <span>Текущий pressure</span>
-                <strong>{selectedProject.dirtyCount} dirty</strong>
-                <p>{selectedProject.healthTone === "ok" ? "repo looks stable" : selectedProject.riskNotes[0] ?? snapshot.system.topIssue}</p>
-              </article>
-              <article className="spotlight-stat">
-                <span>Таски в движении</span>
-                <strong>{selectedHotTasks}</strong>
-                <p>{selectedOpenTasks} открытых задач по текущему проекту</p>
-              </article>
-              <article className="spotlight-stat">
-                <span>Release pulse</span>
-                <strong>{selectedProject.deploy?.environment ?? "local-only"}</strong>
-                <p>{selectedReleaseLabel}</p>
-              </article>
-              <article className="spotlight-stat">
-                <span>Последний импульс</span>
-                <strong>{fmtRelative(selectedProject.lastCommit.timestamp)}</strong>
-                <p>{selectedProject.lastCommit.subject}</p>
-              </article>
-            </div>
-          </section>
-
-          <section className="hero-grid">
-            <MetricCard
-              label="Всего реп"
-              value={snapshot.summary.totalRepos}
-              detail={`${snapshot.summary.focusRepos} фокусных поверхностей`}
-            />
-            <MetricCard
-              label="Грязные репы"
-              value={snapshot.summary.dirtyRepos}
-              detail="живой worktree pressure"
-            />
-            <MetricCard
-              label="Deploy контуры"
-              value={snapshot.summary.deployConfigured}
-              detail="команды уже детектированы"
-            />
-            <MetricCard
-              label="Safe mode"
-              value={snapshot.system.safeMode ? "ON" : "OFF"}
-              detail={snapshot.system.topIssue}
-            />
-          </section>
-
-          {mission ? (
-            <div id="local-codex" className="panel-stack">
-              <HostHealthPanel audit={snapshot.hostAudit} onOpen={open} onCopy={copy} />
-              <RuntimeRegistryPanel control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
-              <TokenEconomyPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <AiActivityExplorerPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <AgentTracePanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <CacheLedgerPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <RedundantWorkPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <BudgetDriftPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <RetrievalQualityPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <CodeContextSearchPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <ModelRoleMapPanel telemetry={snapshot.aiTelemetry} control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
-              <AgentBoardPanel control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
-              <OpenClawSecurityPanelV2 control={snapshot.localAiControl} onOpen={open} onCopy={copy} />
-              <SkillsRegistryPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <SkillUsagePanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <CodexProductivityPanel telemetry={snapshot.aiTelemetry} onOpen={open} onCopy={copy} />
-              <LocalFallbackPanel mission={mission} source={snapshot.localCodexLab.source} onOpen={open} onCopy={copy} />
-              <TokenWastePanel telemetry={snapshot.aiTelemetry} lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
-              <OpenClawReliabilityPanel lab={snapshot.localCodexLab} mission={mission} onOpen={open} onCopy={copy} />
-              <LocalCodexLabPanel lab={snapshot.localCodexLab} commercial={snapshot.commercialReadiness} onOpen={open} onCopy={copy} />
-              <TimelinePanel runSummaries={snapshot.localCodexLab.runSummaries} onOpen={open} onCopy={copy} />
-            </div>
-          ) : null}
-
-          <div id="remote-ops">
-            <RemoteOpsPanel
-              state={remoteState}
-              busy={remoteBusy}
-              onAction={runRemoteAction}
-              onCopy={copy}
-              onRefresh={() => refreshRemoteState(true)}
-            />
-          </div>
-
-          <div id="project-map" className="map-layout">
-            <div className="map-column">
-              <section className="project-map panel">
-                <div className="panel-head">
-                  <div>
-                    <div className="section-kicker">Карта проектов</div>
-                    <h3>Mission control по активным репам</h3>
-                  </div>
-                  <div className="panel-hint">focus {focusProjects.length} · query {filteredProjects.length}</div>
-                </div>
-                <div className="map-canvas">
-                  <GraphLinks projects={focusProjects} />
-                  {focusProjects.map((project) => (
-                    <ProjectNode
-                      key={project.id}
-                      project={project}
-                      active={project.id === selectedProject.id}
-                      onSelect={(id) => {
-                        setSelectedId(id);
-                        setDetailTab("overview");
-                      }}
-                    />
-                  ))}
-                </div>
-                <div className="map-legend">
-                  <span><i className="legend-line" /> зависимость / общий контур</span>
-                  <span><i className="legend-dot legend-dot-ok" /> healthy</span>
-                  <span><i className="legend-dot legend-dot-attention" /> needs attention</span>
-                  <span><i className="legend-dot legend-dot-risk" /> blocked / risky</span>
-                </div>
-              </section>
-
-              <SelectedProjectPanel
-                project={selectedProject}
-                allProjects={snapshot.projects}
-                activeTab={detailTab}
-                onTabChange={setDetailTab}
-                onCopy={copy}
-                onOpen={open}
-              />
-            </div>
-
-            <IntelligenceRail snapshot={snapshot} projects={filteredProjects} />
-          </div>
-
-          <div className="lower-grid">
-            <TaskMatrix tasks={snapshot.tasks} />
-            <ReleaseRadar projects={snapshot.projects.filter((project) => project.focus)} />
-          </div>
-
-          <div id="registry">
-            <RegistryTable
-              projects={filteredProjects}
-              onCopy={copy}
-              onOpen={open}
-              onSelect={(projectId) => {
-                setSelectedId(projectId);
-                setDetailTab("overview");
-              }}
-            />
-          </div>
-          <section className="footer-note">
-            <span className="section-kicker">Context</span>
-            <p>
-              Host pulse: {snapshot.system.systemStatus} · GPU {gpuSummary} · Hyprland {" "}
-              {snapshot.system.hyprlandOnline ? "online" : "unconfirmed"}.
-            </p>
-          </section>
+        <main className="workspace-main">
+          {activeWorkspace === "overview" && mission ? <OverviewWorkspace snapshot={snapshot} mission={mission} selectedProject={selectedProject} onNavigate={setActiveWorkspace} onOpen={open} /> : null}
+          {activeWorkspace === "revenue" ? <div className="workspace-stack">
+            <WorkspaceHeader eyebrow="Atlas / Revenue" title="От сигнала к деньгам" description="Воронка, creative factory и owner gates собраны в одном коммерческом контексте." status={{ label: snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "unknown", tone: commercialTone(snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "") }} />
+            <RevenueOrbitPanel revenue={snapshot.commercialReadiness.revenueAutopilot} source={snapshot.commercialReadiness.revenueAutopilotSource} onOpen={open} onCopy={copy} />
+            <FirstMoneyPanel summary={firstMoneySummary ?? snapshot.commercialReadiness.firstMoneySummary ?? null} revenue={snapshot.commercialReadiness.revenueAutopilot} />
+          </div> : null}
+          {activeWorkspace === "ai-control" && mission ? <AiControlWorkspace snapshot={snapshot} mission={mission} section={aiControlSection} onSectionChange={setAiControlSection} onOpen={open} onCopy={copy} /> : null}
+          {activeWorkspace === "work" ? <WorkWorkspace snapshot={snapshot} projects={filteredProjects} selectedProject={selectedProject} query={query} domainFilter={domainFilter} detailTab={detailTab} onQueryChange={setQuery} onDomainChange={setDomainFilter} onSelect={(id) => { setSelectedId(id); setDetailTab("overview"); }} onTabChange={setDetailTab} onCopy={copy} onOpen={open} /> : null}
+          {activeWorkspace === "runs" ? <RunsWorkspace snapshot={snapshot} onOpen={open} onCopy={copy} /> : null}
+          {activeWorkspace === "remote" ? <div className="workspace-stack">
+            <WorkspaceHeader eyebrow="Atlas / Remote" title="Удалённое управление" description="Состояние доступа и сервисов отделено от product и AI telemetry." status={{ label: remoteState?.services.atlas ?? "loading", tone: remoteState?.services.atlas === "active" ? "ok" : "attention" }} />
+            <RemoteOpsPanel state={remoteState} busy={remoteBusy} onAction={runRemoteAction} onCopy={copy} onRefresh={() => refreshRemoteState(true)} />
+          </div> : null}
         </main>
       </div>
     </div>
