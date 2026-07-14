@@ -29,7 +29,7 @@
   --transition-fast: 140ms ease;
   --transition-base: 200ms ease;
 
-  --sidebar-width: 17rem;
-  --content-max: 110rem;
-  --topbar-height: 5rem;
+  --sidebar-width: 18.5rem;
+  --content-max: 96rem;
+  --topbar-height: 4.75rem;
 }

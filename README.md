@@ -7,7 +7,9 @@
 - читает `system-bootstrap/docs/repo-inventory.md` и строит реестр всех реп;
 - подтягивает `git`-состояние, dirty count, последний коммит, базовые команды и стек;
 - выделяет фокусные проекты через `data/project-overrides.json`;
-- показывает карту зависимостей, task matrix, release radar, intelligence rail и реестр всех реп;
+- разделяет данные на шесть рабочих пространств: `Обзор`, `Revenue`, `AI Control`, `Проекты`, `Запуски`, `Remote`;
+- использует progressive disclosure: обзор показывает одно следующее действие, AI Control раскрывает отдельные слои runtime/context/efficiency/trust, а проекты работают как master-detail browser;
+- сохраняет task matrix и release radar внутри проектного workspace вместо одной бесконечной dashboard-страницы;
 - добавляет machine-level контекст: safe mode, system status, GPU temp / VRAM.
 - показывает `Local Codex Lab` на основе compact runtime artifacts, а не сырых transcript'ов:
   - goal capsules
@@ -44,8 +46,8 @@ npm run dev
   - `/api/codex-orchestrator/enqueue`
 - `scripts/remote-control.mjs` — allowlisted remote-ops helper для atlas host (`remote_safe_on/off`, `wayvnc_start/stop`, `dev_bridge_restart`)
 - `data/project-overrides.json` — curated слой по ключевым проектам, задачам и связям
-- `src/App.tsx` — основная UI-оболочка
-- `src/index.css` — визуальная система
+- `src/App.tsx` — workspace routing, view composition и основная UI-оболочка
+- `src/styles/` — tokens, themes, layout, components и responsive visual system
 
 ## Следующий слой
 
