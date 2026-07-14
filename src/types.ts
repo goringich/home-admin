@@ -451,6 +451,7 @@ export interface LocalGpuLiveBenchStatus {
 
 export interface AiLabPrepareResponse {
   task: string;
+  workItemId: string;
   proposedBudget: string;
   routeId: string;
   routeLabel: string;

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import process from "node:process";
@@ -6,6 +7,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getRemoteState, runRemoteAction } from "./remote-control.mjs";
 import { normalizeCommercialSummary } from "./commercial-summary.mjs";
+import { isMutationAllowed, readJsonBody } from "./http-security.mjs";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const distDir = path.join(rootDir, "dist");
@@ -21,6 +23,12 @@ const localCodexRuntime = path.join(home, "__home_organized", "runtime", "local-
 const sharedRunReportsRoot = path.join(localCodexRuntime, "run-reports");
 const codexEnqueueScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-enqueue");
 const codexRunReporterScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-run-report");
+const operationPolicyScript = path.join(home, "__home_organized", "local-codex-stack", "scripts", "operation_policy.py");
+const atlasActionToken = process.env.PROJECT_ATLAS_ACTION_TOKEN || "";
+const allowedMutationOrigins = new Set([
+  `http://127.0.0.1:${port}`,
+  `http://localhost:${port}`,
+]);
 const codexBridgeFixCommand = "cd /home/goringich/codex-orchestrator && ./install.sh";
 const codexBridgeAllowedRoots = [
   path.join(home, "Desktop", "project-atlas"),
@@ -40,7 +48,14 @@ const mimeTypes = {
 };
 
 function send(res, status, body, contentType = "text/plain; charset=utf-8") {
-  res.writeHead(status, { "Content-Type": contentType });
+  res.writeHead(status, {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+  });
   res.end(body);
 }
 
@@ -77,6 +92,53 @@ function buildAiLabApiData(snapshot) {
 
 function safeString(value, limit = 4000) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
+}
+
+function handleJsonMutation(req, res, callback) {
+  readJsonBody(req)
+    .then((payload) => callback(payload))
+    .catch((error) => {
+      const status = Number(error?.statusCode) || 400;
+      send(res, status, `${error instanceof Error ? error.message : String(error)}\n`);
+    });
+}
+
+function enforceAtlasEnqueuePolicy(payload, workdir, focusFiles) {
+  const workItemId = safeString(payload.workItemId, 160);
+  if (!workItemId) {
+    throw new Error("workItemId from the prepare response is required");
+  }
+  const input = {
+    operation: "atlas_codex_enqueue",
+    actor: "atlas",
+    initiating_surface: "atlas",
+    repository: path.basename(workdir),
+    product: "local-ai-os",
+    work_item_id: workItemId,
+    autonomy_level: "plan",
+    risk: "low",
+    intended_write_roots: [codexOrchestratorRuntime],
+    network_targets: [],
+    deploy_or_publication_target: "",
+    approval_reference: "",
+    dry_run: false,
+    evidence: { freshness: "fresh", source_paths: focusFiles.slice(0, 12) },
+  };
+  try {
+    const stdout = execFileSync("python", [operationPolicyScript, "--stdin", "--enforce"], {
+      input: JSON.stringify(input),
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: 10000,
+    });
+    const decision = JSON.parse(stdout);
+    if (decision.decision !== "allow" || decision.enforcement !== "blocking") {
+      throw new Error("operation policy did not return a blocking allow decision");
+    }
+    return decision;
+  } catch (error) {
+    throw new Error(`operation policy blocked Atlas enqueue: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function isAllowedBridgePath(targetPath) {
@@ -307,6 +369,7 @@ function enqueueCodexTask(payload) {
     .map((entry) => path.resolve(entry))
     .filter((entry) => isAllowedBridgePath(entry) && entry !== workdir);
   const uniqueAddDirs = [...new Set(addDirs)].slice(0, 8);
+  const policyDecision = enforceAtlasEnqueuePolicy(payload, workdir, focusFiles);
   const title = safeString(payload.title || "atlas-prepared-task", 120) || "atlas-prepared-task";
   const sandbox = safeString(payload.sandbox || "workspace-write", 80) || "workspace-write";
   const model = safeString(payload.model || "", 80);
@@ -368,6 +431,12 @@ function enqueueCodexTask(payload) {
     taskPath,
     reportPath,
     stdout,
+    policyDecision: {
+      schemaVersion: policyDecision.schema_version,
+      decision: policyDecision.decision,
+      enforcement: policyDecision.enforcement,
+      workItemId: policyDecision.input?.work_item_id || "",
+    },
   };
 }
 
@@ -589,9 +658,11 @@ function buildAiLabPrepare(snapshot, task) {
     selectedAgent === "codex" ||
     CODEX_TASK_KEYWORDS.some((keyword) => normalizedTask.includes(keyword)) ||
     (route?.preferred_agents || []).includes("codex");
+  const workItemId = `atlas-${route?.id || "default"}-${createHash("sha256").update(String(task)).digest("hex").slice(0, 12)}`;
 
   return {
     task: String(task || "").trim(),
+    workItemId,
     proposedBudget: route?.context_budget || aiLab?.control?.tokenBudgetTier || "small",
     routeId: route?.id || aiLab?.control?.selectedAgentRoute?.routeId || "default",
     routeLabel: route?.label || aiLab?.control?.selectedAgentRoute?.routeLabel || "Default route",
@@ -648,6 +719,11 @@ if (!fs.existsSync(path.join(distDir, "index.html"))) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "/", `http://${host}:${port}`);
+
+  if (req.method === "POST" && !isMutationAllowed(req.headers, allowedMutationOrigins, atlasActionToken)) {
+    send(res, 403, "same-origin request or X-Atlas-Action-Token required\n");
+    return;
+  }
 
   if (req.method === "GET" && url.pathname === "/api/health") {
     sendJson(res, 200, { ok: true, host, port });
@@ -785,13 +861,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/api/codex-orchestrator/enqueue") {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk;
-    });
-    req.on("end", () => {
+    handleJsonMutation(req, res, (payload) => {
       try {
-        const payload = JSON.parse(body || "{}");
         sendJson(res, 200, { ok: true, data: enqueueCodexTask(payload) });
       } catch (error) {
         send(res, 400, `${error instanceof Error ? error.message : String(error)}\n`);
@@ -831,13 +902,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/api/open") {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk;
-    });
-    req.on("end", () => {
+    handleJsonMutation(req, res, (payload) => {
       try {
-        const payload = JSON.parse(body || "{}");
         const target = openTarget(payload.target);
         sendJson(res, 200, { ok: true, target });
       } catch (error) {
@@ -848,13 +914,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/api/ai-lab/prepare") {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk;
-    });
-    req.on("end", () => {
+    handleJsonMutation(req, res, (payload) => {
       try {
-        const payload = JSON.parse(body || "{}");
         const task = typeof payload.task === "string" ? payload.task.trim() : "";
         if (!task) {
           throw new Error("task is required");
@@ -869,13 +930,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/api/ai-lab/launch") {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk;
-    });
-    req.on("end", () => {
+    handleJsonMutation(req, res, (payload) => {
       try {
-        const payload = JSON.parse(body || "{}");
         const launcherId = typeof payload.launcherId === "string" ? payload.launcherId.trim() : "";
         if (!launcherId) {
           throw new Error("launcherId is required");
@@ -914,13 +970,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/api/remote/action") {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk;
-    });
-    req.on("end", () => {
+    handleJsonMutation(req, res, (payload) => {
       try {
-        const payload = JSON.parse(body || "{}");
         const action = typeof payload.action === "string" ? payload.action.trim() : "";
         if (!action) {
           throw new Error("action is required");

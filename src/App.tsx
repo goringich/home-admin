@@ -598,6 +598,7 @@ async function enqueuePreparedCodexTask(prepared: AiLabPrepareResponse): Promise
     body: JSON.stringify({
       title: `atlas-${prepared.routeId || "prepared-task"}`,
       task: prepared.task,
+      workItemId: prepared.workItemId,
       workdir: prepared.recommendedWorkdir,
       addDirs: prepared.recommendedAddDirs,
       verificationCommands: prepared.verificationCommands,
