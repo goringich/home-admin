@@ -8,6 +8,7 @@ import type {
   FirstMoneySummary,
   HealthTone,
   HostAudit,
+  HostPlacement,
   LocalAiControl,
   LocalCodexGoalCapsule,
   LocalCodexLab,
@@ -2142,6 +2143,94 @@ function HostHealthPanel(props: {
   );
 }
 
+function placementTone(value: string): HealthTone {
+  if (["online", "stable", "automatic_stateless_failback_ready"].includes(value)) return "ok";
+  if (["unknown", "missing"].includes(value)) return "unknown";
+  if (["attention", "hold_failback_hysteresis", "manual_failover_required", "automatic_stateless_fallback_active"].includes(value)) return "attention";
+  return "risk";
+}
+
+function ServicePlacementPanel(props: {
+  placement: HostPlacement;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const activePublic = props.placement.activePublicProductionHosts.join(", ") || "none registered";
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Service Placement</div>
+          <h3>Hosts, writers and safe failover state</h3>
+        </div>
+        <StatusBadge label={props.placement.status} tone={placementTone(props.placement.status)} />
+      </div>
+
+      <div className="local-status-grid">
+        <MetricCard label="Hosts" value={props.placement.hosts.length} detail="freshness is separate from SSH reachability" />
+        <MetricCard label="Services" value={props.placement.services.length} detail={`writer ${props.placement.controller.authoritativeHost || "unassigned"}`} />
+        <MetricCard label="Public production" value={activePublic} detail="only registered public services appear here" />
+        <MetricCard label="Projection trust" value={props.placement.trusted ? "validated" : "not usable"} detail={props.placement.schemaVersion || "schema unavailable"} />
+        <MetricCard label="Stateful failover" value={props.placement.controller.automaticStatefulFailover ? "automatic" : "controlled"} detail="single-writer fencing stays mandatory" />
+        <MetricCard label="Observer fallback test" value={props.placement.lastStatelessFailoverTest.status} detail={props.placement.lastStatelessFailoverTest.runId || "no verified run"} />
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Host availability</div>
+          <div className="repo-intel-list">
+            {props.placement.hosts.map((host) => (
+              <div key={host.hostId} className="repo-intel-row">
+                <div>
+                  <strong>{host.hostId}</strong>
+                  <p>{host.powerClass || "power unknown"} · {host.costClass || "cost unknown"}</p>
+                </div>
+                <div className="repo-intel-meta">
+                  <span className={`health-pill ${toneClass(placementTone(host.availability))}`}>{host.availability}</span>
+                  <span>{host.healthFreshness}</span>
+                  <span>{host.connectivity}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="detail-card detail-card-wide">
+          <div className="detail-card-title">Placement and split-brain guard</div>
+          <div className="repo-intel-list">
+            {props.placement.services.map((service) => (
+              <div key={service.serviceId} className="repo-intel-row">
+                <div>
+                  <strong>{service.serviceId}</strong>
+                  <p>{service.configuredHost || "unassigned"} → {service.activeHost || "unassigned"} · {service.serviceClass}</p>
+                </div>
+                <div className="repo-intel-meta">
+                  <span className={`health-pill ${toneClass(placementTone(service.placementStatus))}`}>{service.placementStatus}</span>
+                  <span>{service.splitBrainRisk}</span>
+                  <span>{service.lastFailover || "no failover"}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+      </div>
+
+      <div className="detail-card">
+        <div className="detail-card-title">Stateless observer fallback evidence</div>
+        <p>{props.placement.lastStatelessFailoverTest.status === "passed"
+          ? `Generated observer fallback verified at ${props.placement.lastStatelessFailoverTest.generatedAt || "recorded time"}; this is not a public-traffic migration.`
+          : "No verified generated-observer fallback run is currently available."}</p>
+      </div>
+
+      <div className="detail-card">
+        <div className="detail-card-title">Next exact action</div>
+        <p>{props.placement.nextExactAction || "Refresh the sanitized placement export."}</p>
+      </div>
+      <SourceFootnote source={props.placement.source} label="sanitized service placement export" onOpen={props.onOpen} onCopy={props.onCopy} />
+    </section>
+  );
+}
+
 function RuntimeRegistryPanel(props: {
   control: LocalAiControl;
   onOpen: (label: string, target: string) => void;
@@ -3494,6 +3583,7 @@ function AiControlWorkspace(props: {
       <div className="workspace-panel-stack" role="tabpanel">
         {section === "runtime" ? <>
           <HostHealthPanel audit={snapshot.hostAudit} onOpen={onOpen} onCopy={onCopy} />
+          <ServicePlacementPanel placement={snapshot.hostPlacement} onOpen={onOpen} onCopy={onCopy} />
           <RuntimeRegistryPanel control={snapshot.localAiControl} onOpen={onOpen} onCopy={onCopy} />
           <ModelRoleMapPanel telemetry={snapshot.aiTelemetry} control={snapshot.localAiControl} onOpen={onOpen} onCopy={onCopy} />
         </> : null}

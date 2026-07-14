@@ -6,6 +6,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getRemoteState, runRemoteAction } from "./remote-control.mjs";
 import { normalizeCommercialSummary } from "./commercial-summary.mjs";
+import { reconcileRecentRuns, safeProjectionText, sanitizeSharedRunReport } from "./codex-orchestrator-projection.mjs";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const distDir = path.join(rootDir, "dist");
@@ -185,16 +186,16 @@ function codexQueueEntries(kind, limit = 12) {
     });
 }
 
-function codexRecentRuns(limit = 12) {
-  return listDirs(codexOrchestratorArtifacts)
+function codexRecentRuns(limit = 12, sharedReports = []) {
+  const artifacts = listDirs(codexOrchestratorArtifacts)
     .slice(-limit)
     .reverse()
     .map((targetPath) => {
       const stats = fs.statSync(targetPath);
       const summary = parseKeyValueFile(path.join(targetPath, "summary.txt"));
       return {
-        id: path.basename(targetPath),
-        title: summary.title || path.basename(targetPath),
+        artifactId: path.basename(targetPath),
+        title: safeProjectionText(summary.title || path.basename(targetPath)),
         workdir: summary.workdir || "",
         sandbox: summary.sandbox || "",
         model: summary.model || "",
@@ -203,6 +204,7 @@ function codexRecentRuns(limit = 12) {
         updatedAt: new Date(stats.mtimeMs).toISOString(),
       };
     });
+  return reconcileRecentRuns(artifacts, sharedReports);
 }
 
 function readSharedRunReports(limit = 12) {
@@ -212,17 +214,16 @@ function readSharedRunReports(limit = 12) {
       try {
         const stats = fs.statSync(targetPath);
         const payload = JSON.parse(fs.readFileSync(targetPath, "utf8"));
-        return {
-          ...payload,
-          report_path: targetPath,
-          modified_at: new Date(stats.mtimeMs).toISOString(),
-        };
+        return sanitizeSharedRunReport(payload, {
+          reportPath: targetPath,
+          modifiedAt: new Date(stats.mtimeMs).toISOString(),
+        });
       } catch {
         return null;
       }
     })
     .filter(Boolean)
-    .sort((left, right) => String(right.created_at || right.modified_at).localeCompare(String(left.created_at || left.modified_at)))
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
     .slice(0, limit);
 }
 
@@ -771,13 +772,29 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/codex-orchestrator/recent-runs") {
     try {
+      const sharedRunReports = readSharedRunReports();
+      const recentRuns = codexRecentRuns(12, sharedRunReports);
       sendJson(res, 200, {
         ok: true,
         data: {
-          recentRuns: codexRecentRuns(),
-          sharedRunReports: readSharedRunReports(),
+          recentRuns,
+          sharedRunReports,
+          reconciliation: {
+            matched: recentRuns.filter((entry) => entry.reconciliation === "matched_shared_report").length,
+            unmatched: recentRuns.filter((entry) => entry.reconciliation !== "matched_shared_report").length,
+          },
         },
       });
+    } catch (error) {
+      send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/service-placement") {
+    try {
+      const snapshot = loadSnapshotData();
+      sendJson(res, 200, { ok: true, data: snapshot.hostPlacement ?? null });
     } catch (error) {
       send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
     }

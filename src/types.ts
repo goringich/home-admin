@@ -141,6 +141,7 @@ export interface Snapshot {
     diskRootPercent: number;
   };
   hostAudit: HostAudit;
+  hostPlacement: HostPlacement;
   projects: ProjectRecord[];
   tasks: TaskItem[];
   recentCommits: Array<{
@@ -797,6 +798,53 @@ export interface HostAudit {
     bundle: string;
   };
   healthGate: Record<string, unknown>;
+  source: SourceMeta;
+}
+
+export interface HostPlacement {
+  schemaVersion: string;
+  generatedAt: string;
+  status: string;
+  trusted: boolean;
+  controller: {
+    authoritativeHost: string;
+    automaticStatefulFailover: boolean;
+    sshIsNotServiceHealth: boolean;
+  };
+  hosts: Array<{
+    hostId: string;
+    availability: string;
+    healthFreshness: string;
+    connectivity: string;
+    lastSeen: string;
+    powerClass: string;
+    costClass: string;
+    capabilities: string[];
+    failure: { id: string; severity: string; detail: string };
+  }>;
+  services: Array<{
+    serviceId: string;
+    serviceClass: string;
+    public: boolean;
+    stateful: boolean;
+    authoritativeWriter: string;
+    configuredHost: string;
+    activeHost: string;
+    preferredHosts: string[];
+    fallbackHosts: string[];
+    placementStatus: string;
+    lastFailover: string;
+    splitBrainRisk: string;
+    failure: { id: string; severity: string; detail: string };
+  }>;
+  activePublicProductionHosts: string[];
+  lastStatelessFailoverTest: {
+    status: string;
+    generatedAt: string;
+    runId: string;
+    artifactPath: string;
+  };
+  nextExactAction: string;
   source: SourceMeta;
 }
 
