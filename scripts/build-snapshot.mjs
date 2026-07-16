@@ -8,6 +8,7 @@ const home = os.homedir();
 const rootDir = path.join(home, "Desktop", "project-atlas");
 const inventoryPath = path.join(home, "system-bootstrap", "docs", "repo-inventory.md");
 const overridesPath = path.join(rootDir, "data", "project-overrides.json");
+const administrationRegistryPath = path.join(home, "__home_organized", "local-codex-stack", "configs", "admin-surface-registry.json");
 const outputPath = path.join(rootDir, "public", "snapshot.json");
 const canonicalLocalCodexRuntime = path.join(home, "__home_organized", "runtime", "local-codex-stack");
 const legacyLocalCodexRuntime = path.join(home, "__home_organized", "local-codex-stack", "runtime", "local-codex-stack");
@@ -117,6 +118,39 @@ function readJsonFirst(paths, fallback = null) {
     }
   }
   return { path: "", payload: fallback };
+}
+
+function buildAdministration() {
+  const registry = readJsonFirst([administrationRegistryPath], { schema_version: "missing", surfaces: [] });
+  const payload = sanitizeSensitiveExportMetadata(registry.payload || {});
+  const surfaces = Array.isArray(payload.surfaces) ? payload.surfaces : [];
+  return {
+    status: registry.path ? "registered" : "missing",
+    schemaVersion: payload.schema_version || "missing",
+    sourceOfTruth: Array.isArray(payload.source_of_truth) ? payload.source_of_truth : [],
+    contract: payload.global_contract || {},
+    surfaces: surfaces.map((surface) => ({
+      id: String(surface?.id || ""),
+      title: String(surface?.title || "Unnamed admin surface"),
+      classification: String(surface?.classification || "unknown"),
+      ownership: String(surface?.ownership || "unknown"),
+      operatorRole: String(surface?.operator_role || ""),
+      nativeUi: String(surface?.native_ui || ""),
+      designReview: String(surface?.design_review || ""),
+      styleAdapter: String(surface?.style_adapter || ""),
+      atlasIntegration: String(surface?.atlas_integration || ""),
+      availability: String(surface?.availability || "available"),
+      capabilities: Array.isArray(surface?.capabilities) ? surface.capabilities.map((item) => String(item)) : [],
+      launch: {
+        mode: String(surface?.launch?.mode || "runbook"),
+        label: String(surface?.launch?.label || "Open guide"),
+        target: String(surface?.launch?.target || ""),
+      },
+      runbookTarget: String(surface?.runbook_target || ""),
+      sourcePaths: Array.isArray(surface?.source_paths) ? surface.source_paths.map((item) => String(item)) : [],
+    })).filter((surface) => surface.id),
+    source: statMeta(registry.path, payload.schema_version || ""),
+  };
 }
 
 function readJsonlFirst(paths) {
@@ -1529,6 +1563,7 @@ const codexHistory = buildCodexHistory();
 const commercialReadiness = buildCommercialReadiness();
 const operationPolicy = buildOperationPolicy();
 const hostAudit = buildHostAudit(system, localAiControl);
+const administration = buildAdministration();
 
 const snapshot = {
   generatedAt: new Date().toISOString(),
@@ -1556,6 +1591,7 @@ const snapshot = {
   codexHistory,
   commercialReadiness,
   operationPolicy,
+  administration,
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });

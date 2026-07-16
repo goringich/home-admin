@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type {
   AiLabPrepareResponse,
+  AdministrationRegistry,
   AiTelemetryExport,
   CommercialReadiness,
   DetailTab,
@@ -21,7 +22,7 @@ import type {
   TaskStatus,
 } from "./types";
 
-type WorkspaceId = "overview" | "revenue" | "ai-control" | "work" | "runs" | "remote";
+type WorkspaceId = "overview" | "revenue" | "ai-control" | "work" | "runs" | "admin" | "remote";
 type AiControlSection = "runtime" | "context" | "efficiency" | "trust" | "advanced";
 
 const WORKSPACES: Array<{
@@ -36,7 +37,8 @@ const WORKSPACES: Array<{
   { id: "ai-control", label: "AI Control", shortLabel: "System", description: "Runtime, context и trust", glyph: "03" },
   { id: "work", label: "Проекты", shortLabel: "Work", description: "Репозитории, задачи и релизы", glyph: "04" },
   { id: "runs", label: "Запуски", shortLabel: "Runs", description: "Codex, traces и проверки", glyph: "05" },
-  { id: "remote", label: "Remote", shortLabel: "Ops", description: "Удалённый доступ и сервисы", glyph: "06" },
+  { id: "admin", label: "Админки", shortLabel: "Control", description: "Каталог и безопасные входы", glyph: "06" },
+  { id: "remote", label: "Remote", shortLabel: "Ops", description: "Удалённый доступ и сервисы", glyph: "07" },
 ];
 
 const AI_CONTROL_SECTIONS: Array<{ id: AiControlSection; label: string; description: string }> = [
@@ -832,6 +834,57 @@ function RemoteOpsPanel(props: {
         </aside>
       </div>
     </section>
+  );
+}
+
+function AdministrationWorkspace(props: {
+  registry: AdministrationRegistry;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const { registry } = props;
+  return (
+    <div className="workspace-stack">
+      <WorkspaceHeader
+        eyebrow="Atlas / Administration"
+        title="Админки и control planes"
+        description="Единый каталог, статус границ и безопасные точки входа. Каждая админка сохраняет собственный UI и авторизацию."
+        status={{ label: `${registry.surfaces.length} registered`, tone: registry.status === "registered" ? "ok" : "attention" }}
+      />
+      <section className="administration-contract panel">
+        <div className="panel-head"><div><div className="section-kicker">Operating contract</div><h3>Общий стиль без слияния систем</h3></div></div>
+        <div className="administration-contract-grid">
+          <p>{registry.contract.atlas_role || "Registry unavailable."}</p>
+          <p>{registry.contract.ui_strategy || ""}</p>
+          <p>{registry.contract.product_boundary || ""}</p>
+          <p>{registry.contract.secret_policy || ""}</p>
+        </div>
+      </section>
+      <section className="administration-grid" aria-label="Administration surface catalog">
+        {registry.surfaces.map((surface) => {
+          const availabilityTone = surface.availability.startsWith("attention") ? "attention" : "ok";
+          return (
+            <article key={surface.id} className="administration-card">
+              <div className="administration-card-head">
+                <div><div className="section-kicker">{surface.classification} · {surface.ownership}</div><h3>{surface.title}</h3></div>
+                <StatusBadge label={surface.availability.startsWith("attention") ? "attention" : "registered"} tone={availabilityTone} />
+              </div>
+              <p>{surface.operatorRole}</p>
+              <div className="administration-meta"><span>Native UI</span><strong>{surface.nativeUi}</strong></div>
+              <div className="administration-meta"><span>Atlas</span><strong>{surface.atlasIntegration}</strong></div>
+              <div className="administration-meta"><span>Style path</span><strong>{surface.styleAdapter}</strong></div>
+              <p className="administration-review">{surface.designReview}</p>
+              <div className="chip-list">{surface.capabilities.map((capability) => <span key={capability} className="chip">{capability}</span>)}</div>
+              <div className="administration-actions">
+                {surface.launch.target ? <button className="primary-button" type="button" onClick={() => props.onOpen(surface.launch.label, surface.launch.target)}>{surface.launch.label}</button> : null}
+                {surface.runbookTarget && surface.runbookTarget !== surface.launch.target ? <button className="ghost-button" type="button" onClick={() => props.onOpen(`${surface.title}: runbook`, surface.runbookTarget)}>Runbook</button> : null}
+              </div>
+            </article>
+          );
+        })}
+      </section>
+      <SourceFootnote source={registry.source} label="Administration Surface Registry" onOpen={props.onOpen} onCopy={props.onCopy} />
+    </div>
   );
 }
 
@@ -3849,6 +3902,7 @@ export function App() {
           {activeWorkspace === "ai-control" && mission ? <AiControlWorkspace snapshot={snapshot} mission={mission} section={aiControlSection} onSectionChange={setAiControlSection} onOpen={open} onCopy={copy} /> : null}
           {activeWorkspace === "work" ? <WorkWorkspace snapshot={snapshot} projects={filteredProjects} selectedProject={selectedProject} query={query} domainFilter={domainFilter} detailTab={detailTab} onQueryChange={setQuery} onDomainChange={setDomainFilter} onSelect={(id) => { setSelectedId(id); setDetailTab("overview"); }} onTabChange={setDetailTab} onCopy={copy} onOpen={open} /> : null}
           {activeWorkspace === "runs" ? <RunsWorkspace snapshot={snapshot} onOpen={open} onCopy={copy} /> : null}
+          {activeWorkspace === "admin" ? <AdministrationWorkspace registry={snapshot.administration} onOpen={open} onCopy={copy} /> : null}
           {activeWorkspace === "remote" ? <div className="workspace-stack">
             <WorkspaceHeader eyebrow="Atlas / Remote" title="Удалённое управление" description="Состояние доступа и сервисов отделено от product и AI telemetry." status={{ label: remoteState?.services.atlas ?? "loading", tone: remoteState?.services.atlas === "active" ? "ok" : "attention" }} />
             <RemoteOpsPanel state={remoteState} busy={remoteBusy} onAction={runRemoteAction} onCopy={copy} onRefresh={() => refreshRemoteState(true)} />

@@ -156,6 +156,33 @@ export interface Snapshot {
   aiTelemetry: AiTelemetryExport;
   commercialReadiness: CommercialReadiness;
   operationPolicy: OperationPolicy;
+  administration: AdministrationRegistry;
+}
+
+export interface AdministrationSurface {
+  id: string;
+  title: string;
+  classification: string;
+  ownership: string;
+  operatorRole: string;
+  nativeUi: string;
+  designReview: string;
+  styleAdapter: string;
+  atlasIntegration: string;
+  availability: string;
+  capabilities: string[];
+  launch: { mode: string; label: string; target: string };
+  runbookTarget: string;
+  sourcePaths: string[];
+}
+
+export interface AdministrationRegistry {
+  status: string;
+  schemaVersion: string;
+  sourceOfTruth: string[];
+  contract: { atlas_role?: string; ui_strategy?: string; product_boundary?: string; secret_policy?: string };
+  surfaces: AdministrationSurface[];
+  source: SourceMeta;
 }
 
 export interface SourceMeta {

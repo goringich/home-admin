@@ -390,6 +390,53 @@
   backdrop-filter: blur(14px) saturate(1.06);
 }
 
+.administration-contract-grid,
+.administration-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.administration-contract-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: var(--space-4);
+}
+
+.administration-contract-grid p,
+.administration-card > p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.administration-grid {
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+}
+
+.administration-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: var(--border-thin) solid var(--color-border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-1);
+  box-shadow: var(--shadow-1);
+}
+
+.administration-card-head,
+.administration-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.administration-card h3 { margin: var(--space-2) 0 0; color: var(--color-text-primary); }
+.administration-meta { display: grid; gap: 0.2rem; }
+.administration-meta span { color: var(--color-text-muted); font: 600 0.7rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.administration-meta strong { color: var(--color-text-primary); font-size: 0.84rem; overflow-wrap: anywhere; }
+.administration-review { font-size: 0.9rem; }
+.administration-actions { justify-content: flex-start; align-items: center; flex-wrap: wrap; }
+
 .metric-value,
 .answer-value,
 .rail-hero-number {
