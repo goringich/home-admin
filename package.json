@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/commercial-summary.test.mjs",
+    "test": "node --test scripts/commercial-summary.test.mjs server/*.test.mjs",
     "snapshot": "node scripts/build-snapshot.mjs",
     "dev": "npm run snapshot && vite",
     "build": "npm run snapshot && tsc -b && vite build",
