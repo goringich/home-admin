@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
 import { normalizeCommercialBilling } from "./commercial-billing.mjs";
+import { normalizeCommercialLaunchObservability } from "./commercial-launch-observability.mjs";
 import { normalizeRevenueAutopilot } from "./commercial-summary.mjs";
 import { normalizeLocalAgentPlatform } from "./local-agent-platform.mjs";
 import { selectLocalCodexLabRecord } from "./snapshot-source-selection.mjs";
@@ -1336,6 +1337,14 @@ function buildCommercialReadiness() {
   const safeProductOperatingStandard = productOperatingStandard.payload?.safe_to_expose === true
     ? productOperatingStandard.payload
     : null;
+  const firstMoneySummary = report.payload?.first_money_summary || {};
+  const commercialBilling = normalizeCommercialBilling(safeProductOperatingStandard?.commercial_billing);
+  const normalizedRevenueAutopilot = normalizeRevenueAutopilot(revenueAutopilot.payload);
+  const commercialLaunch = normalizeCommercialLaunchObservability({
+    summary: firstMoneySummary,
+    revenue: normalizedRevenueAutopilot,
+    billing: commercialBilling,
+  });
   return {
     generatedAt: report.payload?.generated_at || new Date().toISOString(),
     overallStatus: report.payload?.overall_status || "unknown",
@@ -1359,7 +1368,7 @@ function buildCommercialReadiness() {
     monetizationPriorityPath: report.payload?.monetization_priority_path || productIntel.payload?.monetization_priority_path || "",
     firstMoneyContractPath: report.payload?.first_money_operating_contract_path || productIntel.payload?.first_money_operating_contract_path || "",
     firstMoney: report.payload?.first_money || { status: "missing", primary_offer: {}, readiness: { current_state: "missing", reasons: [] }, verified_blockers: [], owner_required_blockers: [], aggregate_funnel_counters: { status: "missing", counters: {} }, active_experiment: {}, next_exact_revenue_action: "" },
-    firstMoneySummary: report.payload?.first_money_summary || {},
+    firstMoneySummary,
     summary: {
       implemented: Number(report.payload?.summary?.implemented || 0),
       scaffolded: Number(report.payload?.summary?.scaffolded || 0),
@@ -1381,8 +1390,9 @@ function buildCommercialReadiness() {
     productIntelSource: statMeta(productIntel.path, productIntel.payload?.generated_at || ""),
     productOperatingStandard: safeProductOperatingStandard,
     productOperatingStandardSource: statMeta(productOperatingStandard.path, productOperatingStandard.payload?.generated_at || ""),
-    commercialBilling: normalizeCommercialBilling(safeProductOperatingStandard?.commercial_billing),
-    revenueAutopilot: normalizeRevenueAutopilot(revenueAutopilot.payload),
+    commercialBilling,
+    commercialLaunch,
+    revenueAutopilot: normalizedRevenueAutopilot,
     revenueAutopilotSource: statMeta(revenueAutopilot.path, revenueAutopilot.payload?.generated_at || ""),
   };
 }

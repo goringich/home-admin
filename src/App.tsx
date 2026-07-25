@@ -5,6 +5,7 @@ import type {
   AdministrationRegistry,
   AiTelemetryExport,
   CommercialBillingProjection,
+  CommercialLaunchObservability,
   CommercialReadiness,
   DetailTab,
   FirstMoneySummary,
@@ -1997,6 +1998,107 @@ function firstMoneyValue(value: number | string | null | undefined) {
   if (value === 0) return "0";
   if (typeof value === "number" || (typeof value === "string" && value.trim())) return String(value);
   return "Нет проверенных данных";
+}
+
+const COMMERCIAL_STAGE_LABELS: Record<CommercialLaunchObservability["stages"][number]["id"], string> = {
+  readiness: "Готовность",
+  publication: "Публикация",
+  lead: "Лид",
+  payment: "Оплата",
+  receipt: "Чек",
+};
+
+const COMMERCIAL_STAGE_STATUS_LABELS: Record<CommercialLaunchObservability["stages"][number]["status"], string> = {
+  verified: "проверено",
+  observed: "наблюдается",
+  blocked: "блокировано",
+  pending: "ожидает проверки",
+  not_observed: "не наблюдается",
+  stale: "устарело",
+  unavailable: "нет данных",
+};
+
+function commercialLaunchTone(status: CommercialLaunchObservability["stages"][number]["status"]): HealthTone {
+  if (status === "verified" || status === "observed") return "ok";
+  if (status === "blocked") return "risk";
+  if (status === "pending" || status === "stale") return "attention";
+  return "unknown";
+}
+
+function CommercialLaunchEvidencePanel(props: {
+  launch: CommercialLaunchObservability;
+  commercialSource: SourceMeta;
+  revenueSource: SourceMeta;
+  billingSource: SourceMeta;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const blockingStage = props.launch.stages.find((stage) => stage.status === "blocked");
+  const staleStage = props.launch.stages.find((stage) => stage.status === "stale");
+  const unavailableStage = props.launch.stages.find((stage) => stage.status === "unavailable");
+  const pendingStage = props.launch.stages.find((stage) => stage.status === "pending");
+  const notObservedStage = props.launch.stages.find((stage) => stage.status === "not_observed");
+  const headline = blockingStage
+    ? `blocked at ${COMMERCIAL_STAGE_LABELS[blockingStage.id]}`
+    : staleStage
+      ? `stale at ${COMMERCIAL_STAGE_LABELS[staleStage.id]}`
+      : unavailableStage
+        ? `evidence missing at ${COMMERCIAL_STAGE_LABELS[unavailableStage.id]}`
+        : pendingStage
+          ? `pending at ${COMMERCIAL_STAGE_LABELS[pendingStage.id]}`
+          : notObservedStage
+            ? `not observed at ${COMMERCIAL_STAGE_LABELS[notObservedStage.id]}`
+            : "evidence chain current";
+  const headlineTone: HealthTone = blockingStage
+    ? "risk"
+    : staleStage || pendingStage
+      ? "attention"
+      : unavailableStage || notObservedStage
+        ? "unknown"
+        : "ok";
+
+  return (
+    <section className="panel commercial-launch-panel" aria-labelledby="commercial-launch-title">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Launch Evidence</div>
+          <h3 id="commercial-launch-title">От готовности до чека — без догадок</h3>
+          <p>Каждый этап опирается только на разрешённые статусы и агрегаты. Готовность счетов не считается оплатой, а политика чеков — фактом выдачи.</p>
+        </div>
+        <StatusBadge label={headline} tone={headlineTone} />
+      </div>
+
+      <div className="commercial-launch-flow" aria-label="Commercial launch evidence stages">
+        {props.launch.stages.map((stage, index) => (
+          <article className={`commercial-launch-stage commercial-launch-${stage.status}`} key={stage.id}>
+            <div className="commercial-launch-stage-head">
+              <span className="commercial-launch-index">{String(index + 1).padStart(2, "0")}</span>
+              <StatusBadge label={COMMERCIAL_STAGE_STATUS_LABELS[stage.status]} tone={commercialLaunchTone(stage.status)} />
+            </div>
+            <strong>{COMMERCIAL_STAGE_LABELS[stage.id]}</strong>
+            <p>{stage.detail}</p>
+            {stage.id === "lead" || stage.id === "payment" ? (
+              <div className="commercial-launch-counts">
+                <span>observed <b>{stage.observedCount ?? "—"}</b></span>
+                {stage.id === "payment" ? <span>pending <b>{stage.pendingCount ?? "—"}</b></span> : null}
+              </div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      <div className="commercial-launch-policy">
+        <strong>Evidence boundary</strong>
+        <span>Только aggregate metadata. Нет идентичностей, реквизитов, сумм, документов чеков или заявлений о фактически полученных деньгах.</span>
+        <code>{props.launch.policy}</code>
+      </div>
+      <div className="commercial-launch-sources">
+        <SourceFootnote source={props.commercialSource} label="authoritative commercial aggregate" onOpen={props.onOpen} onCopy={props.onCopy} />
+        <SourceFootnote source={props.revenueSource} label="sanitized Revenue Autopilot export" onOpen={props.onOpen} onCopy={props.onCopy} />
+        <SourceFootnote source={props.billingSource} label="sanitized billing readiness projection" onOpen={props.onOpen} onCopy={props.onCopy} />
+      </div>
+    </section>
+  );
 }
 
 function CommercialBillingPanel(props: {
@@ -4092,6 +4194,7 @@ export function App() {
           {activeWorkspace === "overview" && mission ? <OverviewWorkspace snapshot={snapshot} mission={mission} selectedProject={selectedProject} onNavigate={setActiveWorkspace} onOpen={open} /> : null}
           {activeWorkspace === "revenue" ? <div className="workspace-stack">
             <WorkspaceHeader eyebrow="Atlas / Revenue" title="От сигнала к деньгам" description="Воронка, creative factory и owner gates собраны в одном коммерческом контексте." status={{ label: snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "unknown", tone: commercialTone(snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "") }} />
+            <CommercialLaunchEvidencePanel launch={snapshot.commercialReadiness.commercialLaunch} commercialSource={snapshot.commercialReadiness.source} revenueSource={snapshot.commercialReadiness.revenueAutopilotSource} billingSource={snapshot.commercialReadiness.productOperatingStandardSource} onOpen={open} onCopy={copy} />
             <RevenueOrbitPanel revenue={snapshot.commercialReadiness.revenueAutopilot} source={snapshot.commercialReadiness.revenueAutopilotSource} onOpen={open} onCopy={copy} />
             <CommercialBillingPanel billing={snapshot.commercialReadiness.commercialBilling} source={snapshot.commercialReadiness.productOperatingStandardSource} onOpen={open} onCopy={copy} />
             <FirstMoneyPanel summary={firstMoneySummary ?? snapshot.commercialReadiness.firstMoneySummary ?? null} revenue={snapshot.commercialReadiness.revenueAutopilot} />

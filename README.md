@@ -7,7 +7,7 @@
 - читает `system-bootstrap/docs/repo-inventory.md` и строит реестр всех реп;
 - подтягивает `git`-состояние, dirty count, последний коммит, базовые команды и стек;
 - выделяет фокусные проекты через `data/project-overrides.json`;
-- разделяет данные на шесть рабочих пространств: `Обзор`, `Revenue`, `AI Control`, `Проекты`, `Запуски`, `Remote`;
+- разделяет данные на семь рабочих пространств: `Обзор`, `Revenue`, `AI Control`, `Проекты`, `Запуски`, `Админки`, `Remote`;
 - использует progressive disclosure: обзор показывает одно следующее действие, AI Control раскрывает отдельные слои runtime/context/efficiency/trust, а проекты работают как master-detail browser;
 - сохраняет task matrix и release radar внутри проектного workspace вместо одной бесконечной dashboard-страницы;
 - добавляет machine-level контекст: safe mode, system status, GPU temp / VRAM.
@@ -23,6 +23,12 @@
   - freshness и source authority существующего agent ledger
   - queue/lifecycle counts, verification и locally measured success rate
   - blocked promotions, stale evidence и последние compact run summaries
+  - live-запрос `snapshot.json` сначала fail-soft обновляет существующую read-only проекцию `atlas-export`; timeout или ошибка сохраняют предыдущий снимок и не меняют очередь
+- показывает в `Revenue` fail-closed цепочку `готовность → публикация → лид → оплата → чек`:
+  - только разрешённые статусы и агрегированные счётчики;
+  - `unknown`, авторитетный ноль, pending и stale не смешиваются;
+  - готовность billing-профиля не считается оплатой, а политика чека — доказательством его выдачи;
+  - персональные данные, реквизиты, суммы и документы чеков в snapshot не проецируются.
 
 ## Запуск
 

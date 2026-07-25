@@ -1879,6 +1879,19 @@ export interface CommercialReadiness {
   productOperatingStandard: Record<string, unknown> | null;
   productOperatingStandardSource: SourceMeta;
   commercialBilling: CommercialBillingProjection;
+  commercialLaunch: CommercialLaunchObservability;
+}
+
+export interface CommercialLaunchObservability {
+  policy: "aggregate_evidence_only";
+  stages: Array<{
+    id: "readiness" | "publication" | "lead" | "payment" | "receipt";
+    label: string;
+    status: "verified" | "observed" | "blocked" | "pending" | "not_observed" | "stale" | "unavailable";
+    detail: string;
+    observedCount: number | null;
+    pendingCount: number | null;
+  }>;
 }
 
 export interface CommercialBillingProjection {

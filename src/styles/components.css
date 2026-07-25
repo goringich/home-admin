@@ -950,6 +950,137 @@
   .workspace-header h1 { font-size: 2.6rem; }
 }
 
+/* Commercial launch evidence: one fail-closed path across existing sanitized
+   projections. The visual rail shows evidence states, never customer data. */
+.commercial-launch-panel {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--color-info) 34%, var(--color-border-soft));
+  background:
+    radial-gradient(circle at 85% 0%, color-mix(in srgb, var(--color-info-soft) 80%, transparent), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-2) 94%, transparent), var(--color-surface-1));
+}
+
+.commercial-launch-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.commercial-launch-stage {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-height: 13.5rem;
+  padding: var(--space-4);
+  border: var(--border-thin) solid var(--color-border-soft);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface-3) 82%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+}
+
+.commercial-launch-stage:not(:last-child)::after {
+  position: absolute;
+  z-index: 2;
+  top: 2.1rem;
+  right: calc(var(--space-3) * -1 - 0.35rem);
+  width: 0.7rem;
+  height: 0.7rem;
+  border-top: 1px solid var(--color-border-strong);
+  border-right: 1px solid var(--color-border-strong);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.commercial-launch-stage-head,
+.commercial-launch-counts,
+.commercial-launch-policy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.commercial-launch-stage-head {
+  justify-content: space-between;
+}
+
+.commercial-launch-index {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.commercial-launch-stage > strong {
+  color: var(--color-text-primary);
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.commercial-launch-stage > p {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.commercial-launch-verified,
+.commercial-launch-observed {
+  border-color: color-mix(in srgb, var(--color-success) 42%, var(--color-border-soft));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-success-soft) 52%, var(--color-surface-3)), var(--color-surface-3));
+}
+
+.commercial-launch-blocked {
+  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border-soft));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-danger-soft) 58%, var(--color-surface-3)), var(--color-surface-3));
+}
+
+.commercial-launch-pending,
+.commercial-launch-stale {
+  border-color: color-mix(in srgb, var(--color-warning) 42%, var(--color-border-soft));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-warning-soft) 52%, var(--color-surface-3)), var(--color-surface-3));
+}
+
+.commercial-launch-counts {
+  align-self: end;
+  margin-top: auto;
+  padding-top: var(--space-2);
+  border-top: var(--border-thin) solid var(--color-border-soft);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.commercial-launch-counts b {
+  color: var(--color-text-primary);
+  font-size: 0.82rem;
+}
+
+.commercial-launch-policy {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-thin) solid color-mix(in srgb, var(--color-info) 28%, var(--color-border-soft));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-info-soft) 38%, transparent);
+}
+
+.commercial-launch-policy strong { color: var(--color-info); }
+.commercial-launch-policy span { flex: 1 1 30rem; color: var(--color-text-secondary); font-size: 0.86rem; }
+.commercial-launch-policy code { color: var(--color-text-muted); font-size: 0.7rem; }
+.commercial-launch-sources { display: grid; gap: 0.2rem; margin-top: var(--space-2); }
+
+@media (max-width: 1180px) {
+  .commercial-launch-flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .commercial-launch-stage:not(:last-child)::after { display: none; }
+}
+
+@media (max-width: 760px) {
+  .commercial-launch-flow { grid-template-columns: 1fr; }
+  .commercial-launch-stage { min-height: auto; }
+}
+
 /* Revenue Orbit: a read-only visual control surface for the existing
    Revenue Autopilot export. It intentionally shows states, not private data. */
 .revenue-orbit {

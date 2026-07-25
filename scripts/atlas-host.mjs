@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { getRemoteState, runRemoteAction } from "./remote-control.mjs";
 import { normalizeCommercialSummary } from "./commercial-summary.mjs";
 import { isMutationAllowed, readJsonBody } from "./http-security.mjs";
+import { rebuildSnapshotAfterProjectionRefresh } from "./local-agent-platform-refresh.mjs";
 import {
   dispatchGovernedAgentTask,
   selectProjectTarget,
@@ -62,9 +63,11 @@ function sendJson(res, status, payload) {
 }
 
 function refreshSnapshot() {
-  execFileSync(process.execPath, [snapshotScript], {
-    cwd: rootDir,
-    stdio: "ignore",
+  rebuildSnapshotAfterProjectionRefresh({
+    rebuildSnapshot: () => execFileSync(process.execPath, [snapshotScript], {
+      cwd: rootDir,
+      stdio: "ignore",
+    }),
   });
 }
 
