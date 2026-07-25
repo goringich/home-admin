@@ -397,12 +397,15 @@ export interface CodexOrchestratorBridge {
     status: string;
     queue: string;
     recentRuns: string;
+    dispatch: string;
     enqueue: string;
   };
   scripts: {
-    enqueue: string;
-    reporter: string;
+    prepare: string;
+    dispatch: string;
   };
+  projectRegistry: string;
+  operationPolicy: string;
   runtimeRoot: string;
   reportRoot: string;
   queueCounts: {
@@ -579,9 +582,11 @@ export interface AiLabPrepareResponse {
   verificationCommands: string[];
   codexNecessary: boolean;
   codexReason: string;
-  recommendedWorkdir: string;
-  recommendedAddDirs: string[];
-  enqueueEndpoint: string;
+  projectId: string;
+  projectTitle: string;
+  projectPath: string;
+  dispatchEndpoint: string;
+  compatibilityEnqueueEndpoint: string;
   codexBridge: {
     status: string;
     available: boolean;

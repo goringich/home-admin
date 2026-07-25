@@ -583,28 +583,33 @@ async function prepareAiLabTask(task: string): Promise<AiLabPrepareResponse> {
   return payload.data;
 }
 
-type CodexEnqueueResponse = {
+type AgentDispatchResponse = {
   mode: string;
+  projectId: string;
+  projectTitle: string;
+  projectPath: string;
   runId: string;
-  title: string;
-  workdir: string;
-  taskPath: string;
+  reportId: string;
+  queueTaskId: string;
+  runStatus: string;
+  dispatchStatus: string;
   reportPath: string;
-  stdout: string;
+  queueTaskPath: string;
+  contextPackPath: string;
+  checksPath: string;
+  diffPath: string;
 };
 
-async function enqueuePreparedCodexTask(prepared: AiLabPrepareResponse): Promise<CodexEnqueueResponse> {
-  const response = await fetch("./api/codex-orchestrator/enqueue", {
+async function dispatchPreparedAgentTask(prepared: AiLabPrepareResponse): Promise<AgentDispatchResponse> {
+  const response = await fetch(prepared.dispatchEndpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      title: `atlas-${prepared.routeId || "prepared-task"}`,
+      projectId: prepared.projectId,
       task: prepared.task,
       workItemId: prepared.workItemId,
-      workdir: prepared.recommendedWorkdir,
-      addDirs: prepared.recommendedAddDirs,
       verificationCommands: prepared.verificationCommands,
       focusFiles: prepared.focusFiles,
     }),
@@ -614,7 +619,7 @@ async function enqueuePreparedCodexTask(prepared: AiLabPrepareResponse): Promise
     throw new Error(await response.text());
   }
 
-  const payload = (await response.json()) as { data: CodexEnqueueResponse };
+  const payload = (await response.json()) as { data: AgentDispatchResponse };
   return payload.data;
 }
 
@@ -1176,9 +1181,9 @@ function LocalCodexLabPanel(props: {
   const [prepareBusy, setPrepareBusy] = useState(false);
   const [prepareResult, setPrepareResult] = useState<AiLabPrepareResponse | null>(null);
   const [prepareError, setPrepareError] = useState("");
-  const [enqueueBusy, setEnqueueBusy] = useState(false);
-  const [enqueueResult, setEnqueueResult] = useState<CodexEnqueueResponse | null>(null);
-  const [enqueueError, setEnqueueError] = useState("");
+  const [dispatchBusy, setDispatchBusy] = useState(false);
+  const [dispatchResult, setDispatchResult] = useState<AgentDispatchResponse | null>(null);
+  const [dispatchError, setDispatchError] = useState("");
   const aiLabRuns = props.lab.aiLab.control.activeRuns.length > 0 ? props.lab.aiLab.control.activeRuns : props.lab.activeRuns;
   const latestRunReports = props.lab.aiLab.control.latestRunReports.length > 0 ? props.lab.aiLab.control.latestRunReports : props.lab.latestRunReports;
   const launcherLookup = new Map(props.lab.aiLab.scientificTools.launchers.map((launcher) => [launcher.id, launcher]));
@@ -1303,8 +1308,8 @@ function LocalCodexLabPanel(props: {
                     try {
                       const result = await prepareAiLabTask(prepareTask.trim());
                       setPrepareResult(result);
-                      setEnqueueResult(null);
-                      setEnqueueError("");
+                      setDispatchResult(null);
+                      setDispatchError("");
                     } catch (error) {
                       setPrepareError(error instanceof Error ? error.message : String(error));
                     } finally {
@@ -1337,7 +1342,9 @@ function LocalCodexLabPanel(props: {
                     <div className="class-row"><span>tier</span><strong>{prepareResult.sandboxStatus.permissionTier}</strong></div>
                     <div className="class-row"><span>codex</span><strong>{prepareResult.codexNecessary ? "needed" : "not needed"}</strong></div>
                     <div className="class-row"><span>bridge</span><strong>{prepareResult.codexBridge.status}</strong></div>
-                    <div className="class-row"><span>workdir</span><strong>{compactPath(prepareResult.recommendedWorkdir)}</strong></div>
+                    <div className="class-row"><span>project</span><strong>{prepareResult.projectTitle}</strong></div>
+                    <div className="class-row"><span>registry id</span><strong>{prepareResult.projectId}</strong></div>
+                    <div className="class-row"><span>root</span><strong>{compactPath(prepareResult.projectPath)}</strong></div>
                   </div>
                   <p>{prepareResult.codexReason}</p>
                   {!prepareResult.codexBridge.available ? (
@@ -1384,10 +1391,10 @@ function LocalCodexLabPanel(props: {
                   </ul>
                 </article>
                 <article className="detail-card">
-                  <div className="detail-card-title">Codex queue bridge</div>
+                  <div className="detail-card-title">Governed local-agent dispatch</div>
                   <div className="class-grid">
-                    <div className="class-row"><span>endpoint</span><strong>{prepareResult.enqueueEndpoint}</strong></div>
-                    <div className="class-row"><span>add dirs</span><strong>{prepareResult.recommendedAddDirs.length}</strong></div>
+                    <div className="class-row"><span>endpoint</span><strong>{prepareResult.dispatchEndpoint}</strong></div>
+                    <div className="class-row"><span>compatibility</span><strong>{prepareResult.compatibilityEnqueueEndpoint}</strong></div>
                     <div className="class-row"><span>queue</span><strong>{props.lab.codexOrchestratorBridge.queueCounts.queued}</strong></div>
                     <div className="class-row"><span>running</span><strong>{props.lab.codexOrchestratorBridge.queueCounts.running}</strong></div>
                   </div>
@@ -1395,37 +1402,42 @@ function LocalCodexLabPanel(props: {
                     <button
                       className="ghost-action"
                       type="button"
-                      disabled={enqueueBusy || !prepareResult.codexBridge.available || !prepareResult.codexNecessary}
+                      disabled={dispatchBusy || !prepareResult.codexBridge.available || !prepareResult.codexNecessary}
                       onClick={async () => {
-                        setEnqueueBusy(true);
-                        setEnqueueError("");
+                        setDispatchBusy(true);
+                        setDispatchError("");
                         try {
-                          const result = await enqueuePreparedCodexTask(prepareResult);
-                          setEnqueueResult(result);
+                          const result = await dispatchPreparedAgentTask(prepareResult);
+                          setDispatchResult(result);
                         } catch (error) {
-                          setEnqueueError(error instanceof Error ? error.message : String(error));
+                          setDispatchError(error instanceof Error ? error.message : String(error));
                         } finally {
-                          setEnqueueBusy(false);
+                          setDispatchBusy(false);
                         }
                       }}
                     >
-                      {enqueueBusy ? "queueing..." : "queue in Codex"}
+                      {dispatchBusy ? "dispatching..." : "prepare and queue Codex"}
                     </button>
                   </div>
-                  {enqueueError ? <div className="empty-inline">{enqueueError}</div> : null}
-                  {enqueueResult ? (
+                  {dispatchError ? <div className="empty-inline">{dispatchError}</div> : null}
+                  {dispatchResult ? (
                     <div className="doc-list">
+                      <div className="class-grid">
+                        <div className="class-row"><span>run</span><strong>{dispatchResult.runId}</strong></div>
+                        <div className="class-row"><span>queue id</span><strong>{dispatchResult.queueTaskId}</strong></div>
+                        <div className="class-row"><span>status</span><strong>{dispatchResult.dispatchStatus}</strong></div>
+                      </div>
                       <QuickActionRow
-                        label="queued task"
-                        value={compactPath(enqueueResult.taskPath)}
-                        onOpen={() => props.onOpen("queued task", enqueueResult.taskPath)}
-                        onCopy={() => props.onCopy("queued task", enqueueResult.taskPath)}
+                        label="queued handoff"
+                        value={compactPath(dispatchResult.queueTaskPath)}
+                        onOpen={() => props.onOpen("queued handoff", dispatchResult.queueTaskPath)}
+                        onCopy={() => props.onCopy("queued handoff", dispatchResult.queueTaskPath)}
                       />
                       <QuickActionRow
                         label="run report"
-                        value={compactPath(enqueueResult.reportPath)}
-                        onOpen={() => props.onOpen("run report", enqueueResult.reportPath)}
-                        onCopy={() => props.onCopy("run report", enqueueResult.reportPath)}
+                        value={compactPath(dispatchResult.reportPath)}
+                        onOpen={() => props.onOpen("run report", dispatchResult.reportPath)}
+                        onCopy={() => props.onCopy("run report", dispatchResult.reportPath)}
                       />
                     </div>
                   ) : null}
@@ -1886,7 +1898,7 @@ function LocalCodexLabPanel(props: {
             <div className="goal-capsule-head">
               <div>
                 <div className="detail-card-title">Codex orchestrator bridge</div>
-                <strong>{props.lab.codexOrchestratorBridge.available ? "queue bridge available" : "bridge unavailable"}</strong>
+                <strong>{props.lab.codexOrchestratorBridge.available ? "governed dispatch available" : "bridge unavailable"}</strong>
               </div>
               <StatusBadge label={props.lab.codexOrchestratorBridge.status} tone={props.lab.codexOrchestratorBridge.available ? "ok" : "risk"} />
             </div>

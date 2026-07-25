@@ -8,6 +8,10 @@ import { fileURLToPath } from "node:url";
 import { getRemoteState, runRemoteAction } from "./remote-control.mjs";
 import { normalizeCommercialSummary } from "./commercial-summary.mjs";
 import { isMutationAllowed, readJsonBody } from "./http-security.mjs";
+import {
+  dispatchGovernedAgentTask,
+  selectProjectTarget,
+} from "./atlas-agent-dispatch.mjs";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const distDir = path.join(rootDir, "dist");
@@ -16,27 +20,21 @@ const snapshotScript = path.join(rootDir, "scripts", "build-snapshot.mjs");
 const host = "127.0.0.1";
 const port = Number(process.env.PROJECT_ATLAS_PORT || 4174);
 const home = "/home/goringich";
-const codexOrchestratorRoot = path.join(home, "codex-orchestrator");
 const codexOrchestratorRuntime = path.join(home, "__home_organized", "runtime", "codex-orchestrator");
 const codexOrchestratorArtifacts = path.join(home, "__home_organized", "artifacts", "codex-orchestrator");
 const localCodexRuntime = path.join(home, "__home_organized", "runtime", "local-codex-stack");
 const sharedRunReportsRoot = path.join(localCodexRuntime, "run-reports");
-const codexEnqueueScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-enqueue");
-const codexRunReporterScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-run-report");
+const localAgentRunScript = path.join(home, ".local", "bin", "local-agent-run");
+const localAgentExecScript = path.join(home, ".local", "bin", "local-agent-exec");
+const projectTargetsPath = path.join(home, "__home_organized", "local-codex-stack", "configs", "targets.json");
 const operationPolicyScript = path.join(home, "__home_organized", "local-codex-stack", "scripts", "operation_policy.py");
 const atlasActionToken = process.env.PROJECT_ATLAS_ACTION_TOKEN || "";
 const allowedMutationOrigins = new Set([
   `http://127.0.0.1:${port}`,
   `http://localhost:${port}`,
 ]);
-const codexBridgeFixCommand = "cd /home/goringich/codex-orchestrator && ./install.sh";
-const codexBridgeAllowedRoots = [
-  path.join(home, "Desktop", "project-atlas"),
-  path.join(home, "system-bootstrap"),
-  path.join(home, "__home_organized"),
-  path.join(home, "codex-orchestrator"),
-  path.join(home, "Desktop", "Obsidian"),
-];
+const codexBridgeFixCommand =
+  "ln -sf /home/goringich/__home_organized/scripts/local-agent-run /home/goringich/.local/bin/local-agent-run && ln -sf /home/goringich/__home_organized/scripts/local-agent-exec /home/goringich/.local/bin/local-agent-exec";
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -103,27 +101,7 @@ function handleJsonMutation(req, res, callback) {
     });
 }
 
-function enforceAtlasEnqueuePolicy(payload, workdir, focusFiles) {
-  const workItemId = safeString(payload.workItemId, 160);
-  if (!workItemId) {
-    throw new Error("workItemId from the prepare response is required");
-  }
-  const input = {
-    operation: "atlas_codex_enqueue",
-    actor: "atlas",
-    initiating_surface: "atlas",
-    repository: path.basename(workdir),
-    product: "local-ai-os",
-    work_item_id: workItemId,
-    autonomy_level: "plan",
-    risk: "low",
-    intended_write_roots: [codexOrchestratorRuntime],
-    network_targets: [],
-    deploy_or_publication_target: "",
-    approval_reference: "",
-    dry_run: false,
-    evidence: { freshness: "fresh", source_paths: focusFiles.slice(0, 12) },
-  };
+function enforceAtlasDispatchPolicy(input) {
   try {
     const stdout = execFileSync("python", [operationPolicyScript, "--stdin", "--enforce"], {
       input: JSON.stringify(input),
@@ -137,18 +115,19 @@ function enforceAtlasEnqueuePolicy(payload, workdir, focusFiles) {
     }
     return decision;
   } catch (error) {
-    throw new Error(`operation policy blocked Atlas enqueue: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`operation policy blocked Atlas dispatch: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-function isAllowedBridgePath(targetPath) {
-  const resolved = path.resolve(String(targetPath || ""));
-  return codexBridgeAllowedRoots.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
-}
-
 function requireCodexBridge() {
-  if (!fs.existsSync(codexEnqueueScript) || !fs.existsSync(codexRunReporterScript)) {
-    throw new Error(`codex-orchestrator bridge unavailable; run: ${codexBridgeFixCommand}`);
+  const requiredPaths = [
+    localAgentRunScript,
+    localAgentExecScript,
+    projectTargetsPath,
+    operationPolicyScript,
+  ];
+  if (requiredPaths.some((targetPath) => !fs.existsSync(targetPath))) {
+    throw new Error(`governed local-agent bridge unavailable; run: ${codexBridgeFixCommand}`);
   }
 }
 
@@ -289,7 +268,11 @@ function readSharedRunReports(limit = 12) {
 }
 
 function codexStatusPayload() {
-  const available = fs.existsSync(codexEnqueueScript) && fs.existsSync(codexRunReporterScript);
+  const available =
+    fs.existsSync(localAgentRunScript) &&
+    fs.existsSync(localAgentExecScript) &&
+    fs.existsSync(projectTargetsPath) &&
+    fs.existsSync(operationPolicyScript);
   return {
     status: available ? "available" : "unavailable",
     available,
@@ -298,146 +281,24 @@ function codexStatusPayload() {
     artifactRoot: codexOrchestratorArtifacts,
     reportRoot: sharedRunReportsRoot,
     scripts: {
-      enqueue: codexEnqueueScript,
-      reporter: codexRunReporterScript,
+      prepare: localAgentRunScript,
+      dispatch: localAgentExecScript,
     },
+    projectRegistry: projectTargetsPath,
+    operationPolicy: operationPolicyScript,
     queueCounts: codexQueueCounts(),
   };
 }
 
-function recommendedWorkdir(focusFiles = []) {
-  const file = focusFiles.find((entry) => typeof entry === "string" && isAllowedBridgePath(entry));
-  if (file) {
-    const root = codexBridgeAllowedRoots.find((allowedRoot) => path.resolve(file).startsWith(`${allowedRoot}${path.sep}`) || path.resolve(file) === allowedRoot);
-    if (root) {
-      return root;
-    }
-  }
-  return path.join(home, "Desktop", "project-atlas");
-}
-
-function recommendedAddDirs(focusFiles = []) {
-  const dirs = new Set([path.join(home, "system-bootstrap"), path.join(home, "__home_organized"), path.join(home, "codex-orchestrator"), path.join(home, "Desktop", "Obsidian")]);
-  for (const file of focusFiles) {
-    if (typeof file !== "string") {
-      continue;
-    }
-    const root = codexBridgeAllowedRoots.find((allowedRoot) => path.resolve(file).startsWith(`${allowedRoot}${path.sep}`) || path.resolve(file) === allowedRoot);
-    if (root) {
-      dirs.add(root);
-    }
-  }
-  return [...dirs].filter((entry) => entry !== path.join(home, "Desktop", "project-atlas"));
-}
-
-function buildCodexPrompt(payload) {
-  const task = safeString(payload.task || payload.prompt || "", 12000);
-  const focusFiles = Array.isArray(payload.focusFiles) ? payload.focusFiles.filter((entry) => typeof entry === "string").slice(0, 12) : [];
-  const verificationCommands = Array.isArray(payload.verificationCommands) ? payload.verificationCommands.filter((entry) => typeof entry === "string").slice(0, 12) : [];
-  return [
-    "Context scope: system_scope",
-    "Allowed context roots: /home/goringich/Desktop/project-atlas, /home/goringich/system-bootstrap, /home/goringich/__home_organized, /home/goringich/codex-orchestrator, /home/goringich/Desktop/Obsidian",
-    "Forbidden context: unrelated project internals, raw Codex sessions, auth/env/cookies/tokens/secrets.",
-    "",
-    "Task prepared by Project Atlas AI Lab.",
-    "",
-    task,
-    "",
-    "Focus files:",
-    ...(focusFiles.length ? focusFiles.map((entry) => `- ${entry}`) : ["- none"]),
-    "",
-    "Suggested verification commands:",
-    ...(verificationCommands.length ? verificationCommands.map((entry) => `- ${entry}`) : ["- none"]),
-    "",
-    "After the run, write or update the shared run report under /home/goringich/__home_organized/runtime/local-codex-stack/run-reports/ and keep Obsidian updates concise.",
-  ].join("\n");
-}
-
-function enqueueCodexTask(payload) {
+function dispatchAtlasAgentTask(payload) {
   requireCodexBridge();
-  const task = safeString(payload.task || payload.prompt || "", 12000);
-  if (!task) {
-    throw new Error("task is required");
-  }
-  const focusFiles = Array.isArray(payload.focusFiles) ? payload.focusFiles.filter((entry) => typeof entry === "string") : [];
-  const workdir = path.resolve(String(payload.workdir || recommendedWorkdir(focusFiles)));
-  if (!isAllowedBridgePath(workdir)) {
-    throw new Error(`workdir is outside allowed bridge roots: ${workdir}`);
-  }
-  const addDirs = (Array.isArray(payload.addDirs) ? payload.addDirs : recommendedAddDirs(focusFiles))
-    .filter((entry) => typeof entry === "string")
-    .map((entry) => path.resolve(entry))
-    .filter((entry) => isAllowedBridgePath(entry) && entry !== workdir);
-  const uniqueAddDirs = [...new Set(addDirs)].slice(0, 8);
-  const policyDecision = enforceAtlasEnqueuePolicy(payload, workdir, focusFiles);
-  const title = safeString(payload.title || "atlas-prepared-task", 120) || "atlas-prepared-task";
-  const sandbox = safeString(payload.sandbox || "workspace-write", 80) || "workspace-write";
-  const model = safeString(payload.model || "", 80);
-  const prompt = buildCodexPrompt({ ...payload, task, focusFiles });
-  const args = ["--title", title, "--workdir", workdir, "--sandbox", sandbox];
-  if (model) {
-    args.push("--model", model);
-  }
-  for (const dir of uniqueAddDirs) {
-    args.push("--add-dir", dir);
-  }
-  const stdout = execFileSync(codexEnqueueScript, args, {
-    cwd: codexOrchestratorRoot,
-    input: prompt,
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "pipe"],
-    timeout: 20000,
-  }).trim();
-  const taskPath = stdout.match(/Queued task:\s*(.+)$/m)?.[1]?.trim() || "";
-  const runId = taskPath ? path.basename(taskPath).replace(/\.task$/, "") : `atlas-${Date.now()}`;
-  const reportArgs = [
-    "write",
-    "--run-id",
-    runId,
-    "--task-title",
-    title,
-    "--task-text",
-    task,
-    "--workdir",
-    workdir,
-    "--status",
-    "queued",
-    "--summary",
-    "Project Atlas queued this task through codex-agent-enqueue.",
-    "--next-action",
-    "Run `codex-agent-run` or wait for `codex-agent-orchestrator.timer`, then refresh Project Atlas snapshot.",
-  ];
-  if (taskPath) {
-    reportArgs.push("--queue-task-path", taskPath);
-  }
-  for (const file of focusFiles.filter((entry) => isAllowedBridgePath(entry)).slice(0, 12)) {
-    reportArgs.push("--source-file", file);
-  }
-  for (const command of (Array.isArray(payload.verificationCommands) ? payload.verificationCommands : []).filter((entry) => typeof entry === "string").slice(0, 12)) {
-    reportArgs.push("--verification-command", command);
-  }
-  const reportPath = execFileSync(codexRunReporterScript, reportArgs, {
-    cwd: codexOrchestratorRoot,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 20000,
-  }).trim();
-  return {
-    mode: "queue",
-    runId,
-    title,
-    workdir,
-    addDirs: uniqueAddDirs,
-    taskPath,
-    reportPath,
-    stdout,
-    policyDecision: {
-      schemaVersion: policyDecision.schema_version,
-      decision: policyDecision.decision,
-      enforcement: policyDecision.enforcement,
-      workItemId: policyDecision.input?.work_item_id || "",
-    },
-  };
+  return dispatchGovernedAgentTask(payload, {
+    targetsPath: projectTargetsPath,
+    localAgentRunScript,
+    localAgentExecScript,
+    enforcePolicy: enforceAtlasDispatchPolicy,
+    execFileSync,
+  });
 }
 
 const SAFE_OPEN_PREFIXES = ["/home/goringich/", "/usr/share/applications/", "/usr/bin/"];
@@ -654,6 +515,20 @@ function buildAiLabPrepare(snapshot, task) {
   );
   const focusFiles = buildFocusFiles(normalizedTask, route, scientificAction);
   const bridge = codexStatusPayload();
+  const projectTarget = selectProjectTarget(
+    {
+      preferredProjectId: focusFiles.some(
+        (entry) =>
+          path.resolve(entry) === rootDir ||
+          path.resolve(entry).startsWith(`${rootDir}${path.sep}`),
+      )
+        ? "project-atlas"
+        : "",
+      focusFiles,
+      fallbackProjectId: "project-atlas",
+    },
+    { targetsPath: projectTargetsPath },
+  );
   const codexNecessary =
     selectedAgent === "codex" ||
     CODEX_TASK_KEYWORDS.some((keyword) => normalizedTask.includes(keyword)) ||
@@ -690,9 +565,11 @@ function buildAiLabPrepare(snapshot, task) {
     codexReason: codexNecessary
       ? "The task touches code, Atlas control-plane surfaces, or a route that already prefers Codex."
       : "The task currently maps to read-only preparation or a local scientific-viewer flow.",
-    recommendedWorkdir: recommendedWorkdir(focusFiles),
-    recommendedAddDirs: recommendedAddDirs(focusFiles),
-    enqueueEndpoint: "/api/codex-orchestrator/enqueue",
+    projectId: projectTarget.id,
+    projectTitle: projectTarget.title,
+    projectPath: projectTarget.path,
+    dispatchEndpoint: "/api/local-agent/dispatch",
+    compatibilityEnqueueEndpoint: "/api/codex-orchestrator/enqueue",
     codexBridge: {
       status: bridge.status,
       available: bridge.available,
@@ -860,10 +737,15 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/api/codex-orchestrator/enqueue") {
+  if (
+    req.method === "POST" &&
+    ["/api/local-agent/dispatch", "/api/codex-orchestrator/enqueue"].includes(
+      url.pathname,
+    )
+  ) {
     handleJsonMutation(req, res, (payload) => {
       try {
-        sendJson(res, 200, { ok: true, data: enqueueCodexTask(payload) });
+        sendJson(res, 200, { ok: true, data: dispatchAtlasAgentTask(payload) });
       } catch (error) {
         send(res, 400, `${error instanceof Error ? error.message : String(error)}\n`);
       }

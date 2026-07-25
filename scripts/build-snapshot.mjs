@@ -29,13 +29,15 @@ const operationPolicySummaryPath = path.join(canonicalLocalCodexRuntime, "atlas"
 const localAgentPlatformPath = path.join(canonicalLocalCodexRuntime, "atlas", "local-agent-platform.json");
 const revenueAutopilotPath = path.join(canonicalLocalCodexRuntime, "atlas", "revenue-autopilot.json");
 const aiLabRegistryPath = path.join(rootDir, "data", "ai-lab-registry.json");
-const codexOrchestratorRoot = path.join(home, "codex-orchestrator");
 const codexOrchestratorRuntime = path.join(home, "__home_organized", "runtime", "codex-orchestrator");
 const codexOrchestratorArtifacts = path.join(home, "__home_organized", "artifacts", "codex-orchestrator");
 const sharedRunReportsRoot = path.join(canonicalLocalCodexRuntime, "run-reports");
-const codexEnqueueScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-enqueue");
-const codexRunReporterScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-run-report");
-const codexBridgeFixCommand = "cd /home/goringich/codex-orchestrator && ./install.sh";
+const localAgentRunScript = path.join(home, ".local", "bin", "local-agent-run");
+const localAgentExecScript = path.join(home, ".local", "bin", "local-agent-exec");
+const projectTargetsPath = path.join(home, "__home_organized", "local-codex-stack", "configs", "targets.json");
+const operationPolicyScript = path.join(home, "__home_organized", "local-codex-stack", "scripts", "operation_policy.py");
+const codexBridgeFixCommand =
+  "ln -sf /home/goringich/__home_organized/scripts/local-agent-run /home/goringich/.local/bin/local-agent-run && ln -sf /home/goringich/__home_organized/scripts/local-agent-exec /home/goringich/.local/bin/local-agent-exec";
 
 const overrides = JSON.parse(fs.readFileSync(overridesPath, "utf8"));
 
@@ -396,7 +398,11 @@ function readSharedRunReports(limit = 8) {
 }
 
 function buildCodexOrchestratorBridge() {
-  const available = fileExists(codexEnqueueScript) && fileExists(codexRunReporterScript);
+  const available =
+    fileExists(localAgentRunScript) &&
+    fileExists(localAgentExecScript) &&
+    fileExists(projectTargetsPath) &&
+    fileExists(operationPolicyScript);
   const latestRunReports = readSharedRunReports(10);
   const failedVerification = latestRunReports.filter((report) => report.failedVerificationCount > 0);
   const dirtyAfterRun = latestRunReports.filter((report) => report.dirtyAfterRun);
@@ -408,12 +414,15 @@ function buildCodexOrchestratorBridge() {
       status: "/api/codex-orchestrator/status",
       queue: "/api/codex-orchestrator/queue",
       recentRuns: "/api/codex-orchestrator/recent-runs",
+      dispatch: "/api/local-agent/dispatch",
       enqueue: "/api/codex-orchestrator/enqueue",
     },
     scripts: {
-      enqueue: codexEnqueueScript,
-      reporter: codexRunReporterScript,
+      prepare: localAgentRunScript,
+      dispatch: localAgentExecScript,
     },
+    projectRegistry: projectTargetsPath,
+    operationPolicy: operationPolicyScript,
     runtimeRoot: codexOrchestratorRuntime,
     reportRoot: sharedRunReportsRoot,
     queueCounts: codexQueueCounts(),
@@ -426,7 +435,7 @@ function buildCodexOrchestratorBridge() {
     nextExactAction:
       latestRunReports[0]?.nextAction ||
       (available
-        ? "Prepare in Atlas, enqueue through `/api/codex-orchestrator/enqueue`, run `codex-agent-run`, then refresh the Atlas snapshot."
+        ? "Prepare in Atlas and dispatch through `/api/local-agent/dispatch`; the governed local-agent run creates the report and queues the reviewed Codex handoff."
         : codexBridgeFixCommand),
     source: statMeta(sharedRunReportsRoot, ""),
   };
