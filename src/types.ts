@@ -153,6 +153,7 @@ export interface Snapshot {
   }>;
   localCodexLab: LocalCodexLab;
   localAiControl: LocalAiControl;
+  localAgentPlatform: LocalAgentPlatform;
   aiTelemetry: AiTelemetryExport;
   commercialReadiness: CommercialReadiness;
   operationPolicy: OperationPolicy;
@@ -190,6 +191,79 @@ export interface SourceMeta {
   generatedAt?: string;
   modifiedAt?: string;
   modifiedAtMs?: number;
+}
+
+export interface LocalAgentPlatformTask {
+  task_id?: string;
+  state?: string;
+  status?: string;
+  trace_id?: string;
+  repository_id?: string;
+}
+
+export interface LocalAgentPlatform {
+  status: string;
+  schemaVersion: string;
+  authority: string;
+  source?: string[];
+  generatedAt?: string;
+  observedAt?: string;
+  expiresAt?: string;
+  freshnessState: string;
+  verificationStatus: string;
+  missingFields: string[];
+  queueHealth: {
+    active_leases?: number;
+    authority?: string;
+    counts?: Record<string, number>;
+    dead_letter_depth?: number;
+    generated_at?: string;
+    queue_depth?: number;
+    stale_leases?: number;
+  };
+  latestRun: LocalAgentPlatformTask & {
+    executor?: string;
+    generated_at?: string;
+  };
+  gatewayHealth: {
+    backend?: string;
+    checked_at?: string;
+    gateway?: string;
+    loopback_only?: boolean;
+  };
+  runningTasks: LocalAgentPlatformTask[];
+  taskLifecycle: LocalAgentPlatformTask;
+  sandboxStatus: {
+    main_worktree_modified?: boolean;
+    sandbox?: string;
+    status?: string;
+  };
+  verificationResults: {
+    passed?: boolean;
+    status?: string;
+  };
+  benchmarkTrends: Array<{
+    pass_rate?: number;
+    passed?: number;
+    samples?: number;
+  }>;
+  agentSuccessRate: number;
+  staleEvidence: Array<{
+    count?: number;
+    id?: string;
+    state?: string;
+  }>;
+  blockedPromotions: string[];
+  roleChampions: Record<string, { evidence_class?: string; model?: string; status?: string }>;
+  challengers: Record<string, { evidence_class?: string; model?: string; status?: string }>;
+  analysisPack: {
+    freshness_state?: string;
+    generated_at?: string;
+    path?: string;
+  };
+  sourceArtifact: SourceMeta;
+  readOnly: boolean;
+  commandGateway: string;
 }
 
 export interface LocalCodexGoalCapsule {
@@ -1797,6 +1871,33 @@ export interface CommercialReadiness {
   }>;
   source: SourceMeta;
   productIntelSource: SourceMeta;
+  productOperatingStandard: Record<string, unknown> | null;
+  productOperatingStandardSource: SourceMeta;
+  commercialBilling: CommercialBillingProjection;
+}
+
+export interface CommercialBillingProjection {
+  status: "available" | "unavailable";
+  schemaVersion: string;
+  contractStatus: string;
+  readinessStatus: string;
+  sellerProfiles: Array<{
+    profileId: string;
+    status: string;
+  }>;
+  paymentProfiles: Array<{
+    profileId: string;
+    providerId: string;
+    status: string;
+    receiptStatus: string;
+    merchantReuseStatus: string;
+  }>;
+  productBindings: Array<{
+    productId: string;
+    sellerProfileId: string;
+    paymentProfileIds: string[];
+    status: string;
+  }>;
 }
 
 export interface FirstMoneySummary {

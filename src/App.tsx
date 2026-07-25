@@ -4,12 +4,14 @@ import type {
   AiLabPrepareResponse,
   AdministrationRegistry,
   AiTelemetryExport,
+  CommercialBillingProjection,
   CommercialReadiness,
   DetailTab,
   FirstMoneySummary,
   HealthTone,
   HostAudit,
   LocalAiControl,
+  LocalAgentPlatform,
   LocalCodexGoalCapsule,
   LocalCodexLab,
   LocalCodexRunSummary,
@@ -1985,6 +1987,63 @@ function firstMoneyValue(value: number | string | null | undefined) {
   return "Нет проверенных данных";
 }
 
+function CommercialBillingPanel(props: {
+  billing: CommercialBillingProjection;
+  source: SourceMeta;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const unavailable = props.billing.status !== "available" || props.billing.contractStatus !== "valid";
+  const boundProducts = props.billing.productBindings.filter((item) => item.status === "verified").length;
+  const verifiedPayments = props.billing.paymentProfiles.filter((item) => item.status === "verified").length;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Commercial Billing</div>
+          <h3>Единая готовность счетов без реквизитов в Atlas</h3>
+          <p>Только profile IDs и статусы. Реальные данные продавца, платёжные значения и документы остаются в private runtime binding.</p>
+        </div>
+        <StatusBadge
+          label={unavailable ? "contract unavailable" : props.billing.readinessStatus}
+          tone={unavailable ? "risk" : props.billing.readinessStatus === "verified" ? "ok" : "attention"}
+        />
+      </div>
+
+      <div className="local-status-grid">
+        <MetricCard label="Products" value={props.billing.productBindings.length} detail={`${boundProducts} verified bindings`} />
+        <MetricCard label="Seller profiles" value={props.billing.sellerProfiles.length} detail="metadata only" />
+        <MetricCard label="Payment profiles" value={props.billing.paymentProfiles.length} detail={`${verifiedPayments} verified`} />
+        <MetricCard label="Revenue proof" value="unknown" detail="binding readiness is not payment evidence" />
+      </div>
+
+      {unavailable ? <div className="empty-inline">Billing projection отсутствует или не прошла строгий upstream contract.</div> : (
+        <div className="detail-grid compact-grid">
+          {props.billing.productBindings.map((binding) => (
+            <article className="detail-card" key={binding.productId}>
+              <div className="detail-card-title">{binding.productId}</div>
+              <div className="class-grid">
+                <div className="class-row"><span>status</span><strong>{binding.status}</strong></div>
+                <div className="class-row"><span>seller profile</span><strong>{binding.sellerProfileId || "unknown"}</strong></div>
+                <div className="class-row"><span>payment profiles</span><strong>{binding.paymentProfileIds.join(" · ") || "unknown"}</strong></div>
+              </div>
+            </article>
+          ))}
+          <article className="detail-card">
+            <div className="detail-card-title">Receipt & merchant policy</div>
+            <ul className="note-list compact-note-list">
+              {props.billing.paymentProfiles.map((profile) => (
+                <li key={profile.profileId}>{profile.profileId} · receipt {profile.receiptStatus} · reuse {profile.merchantReuseStatus}</li>
+              ))}
+            </ul>
+          </article>
+        </div>
+      )}
+      <SourceFootnote source={props.source} label="sanitized billing readiness projection" onOpen={props.onOpen} onCopy={props.onCopy} />
+    </section>
+  );
+}
+
 function FirstMoneyPanel(props: { summary: FirstMoneySummary | null; revenue: RevenueAutopilotStatus }) {
   const summary = props.summary;
   const sourceUnavailable = !summary || summary.source_status === "unavailable";
@@ -2343,6 +2402,129 @@ function AgentBoardPanel(props: {
             ))}
           </ul>
           <SourceFootnote source={props.control.source} label="agent board" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function agentPlatformTone(platform: LocalAgentPlatform): HealthTone {
+  if (platform.status === "malformed" || platform.verificationStatus === "rejected") return "risk";
+  if (platform.status === "stale" || platform.freshnessState === "stale") return "attention";
+  if (platform.status === "available" && platform.freshnessState === "fresh") return "ok";
+  return "unknown";
+}
+
+function AgentOperationsPanel(props: {
+  platform: LocalAgentPlatform;
+  runSummaries: LocalCodexRunSummary[];
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const { platform } = props;
+  const counts = platform.queueHealth.counts ?? {};
+  const activeTask = platform.runningTasks[0] ?? (platform.taskLifecycle.task_id ? platform.taskLifecycle : null);
+  const stale = platform.status === "stale" || platform.freshnessState === "stale";
+  const malformed = platform.status === "malformed" || platform.missingFields.length > 0;
+  const successRate = !malformed && Number.isFinite(platform.agentSuccessRate)
+    ? `${Math.round(platform.agentSuccessRate * 100)}%`
+    : "missing";
+  const verificationDetail = platform.verificationResults.passed === true
+    ? "passed"
+    : platform.verificationResults.passed === false
+      ? "not passed"
+      : "no verdict";
+  const evidenceBlockers = [
+    ...platform.blockedPromotions.map((item) => `promotion · ${item}`),
+    ...platform.staleEvidence.map((item) => `${item.id || "evidence"} · ${item.state || "unknown"}`),
+    ...platform.missingFields.map((item) => `missing field · ${item}`),
+  ];
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Agent Operations</div>
+          <h3>Очередь, lifecycle и проверяемый результат</h3>
+          <p>Единая read-only проекция существующего agent ledger; без второй очереди и без raw traces.</p>
+        </div>
+        <div className="status-cluster">
+          <StatusBadge label={platform.status} tone={agentPlatformTone(platform)} />
+          <StatusBadge label={platform.freshnessState || "unknown freshness"} tone={agentPlatformTone(platform)} />
+        </div>
+      </div>
+
+      {stale ? (
+        <div className="empty-inline">Данные устарели · истекли {platform.expiresAt ? fmtRelative(new Date(platform.expiresAt).getTime()) : "без timestamp"}</div>
+      ) : null}
+      {malformed ? (
+        <div className="empty-inline">Projection неполна: {platform.missingFields.join(", ") || "schema rejected"}</div>
+      ) : null}
+
+      <div className="local-status-grid">
+        <MetricCard label="Queue depth" value={malformed ? "missing" : platform.queueHealth.queue_depth ?? 0} detail={`${platform.queueHealth.dead_letter_depth ?? 0} dead-letter`} />
+        <MetricCard label="Running" value={malformed ? "missing" : platform.runningTasks.length} detail={`${platform.queueHealth.active_leases ?? 0} active leases`} />
+        <MetricCard label="Success rate" value={successRate} detail="locally measured agent runs" />
+        <MetricCard label="Verification" value={platform.verificationResults.status || platform.verificationStatus || "missing"} detail={verificationDetail} />
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Lifecycle counts</div>
+          <div className="class-grid">
+            <div className="class-row"><span>blocked</span><strong>{malformed ? "—" : counts.blocked ?? 0}</strong></div>
+            <div className="class-row"><span>retryable</span><strong>{malformed ? "—" : counts.failed_retryable ?? 0}</strong></div>
+            <div className="class-row"><span>terminal</span><strong>{malformed ? "—" : counts.failed_terminal ?? 0}</strong></div>
+            <div className="class-row"><span>promotion pending</span><strong>{malformed ? "—" : counts.promotion_pending ?? 0}</strong></div>
+          </div>
+          {activeTask ? (
+            <div className="class-grid">
+              <div className="class-row"><span>state</span><strong>{activeTask.state || activeTask.status || "unknown"}</strong></div>
+              <div className="class-row"><span>task</span><strong>{compactHash(activeTask.task_id || "unknown", 24)}</strong></div>
+              <div className="class-row"><span>trace</span><strong>{compactHash(activeTask.trace_id || "none", 18)}</strong></div>
+            </div>
+          ) : (
+            <div className="empty-inline">Активных задач нет; очередь пуста.</div>
+          )}
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Freshness & authority</div>
+          <div className="class-grid">
+            <div className="class-row"><span>authority</span><strong>{platform.authority || "unavailable"}</strong></div>
+            <div className="class-row"><span>generated</span><strong>{platform.generatedAt ? fmtRelative(new Date(platform.generatedAt).getTime()) : "missing"}</strong></div>
+            <div className="class-row"><span>observed</span><strong>{platform.observedAt ? fmtRelative(new Date(platform.observedAt).getTime()) : "missing"}</strong></div>
+            <div className="class-row"><span>gateway</span><strong>{platform.commandGateway || "read-only"}</strong></div>
+          </div>
+          <SourceFootnote source={platform.sourceArtifact} label="agent operations export" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Blockers & stale evidence</div>
+          {evidenceBlockers.length > 0 ? (
+            <ul className="note-list compact-note-list">
+              {evidenceBlockers.slice(0, 8).map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          ) : (
+            <div className="empty-inline">Блокирующих evidence-сигналов нет.</div>
+          )}
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Последние safe run summaries</div>
+          <div className="doc-list">
+            {props.runSummaries.length > 0 ? props.runSummaries.slice(0, 4).map((run) => (
+              <QuickActionRow
+                key={run.runId}
+                label={run.task || run.runId}
+                value={`${run.verification.length} checks · ${run.commits.length} commits · ${run.finishedAt ? fmtRelative(new Date(run.finishedAt).getTime()) : "no timestamp"}`}
+                onOpen={() => props.onOpen(run.runId, run.source.path)}
+                onCopy={() => props.onCopy(run.runId, run.nextAction || run.task)}
+              />
+            )) : (
+              <div className="empty-inline">Безопасных run summaries пока нет.</div>
+            )}
+          </div>
         </article>
       </div>
     </section>
@@ -3624,9 +3806,11 @@ function RunsWorkspace(props: {
   onOpen: (label: string, target: string) => void;
   onCopy: (label: string, value: string) => void;
 }) {
+  const platform = props.snapshot.localAgentPlatform;
   return (
     <div className="workspace-stack">
-      <WorkspaceHeader eyebrow="Atlas / Runs" title="Запуски и проверяемый результат" description="История исполнения, traces, usage и отчёты находятся отдельно от runtime-конфигурации." status={{ label: `${props.snapshot.localCodexLab.runSummaries.length} recent`, tone: props.snapshot.localCodexLab.runSummaries.length ? "ok" : "unknown" }} />
+      <WorkspaceHeader eyebrow="Atlas / Runs" title="Запуски и проверяемый результат" description="История исполнения, traces, usage и отчёты находятся отдельно от runtime-конфигурации." status={{ label: `${platform.status} · ${props.snapshot.localCodexLab.runSummaries.length} summaries`, tone: agentPlatformTone(platform) }} />
+      <AgentOperationsPanel platform={platform} runSummaries={props.snapshot.localCodexLab.runSummaries} onOpen={props.onOpen} onCopy={props.onCopy} />
       <AgentBoardPanel control={props.snapshot.localAiControl} onOpen={props.onOpen} onCopy={props.onCopy} />
       <AgentTracePanel telemetry={props.snapshot.aiTelemetry} onOpen={props.onOpen} onCopy={props.onCopy} />
       <AiActivityExplorerPanel telemetry={props.snapshot.aiTelemetry} onOpen={props.onOpen} onCopy={props.onCopy} />
@@ -3897,6 +4081,7 @@ export function App() {
           {activeWorkspace === "revenue" ? <div className="workspace-stack">
             <WorkspaceHeader eyebrow="Atlas / Revenue" title="От сигнала к деньгам" description="Воронка, creative factory и owner gates собраны в одном коммерческом контексте." status={{ label: snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "unknown", tone: commercialTone(snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "") }} />
             <RevenueOrbitPanel revenue={snapshot.commercialReadiness.revenueAutopilot} source={snapshot.commercialReadiness.revenueAutopilotSource} onOpen={open} onCopy={copy} />
+            <CommercialBillingPanel billing={snapshot.commercialReadiness.commercialBilling} source={snapshot.commercialReadiness.productOperatingStandardSource} onOpen={open} onCopy={copy} />
             <FirstMoneyPanel summary={firstMoneySummary ?? snapshot.commercialReadiness.firstMoneySummary ?? null} revenue={snapshot.commercialReadiness.revenueAutopilot} />
           </div> : null}
           {activeWorkspace === "ai-control" && mission ? <AiControlWorkspace snapshot={snapshot} mission={mission} section={aiControlSection} onSectionChange={setAiControlSection} onOpen={open} onCopy={copy} /> : null}

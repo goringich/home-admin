@@ -19,6 +19,10 @@
   - OpenClaw reliability classes
   - repo-intel freshness
   - model routing baseline
+- показывает `Agent Operations` внутри workspace `Запуски`:
+  - freshness и source authority существующего agent ledger
+  - queue/lifecycle counts, verification и locally measured success rate
+  - blocked promotions, stale evidence и последние compact run summaries
 
 ## Запуск
 

@@ -2,8 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
+import { normalizeCommercialBilling } from "./commercial-billing.mjs";
 import { normalizeRevenueAutopilot } from "./commercial-summary.mjs";
 import { normalizeLocalAgentPlatform } from "./local-agent-platform.mjs";
+import { selectLocalCodexLabRecord } from "./snapshot-source-selection.mjs";
 
 const home = os.homedir();
 const rootDir = path.join(home, "Desktop", "project-atlas");
@@ -120,6 +122,17 @@ function readJsonFirst(paths, fallback = null) {
     }
   }
   return { path: "", payload: fallback };
+}
+
+function readJsonCandidates(paths) {
+  return paths.flatMap((targetPath) => {
+    if (!fileExists(targetPath)) return [];
+    try {
+      return [{ path: targetPath, payload: JSON.parse(fs.readFileSync(targetPath, "utf8")) }];
+    } catch {
+      return [];
+    }
+  });
 }
 
 function buildAdministration() {
@@ -726,7 +739,7 @@ function summarizeRepo(repoEntry) {
 
 function buildLocalCodexLab() {
   const codexOrchestratorBridge = buildCodexOrchestratorBridge();
-  const lab = readJsonFirst([canonicalLocalCodexAtlasPath, legacyLocalCodexAtlasPath], {});
+  const lab = selectLocalCodexLabRecord(readJsonCandidates([canonicalLocalCodexAtlasPath, legacyLocalCodexAtlasPath]));
   const aiLabRegistry = readJsonFirst([aiLabRegistryPath], {});
   const researchSummary = readJsonFirst(
     [
@@ -1311,6 +1324,9 @@ function buildCommercialReadiness() {
   const productIntel = readJsonFirst([productIntelPath], {});
   const productOperatingStandard = readJsonFirst([productOperatingStandardPath], {});
   const revenueAutopilot = readJsonFirst([revenueAutopilotPath], {});
+  const safeProductOperatingStandard = productOperatingStandard.payload?.safe_to_expose === true
+    ? productOperatingStandard.payload
+    : null;
   return {
     generatedAt: report.payload?.generated_at || new Date().toISOString(),
     overallStatus: report.payload?.overall_status || "unknown",
@@ -1354,8 +1370,9 @@ function buildCommercialReadiness() {
     focusRepos: productIntel.payload?.focus_repos || [],
     source: statMeta(report.path, report.payload?.generated_at || ""),
     productIntelSource: statMeta(productIntel.path, productIntel.payload?.generated_at || ""),
-    productOperatingStandard: productOperatingStandard.payload?.safe_to_expose === true ? productOperatingStandard.payload : null,
+    productOperatingStandard: safeProductOperatingStandard,
     productOperatingStandardSource: statMeta(productOperatingStandard.path, productOperatingStandard.payload?.generated_at || ""),
+    commercialBilling: normalizeCommercialBilling(safeProductOperatingStandard?.commercial_billing),
     revenueAutopilot: normalizeRevenueAutopilot(revenueAutopilot.payload),
     revenueAutopilotSource: statMeta(revenueAutopilot.path, revenueAutopilot.payload?.generated_at || ""),
   };
