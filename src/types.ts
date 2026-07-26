@@ -154,6 +154,7 @@ export interface Snapshot {
   localCodexLab: LocalCodexLab;
   localAiControl: LocalAiControl;
   localAgentPlatform: LocalAgentPlatform;
+  codexAudit: CodexAudit;
   aiTelemetry: AiTelemetryExport;
   commercialReadiness: CommercialReadiness;
   operationPolicy: OperationPolicy;
@@ -264,6 +265,37 @@ export interface LocalAgentPlatform {
   sourceArtifact: SourceMeta;
   readOnly: boolean;
   commandGateway: string;
+}
+
+export interface CodexAuditTask {
+  taskId: string;
+  status: string;
+  repository: string;
+  branch: string;
+  headSha: string;
+  diffUrl: string;
+  failedChecks: string[];
+  blockers: string[];
+  taskPath: string;
+  updatedAt: string;
+}
+
+export interface CodexAudit {
+  sourceStatus: "healthy" | "stale" | "degraded" | "unavailable";
+  freshness: "fresh" | "stale" | "unavailable";
+  syncStatus: string;
+  generatedAt: string;
+  ageHours: number | null;
+  taskCount: number;
+  statusCounts: Record<string, number>;
+  tasks: CodexAuditTask[];
+  exporter: {
+    status?: string;
+    counts?: Record<string, number>;
+    jobs?: Array<Record<string, unknown>>;
+  };
+  source: SourceMeta;
+  exporterSource: SourceMeta;
 }
 
 export interface LocalCodexGoalCapsule {

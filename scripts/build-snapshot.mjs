@@ -7,6 +7,7 @@ import { normalizeCommercialLaunchObservability } from "./commercial-launch-obse
 import { normalizeRevenueAutopilot } from "./commercial-summary.mjs";
 import { normalizeLocalAgentPlatform } from "./local-agent-platform.mjs";
 import { selectLocalCodexLabRecord } from "./snapshot-source-selection.mjs";
+import { normalizeCodexAudit } from "./codex-audit.mjs";
 
 const home = os.homedir();
 const rootDir = path.join(home, "Desktop", "project-atlas");
@@ -28,6 +29,8 @@ const productIntelPath = path.join(canonicalLocalCodexRuntime, "product-intel.js
 const productOperatingStandardPath = path.join(canonicalLocalCodexRuntime, "atlas", "product-operating-standard.json");
 const operationPolicySummaryPath = path.join(canonicalLocalCodexRuntime, "atlas", "operation-policy-summary.json");
 const localAgentPlatformPath = path.join(canonicalLocalCodexRuntime, "atlas", "local-agent-platform.json");
+const codexAuditLatestPath = path.join(home, "Desktop", "Obsidian", "codex-audit", "latest.json");
+const codexAuditExporterPath = path.join(canonicalLocalCodexRuntime, "codex-audit", "export-status.json");
 const revenueAutopilotPath = path.join(canonicalLocalCodexRuntime, "atlas", "revenue-autopilot.json");
 const aiLabRegistryPath = path.join(rootDir, "data", "ai-lab-registry.json");
 const codexOrchestratorRuntime = path.join(home, "__home_organized", "runtime", "codex-orchestrator");
@@ -1423,6 +1426,16 @@ function buildLocalAgentPlatform() {
   };
 }
 
+function buildCodexAudit() {
+  const latest = readJsonFirst([codexAuditLatestPath], null);
+  const exporter = readJsonFirst([codexAuditExporterPath], null);
+  return {
+    ...normalizeCodexAudit(latest.payload, exporter.payload, Date.now()),
+    source: statMeta(latest.path, latest.payload?.generated_at || ""),
+    exporterSource: statMeta(exporter.path, exporter.payload?.observed_at || ""),
+  };
+}
+
 function systemSnapshot() {
   const issues = run("bash", ["-lc", `${home}/__home_organized/scripts/system-issues-report.sh --compact`]);
   const running = run("systemctl", ["is-system-running"]);
@@ -1612,6 +1625,7 @@ const codexHistory = buildCodexHistory();
 const commercialReadiness = buildCommercialReadiness();
 const operationPolicy = buildOperationPolicy();
 const localAgentPlatform = buildLocalAgentPlatform();
+const codexAudit = buildCodexAudit();
 const hostAudit = buildHostAudit(system, localAiControl);
 const administration = buildAdministration();
 
@@ -1642,6 +1656,7 @@ const snapshot = {
   commercialReadiness,
   operationPolicy,
   localAgentPlatform,
+  codexAudit,
   administration,
 };
 

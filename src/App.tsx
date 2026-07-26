@@ -7,6 +7,7 @@ import type {
   CommercialBillingProjection,
   CommercialLaunchObservability,
   CommercialReadiness,
+  CodexAudit,
   DetailTab,
   FirstMoneySummary,
   HealthTone,
@@ -2531,11 +2532,19 @@ function agentPlatformTone(platform: LocalAgentPlatform): HealthTone {
 
 function AgentOperationsPanel(props: {
   platform: LocalAgentPlatform;
+  audit: CodexAudit;
   runSummaries: LocalCodexRunSummary[];
   onOpen: (label: string, target: string) => void;
   onCopy: (label: string, value: string) => void;
 }) {
   const { platform } = props;
+  const auditTone: HealthTone = props.audit.sourceStatus === "healthy"
+    ? "ok"
+    : props.audit.sourceStatus === "unavailable"
+      ? "unknown"
+      : props.audit.sourceStatus === "stale"
+        ? "attention"
+        : "risk";
   const counts = platform.queueHealth.counts ?? {};
   const activeTask = platform.runningTasks[0] ?? (platform.taskLifecycle.task_id ? platform.taskLifecycle : null);
   const stale = platform.status === "stale" || platform.freshnessState === "stale";
@@ -2565,6 +2574,7 @@ function AgentOperationsPanel(props: {
         <div className="status-cluster">
           <StatusBadge label={platform.status} tone={agentPlatformTone(platform)} />
           <StatusBadge label={platform.freshnessState || "unknown freshness"} tone={agentPlatformTone(platform)} />
+          <StatusBadge label={`audit ${props.audit.sourceStatus}`} tone={auditTone} />
         </div>
       </div>
 
@@ -2573,6 +2583,11 @@ function AgentOperationsPanel(props: {
       ) : null}
       {malformed ? (
         <div className="empty-inline">Projection неполна: {platform.missingFields.join(", ") || "schema rejected"}</div>
+      ) : null}
+      {props.audit.sourceStatus !== "healthy" ? (
+        <div className="empty-inline">
+          Audit source: {props.audit.sourceStatus} · sync {props.audit.syncStatus} · exporter {props.audit.exporter.status || "unavailable"}
+        </div>
       ) : null}
 
       <div className="local-status-grid">
@@ -2583,6 +2598,32 @@ function AgentOperationsPanel(props: {
       </div>
 
       <div className="detail-grid compact-grid">
+        <article className="detail-card detail-card-wide">
+          <div className="detail-card-title">Codex audit ledger</div>
+          <div className="class-grid">
+            <div className="class-row"><span>freshness</span><strong>{props.audit.freshness}</strong></div>
+            <div className="class-row"><span>sync</span><strong>{props.audit.syncStatus}</strong></div>
+            <div className="class-row"><span>tasks</span><strong>{props.audit.taskCount}</strong></div>
+            <div className="class-row"><span>generated</span><strong>{props.audit.generatedAt ? fmtRelative(new Date(props.audit.generatedAt).getTime()) : "unavailable"}</strong></div>
+          </div>
+          <div className="repo-intel-list">
+            {props.audit.tasks.length > 0 ? props.audit.tasks.slice(0, 6).map((task) => (
+              <div key={task.taskId} className="repo-intel-row">
+                <div>
+                  <strong>{task.taskId}</strong>
+                  <p>{task.repository} · {task.branch || "no branch"}</p>
+                </div>
+                <div className="repo-intel-meta">
+                  <span>{task.status}</span>
+                  <span>{task.headSha ? compactHash(task.headSha, 12) : "no Git SHA"}</span>
+                  <span>{task.failedChecks.length} failed checks · {task.blockers.length} blockers</span>
+                </div>
+              </div>
+            )) : <div className="empty-inline">Audit source не содержит задач.</div>}
+          </div>
+          <SourceFootnote source={props.audit.source} label="Codex audit latest" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
         <article className="detail-card">
           <div className="detail-card-title">Lifecycle counts</div>
           <div className="class-grid">
@@ -3924,7 +3965,7 @@ function RunsWorkspace(props: {
   return (
     <div className="workspace-stack">
       <WorkspaceHeader eyebrow="Atlas / Runs" title="Запуски и проверяемый результат" description="История исполнения, traces, usage и отчёты находятся отдельно от runtime-конфигурации." status={{ label: `${platform.status} · ${props.snapshot.localCodexLab.runSummaries.length} summaries`, tone: agentPlatformTone(platform) }} />
-      <AgentOperationsPanel platform={platform} runSummaries={props.snapshot.localCodexLab.runSummaries} onOpen={props.onOpen} onCopy={props.onCopy} />
+      <AgentOperationsPanel platform={platform} audit={props.snapshot.codexAudit} runSummaries={props.snapshot.localCodexLab.runSummaries} onOpen={props.onOpen} onCopy={props.onCopy} />
       <AgentBoardPanel control={props.snapshot.localAiControl} onOpen={props.onOpen} onCopy={props.onCopy} />
       <AgentTracePanel telemetry={props.snapshot.aiTelemetry} onOpen={props.onOpen} onCopy={props.onCopy} />
       <AiActivityExplorerPanel telemetry={props.snapshot.aiTelemetry} onOpen={props.onOpen} onCopy={props.onCopy} />
