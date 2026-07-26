@@ -29,7 +29,9 @@ const productIntelPath = path.join(canonicalLocalCodexRuntime, "product-intel.js
 const productOperatingStandardPath = path.join(canonicalLocalCodexRuntime, "atlas", "product-operating-standard.json");
 const operationPolicySummaryPath = path.join(canonicalLocalCodexRuntime, "atlas", "operation-policy-summary.json");
 const localAgentPlatformPath = path.join(canonicalLocalCodexRuntime, "atlas", "local-agent-platform.json");
-const codexAuditLatestPath = path.join(home, "Desktop", "Obsidian", "codex-audit", "latest.json");
+const codexAuditRuntimeLatestPath = process.env.CODEX_AUDIT_LATEST_PATH
+  || path.join(canonicalLocalCodexRuntime, "codex-audit-public", "latest.json");
+const codexAuditObsidianLatestPath = path.join(home, "Desktop", "Obsidian", "codex-audit", "latest.json");
 const codexAuditExporterPath = path.join(canonicalLocalCodexRuntime, "codex-audit", "export-status.json");
 const revenueAutopilotPath = path.join(canonicalLocalCodexRuntime, "atlas", "revenue-autopilot.json");
 const aiLabRegistryPath = path.join(rootDir, "data", "ai-lab-registry.json");
@@ -1427,7 +1429,10 @@ function buildLocalAgentPlatform() {
 }
 
 function buildCodexAudit() {
-  const latest = readJsonFirst([codexAuditLatestPath], null);
+  const latest = readJsonFirst(
+    [codexAuditRuntimeLatestPath, codexAuditObsidianLatestPath],
+    null,
+  );
   const exporter = readJsonFirst([codexAuditExporterPath], null);
   return {
     ...normalizeCodexAudit(latest.payload, exporter.payload, Date.now()),
