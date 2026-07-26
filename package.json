@@ -8,6 +8,7 @@
     "snapshot": "node scripts/build-snapshot.mjs",
     "dev": "npm run snapshot && vite",
     "build": "tsc -b && vite build",
+    "test:ai-company-browser": "node scripts/ai-company-browser-smoke.mjs",
     "build:refresh": "npm run snapshot && npm run build",
     "preview": "vite preview",
     "host": "node scripts/atlas-host.mjs"
