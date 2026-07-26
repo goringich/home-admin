@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { CompanyWorkspace } from "./CompanyWorkspace";
 import type {
   AiLabPrepareResponse,
   AdministrationRegistry,
@@ -26,7 +27,7 @@ import type {
   TaskStatus,
 } from "./types";
 
-type WorkspaceId = "overview" | "revenue" | "ai-control" | "work" | "runs" | "admin" | "remote";
+type WorkspaceId = "overview" | "company" | "revenue" | "ai-control" | "work" | "runs" | "admin" | "remote";
 type AiControlSection = "runtime" | "context" | "efficiency" | "trust" | "advanced";
 
 const WORKSPACES: Array<{
@@ -37,12 +38,13 @@ const WORKSPACES: Array<{
   glyph: string;
 }> = [
   { id: "overview", label: "Обзор", shortLabel: "Today", description: "Что важно прямо сейчас", glyph: "01" },
-  { id: "revenue", label: "Revenue", shortLabel: "Money", description: "Воронка, эксперименты и gates", glyph: "02" },
-  { id: "ai-control", label: "AI Control", shortLabel: "System", description: "Runtime, context и trust", glyph: "03" },
-  { id: "work", label: "Проекты", shortLabel: "Work", description: "Репозитории, задачи и релизы", glyph: "04" },
-  { id: "runs", label: "Запуски", shortLabel: "Runs", description: "Codex, traces и проверки", glyph: "05" },
-  { id: "admin", label: "Админки", shortLabel: "Control", description: "Каталог и безопасные входы", glyph: "06" },
-  { id: "remote", label: "Remote", shortLabel: "Ops", description: "Удалённый доступ и сервисы", glyph: "07" },
+  { id: "company", label: "Company", shortLabel: "Mission", description: "Portfolio, missions и owner gates", glyph: "02" },
+  { id: "revenue", label: "Revenue", shortLabel: "Money", description: "Воронка, эксперименты и gates", glyph: "03" },
+  { id: "ai-control", label: "AI Control", shortLabel: "System", description: "Runtime, context и trust", glyph: "04" },
+  { id: "work", label: "Проекты", shortLabel: "Work", description: "Репозитории, задачи и релизы", glyph: "05" },
+  { id: "runs", label: "Запуски", shortLabel: "Runs", description: "Codex, traces и проверки", glyph: "06" },
+  { id: "admin", label: "Админки", shortLabel: "Control", description: "Каталог и безопасные входы", glyph: "07" },
+  { id: "remote", label: "Remote", shortLabel: "Ops", description: "Удалённый доступ и сервисы", glyph: "08" },
 ];
 
 const AI_CONTROL_SECTIONS: Array<{ id: AiControlSection; label: string; description: string }> = [
@@ -4146,7 +4148,7 @@ export function App() {
     return <main className="boot-state">Ошибка загрузки snapshot: {error}</main>;
   }
 
-  if (!snapshot || !selectedProject) {
+  if (!snapshot) {
     return <main className="boot-state">Собираю Project Atlas…</main>;
   }
 
@@ -4232,7 +4234,9 @@ export function App() {
         {notice ? <div className="notice" role="status">{notice}</div> : null}
 
         <main className="workspace-main">
-          {activeWorkspace === "overview" && mission ? <OverviewWorkspace snapshot={snapshot} mission={mission} selectedProject={selectedProject} onNavigate={setActiveWorkspace} onOpen={open} /> : null}
+          {activeWorkspace === "overview" && mission && selectedProject ? <OverviewWorkspace snapshot={snapshot} mission={mission} selectedProject={selectedProject} onNavigate={setActiveWorkspace} onOpen={open} /> : null}
+          {activeWorkspace === "overview" && !selectedProject ? <section className="panel"><div className="empty-inline">Project inventory unavailable. Company and system workspaces remain available.</div></section> : null}
+          {activeWorkspace === "company" ? <CompanyWorkspace data={snapshot.aiCompany} onRefresh={() => refreshSnapshot(true)} /> : null}
           {activeWorkspace === "revenue" ? <div className="workspace-stack">
             <WorkspaceHeader eyebrow="Atlas / Revenue" title="От сигнала к деньгам" description="Воронка, creative factory и owner gates собраны в одном коммерческом контексте." status={{ label: snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "unknown", tone: commercialTone(snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "") }} />
             <CommercialLaunchEvidencePanel launch={snapshot.commercialReadiness.commercialLaunch} commercialSource={snapshot.commercialReadiness.source} revenueSource={snapshot.commercialReadiness.revenueAutopilotSource} billingSource={snapshot.commercialReadiness.productOperatingStandardSource} onOpen={open} onCopy={copy} />
@@ -4241,7 +4245,8 @@ export function App() {
             <FirstMoneyPanel summary={firstMoneySummary ?? snapshot.commercialReadiness.firstMoneySummary ?? null} revenue={snapshot.commercialReadiness.revenueAutopilot} />
           </div> : null}
           {activeWorkspace === "ai-control" && mission ? <AiControlWorkspace snapshot={snapshot} mission={mission} section={aiControlSection} onSectionChange={setAiControlSection} onOpen={open} onCopy={copy} /> : null}
-          {activeWorkspace === "work" ? <WorkWorkspace snapshot={snapshot} projects={filteredProjects} selectedProject={selectedProject} query={query} domainFilter={domainFilter} detailTab={detailTab} onQueryChange={setQuery} onDomainChange={setDomainFilter} onSelect={(id) => { setSelectedId(id); setDetailTab("overview"); }} onTabChange={setDetailTab} onCopy={copy} onOpen={open} /> : null}
+          {activeWorkspace === "work" && selectedProject ? <WorkWorkspace snapshot={snapshot} projects={filteredProjects} selectedProject={selectedProject} query={query} domainFilter={domainFilter} detailTab={detailTab} onQueryChange={setQuery} onDomainChange={setDomainFilter} onSelect={(id) => { setSelectedId(id); setDetailTab("overview"); }} onTabChange={setDetailTab} onCopy={copy} onOpen={open} /> : null}
+          {activeWorkspace === "work" && !selectedProject ? <section className="panel"><div className="empty-inline">Project inventory unavailable.</div></section> : null}
           {activeWorkspace === "runs" ? <RunsWorkspace snapshot={snapshot} onOpen={open} onCopy={copy} /> : null}
           {activeWorkspace === "admin" ? <AdministrationWorkspace registry={snapshot.administration} onOpen={open} onCopy={copy} /> : null}
           {activeWorkspace === "remote" ? <div className="workspace-stack">

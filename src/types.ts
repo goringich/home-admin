@@ -110,6 +110,101 @@ export interface ProjectRecord {
   };
 }
 
+export interface AiCompanyDataState {
+  availability: "available" | "partial" | "unavailable";
+  freshness: "fresh" | "stale" | "unknown" | "unavailable";
+  verification: "verified" | "partially_verified" | "unverified" | "rejected" | "unknown";
+  dataClass: "real" | "fixture" | "unknown" | "unavailable";
+  reason?: string;
+}
+
+export interface AiCompanyEntity {
+  [key: string]: unknown;
+  portfolio_id?: string;
+  mission_id?: string;
+  workstream_id?: string;
+  task_id?: string;
+  attempt_id?: string;
+  run_id?: string;
+  evidence_id?: string;
+  verification_id?: string;
+  approval_id?: string;
+  cost_id?: string;
+  title?: string;
+  name?: string;
+  status?: string;
+  data_class?: string;
+  score?: number | null;
+  expected_value?: number | null;
+  actual_cost?: number | null;
+  model_cost?: number | null;
+  runtime_duration?: number | null;
+  objective?: string;
+  target_metric?: string;
+  target_value?: unknown;
+  deadline?: string;
+  budget_limit?: number | null;
+  work_status?: string;
+  implementation_status?: string;
+  deployment_status?: string;
+  outcome_status?: string;
+  confidence?: number | null;
+  critical_path?: boolean;
+  owner_gate?: boolean;
+  depends_on_task_id?: string;
+  dependency_type?: string;
+  attempt_number?: number;
+  worker_id?: string | null;
+  executor?: string;
+  evidence_type?: string;
+  freshness?: string;
+  summary?: string;
+  independent?: boolean;
+  reason?: string;
+  approval_type?: string;
+  requested_action?: string;
+  risk?: string;
+  reversibility?: string;
+  expires_at?: string;
+  revision?: number;
+}
+
+export interface AiCompanyMissionControl {
+  schemaVersion: string;
+  generatedAt: string;
+  exportHash: string;
+  safeToExpose: boolean;
+  state: AiCompanyDataState;
+  sectionStates: Record<string, AiCompanyDataState>;
+  portfolios: AiCompanyEntity[];
+  missions: AiCompanyEntity[];
+  workstreams: AiCompanyEntity[];
+  tasks: AiCompanyEntity[];
+  dependencies: AiCompanyEntity[];
+  attempts: AiCompanyEntity[];
+  runs: AiCompanyEntity[];
+  evidence: AiCompanyEntity[];
+  verifications: AiCompanyEntity[];
+  approvals: AiCompanyEntity[];
+  economics: AiCompanyEntity[];
+  incidents: AiCompanyEntity[];
+  decisions: AiCompanyEntity[];
+  outcomes: AiCompanyEntity[];
+  operations: {
+    offers: AiCompanyEntity[];
+    leads: AiCompanyEntity[];
+    opportunities: AiCompanyEntity[];
+    experiments: AiCompanyEntity[];
+    orders: AiCompanyEntity[];
+    deliveries: AiCompanyEntity[];
+    payments: AiCompanyEntity[];
+    customerFeedback: AiCompanyEntity[];
+    counters: Record<string, number | null>;
+    state: AiCompanyDataState;
+  };
+  source?: SourceMeta;
+}
+
 export interface Snapshot {
   generatedAt: string;
   focusProjectIds: string[];
@@ -154,6 +249,7 @@ export interface Snapshot {
   localCodexLab: LocalCodexLab;
   localAiControl: LocalAiControl;
   localAgentPlatform: LocalAgentPlatform;
+  aiCompany: AiCompanyMissionControl;
   codexAudit: CodexAudit;
   aiTelemetry: AiTelemetryExport;
   commercialReadiness: CommercialReadiness;

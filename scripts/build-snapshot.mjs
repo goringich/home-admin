@@ -2,15 +2,20 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { normalizeCommercialBilling } from "./commercial-billing.mjs";
 import { normalizeCommercialLaunchObservability } from "./commercial-launch-observability.mjs";
 import { normalizeRevenueAutopilot } from "./commercial-summary.mjs";
 import { normalizeLocalAgentPlatform } from "./local-agent-platform.mjs";
 import { selectLocalCodexLabRecord } from "./snapshot-source-selection.mjs";
 import { normalizeCodexAudit } from "./codex-audit.mjs";
+import {
+  normalizeAiCompanyMissionControl,
+  unavailableAiCompanyMissionControl,
+} from "./ai-company-mission-control.mjs";
 
 const home = os.homedir();
-const rootDir = path.join(home, "Desktop", "project-atlas");
+const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const inventoryPath = path.join(home, "system-bootstrap", "docs", "repo-inventory.md");
 const overridesPath = path.join(rootDir, "data", "project-overrides.json");
 const administrationRegistryPath = path.join(home, "__home_organized", "local-codex-stack", "configs", "admin-surface-registry.json");
@@ -29,6 +34,11 @@ const productIntelPath = path.join(canonicalLocalCodexRuntime, "product-intel.js
 const productOperatingStandardPath = path.join(canonicalLocalCodexRuntime, "atlas", "product-operating-standard.json");
 const operationPolicySummaryPath = path.join(canonicalLocalCodexRuntime, "atlas", "operation-policy-summary.json");
 const localAgentPlatformPath = path.join(canonicalLocalCodexRuntime, "atlas", "local-agent-platform.json");
+const aiCompanyMissionControlPath = path.join(
+  canonicalLocalCodexRuntime,
+  "atlas",
+  "ai-company-mission-control.v1.json",
+);
 const codexAuditRuntimeLatestPath = process.env.CODEX_AUDIT_LATEST_PATH
   || path.join(canonicalLocalCodexRuntime, "codex-audit-public", "latest.json");
 const codexAuditObsidianLatestPath = path.join(home, "Desktop", "Obsidian", "codex-audit", "latest.json");
@@ -1428,6 +1438,18 @@ function buildLocalAgentPlatform() {
   };
 }
 
+function buildAiCompanyMissionControl() {
+  const record = readJsonFirst([aiCompanyMissionControlPath], null);
+  if (!record.path || !record.payload) {
+    return unavailableAiCompanyMissionControl("source_missing");
+  }
+  const normalized = normalizeAiCompanyMissionControl(record.payload);
+  return {
+    ...normalized,
+    source: statMeta(record.path, normalized.generatedAt),
+  };
+}
+
 function buildCodexAudit() {
   const latest = readJsonFirst(
     [codexAuditRuntimeLatestPath, codexAuditObsidianLatestPath],
@@ -1630,6 +1652,7 @@ const codexHistory = buildCodexHistory();
 const commercialReadiness = buildCommercialReadiness();
 const operationPolicy = buildOperationPolicy();
 const localAgentPlatform = buildLocalAgentPlatform();
+const aiCompany = buildAiCompanyMissionControl();
 const codexAudit = buildCodexAudit();
 const hostAudit = buildHostAudit(system, localAiControl);
 const administration = buildAdministration();
@@ -1661,6 +1684,7 @@ const snapshot = {
   commercialReadiness,
   operationPolicy,
   localAgentPlatform,
+  aiCompany,
   codexAudit,
   administration,
 };

@@ -13,6 +13,10 @@ import {
   dispatchGovernedAgentTask,
   selectProjectTarget,
 } from "./atlas-agent-dispatch.mjs";
+import {
+  ApprovalProxyError,
+  forwardApprovalDecision,
+} from "./ai-company-approval-proxy.mjs";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const distDir = path.join(rootDir, "dist");
@@ -30,6 +34,7 @@ const localAgentExecScript = path.join(home, ".local", "bin", "local-agent-exec"
 const projectTargetsPath = path.join(home, "__home_organized", "local-codex-stack", "configs", "targets.json");
 const operationPolicyScript = path.join(home, "__home_organized", "local-codex-stack", "scripts", "operation_policy.py");
 const atlasActionToken = process.env.PROJECT_ATLAS_ACTION_TOKEN || "";
+const devControlAccess = process.env[["DEV_CONTROL_API_", "TOKEN"].join("")] || "";
 const allowedMutationOrigins = new Set([
   `http://127.0.0.1:${port}`,
   `http://localhost:${port}`,
@@ -763,6 +768,30 @@ const server = http.createServer((req, res) => {
     } catch (error) {
       send(res, 500, `${error instanceof Error ? error.message : String(error)}\n`);
     }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/company/state") {
+    try {
+      const snapshot = loadSnapshotData();
+      sendJson(res, 200, { ok: true, data: snapshot.aiCompany ?? null });
+    } catch {
+      sendJson(res, 503, { ok: false, error: "company_state_unavailable" });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/company/approvals/decision") {
+    readJsonBody(req)
+      .then((payload) => forwardApprovalDecision(payload, { access: devControlAccess }))
+      .then((result) => sendJson(res, 200, { ok: true, result }))
+      .catch((error) => {
+        if (error instanceof ApprovalProxyError) {
+          sendJson(res, error.statusCode, { ok: false, error: error.code });
+          return;
+        }
+        sendJson(res, 502, { ok: false, error: "approval_gateway_failed" });
+      });
     return;
   }
 
