@@ -16,6 +16,9 @@ test("Company is one connected Atlas workspace with explicit trust states", () =
   assert.match(company, /next best mission/);
   assert.match(company, /score contributions/);
   assert.match(company, /Mission DAG/);
+  assert.match(company, /Workstream:/);
+  assert.match(company, /groupMissionTasks\(connected\.workstreams, connected\.tasks\)/);
+  assert.match(company, /task\.workstream_id/);
   assert.match(company, /completion blockers/);
   assert.match(company, /owner decisions/);
   assert.match(company, /confidence/);
@@ -43,10 +46,14 @@ test("Company is one connected Atlas workspace with explicit trust states", () =
   assert.match(company, /freshness/);
   assert.match(company, /verification/);
   assert.match(company, /data class/);
+  assert.match(company, /mission\.data_class/);
+  assert.match(company, /missionTone\(mission, data\.state, missionSectionState\)/);
   assert.match(company, /typeof approval\.revision === "number"/);
   assert.match(company, /approval\.decision_trusted === true/);
   assert.match(company, /approval\.decision_trust_reason/);
-  assert.match(company, /Fixture and synthetic missions never enable typed decisions/);
+  assert.match(company, /Fixture, unknown, stale, unavailable, and unsafe approval data never enable typed decisions/);
+  assert.match(company, /approval\.status !== "pending"/);
+  assert.match(company, /const APPROVAL_DECISION_ENDPOINT = "\.\/api\/company\/approvals\/decision"/);
   assert.match(company, /underlying action was not executed/);
   assert.match(types, /aiCompany: AiCompanyMissionControl/);
   assert.match(host, /\/api\/company\/approvals\/decision/);

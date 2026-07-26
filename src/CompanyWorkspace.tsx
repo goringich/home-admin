@@ -7,6 +7,7 @@ import type {
   AiCompanyMissionControl,
   HealthTone,
 } from "./types";
+import { groupMissionTasks, missionTone } from "./ai-company-view-policy.ts";
 
 
 const EMPTY_STATE: AiCompanyDataState = {
@@ -16,6 +17,8 @@ const EMPTY_STATE: AiCompanyDataState = {
   dataClass: "unavailable",
   reason: "source_missing",
 };
+
+const APPROVAL_DECISION_ENDPOINT = "./api/company/approvals/decision";
 
 const EMPTY_COMPANY: AiCompanyMissionControl = {
   schemaVersion: "unavailable",
@@ -56,17 +59,6 @@ function stateTone(value: string): HealthTone {
   if (["unavailable", "unknown", "unverified", "partially_verified", "fixture"].includes(value)) return "attention";
   if (["available", "fresh", "verified"].includes(value)) return "ok";
   return "unknown";
-}
-
-
-function missionTone(mission: AiCompanyEntity): HealthTone {
-  if (mission.status === "failed" || mission.implementation_status === "rejected") return "risk";
-  if (
-    mission.status === "completed"
-    && mission.implementation_status === "verified"
-    && mission.outcome_status === "achieved"
-  ) return "ok";
-  return "attention";
 }
 
 
@@ -224,6 +216,8 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
   const missionActualCost = exactCost(connected.economics);
   const missionEconomics = selectedMission?.economics;
   const financialMetrics = data.financialSummary?.totals?.metrics;
+  const taskGroups = groupMissionTasks(connected.workstreams, connected.tasks);
+  const missionSectionState = data.sectionStates.missions;
 
   async function decideApproval(approval: AiCompanyEntity, decision: "approve" | "reject") {
     const approvalId = approval.approval_id ?? "";
@@ -232,7 +226,11 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
       setApprovalMessage("Actor and reason are required; no decision was sent.");
       return;
     }
-    if (approval.decision_trusted !== true || typeof approval.revision !== "number") {
+    if (
+      approval.status !== "pending"
+      || approval.decision_trusted !== true
+      || typeof approval.revision !== "number"
+    ) {
       setApprovalMessage(`${approvalId}: decision disabled (${approval.decision_trust_reason ?? "approval_trust_unknown"}).`);
       return;
     }
@@ -240,7 +238,7 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
     setApprovalMessage("");
     const revision = approval.revision;
     try {
-      const response = await fetch("./api/company/approvals/decision", {
+      const response = await fetch(APPROVAL_DECISION_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -344,8 +342,8 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
         <aside className="project-list" aria-label="Missions">
           {data.missions.map((mission) => (
             <button key={mission.mission_id} className={`project-list-item ${mission.mission_id === selectedMissionId ? "project-list-item-active" : ""}`} type="button" onClick={() => setSelectedMissionId(mission.mission_id ?? "")}>
-              <span className={`project-health-dot tone-${missionTone(mission)}`} />
-              <span><strong>{mission.title ?? mission.mission_id}</strong><small>{mission.status ?? "unknown"} · {mission.outcome_status ?? "not_measured"} · score {mission.score ?? "unknown"} · rank {mission.rank ?? "unknown"}{mission.next_best ? " · next best" : ""}</small></span>
+              <span className={`project-health-dot tone-${missionTone(mission, data.state, missionSectionState)}`} />
+              <span><strong>{mission.title ?? mission.mission_id}</strong><small>{mission.status ?? "unknown"} · {mission.outcome_status ?? "not_measured"} · data {mission.data_class ?? "unknown"} · score {mission.score ?? "unknown"} · rank {mission.rank ?? "unknown"}{mission.next_best ? " · next best" : ""}</small></span>
             </button>
           ))}
           {!data.missions.length ? <div className="empty-inline">Missions unavailable.</div> : null}
@@ -353,7 +351,7 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
 
         <div className="workspace-stack">
           <section className="panel">
-            <div className="panel-head"><div><div className="section-kicker">Mission detail</div><h3>{selectedMission?.title ?? "No mission selected"}</h3></div>{selectedMission ? <CompanyBadge label={String(selectedMission.status ?? "unknown")} tone={missionTone(selectedMission)} /> : null}</div>
+            <div className="panel-head"><div><div className="section-kicker">Mission detail</div><h3>{selectedMission?.title ?? "No mission selected"}</h3></div>{selectedMission ? <CompanyBadge label={String(selectedMission.status ?? "unknown")} tone={missionTone(selectedMission, data.state, missionSectionState)} /> : null}</div>
             <p>{selectedMission?.objective ?? "Outcome objective unavailable."}</p>
             <div className="local-status-grid">
               <div className="metric-card"><span>work progress</span><strong>{connected.tasks.length ? `${completedTasks}/${connected.tasks.length}` : "unknown"}</strong><p>completed bounded tasks</p></div>
@@ -362,6 +360,7 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
               <div className="metric-card"><span>actual cost</span><strong>{money(missionActualCost)}</strong><p>{connected.economics.length} cost records</p></div>
               <div className="metric-card"><span>score / rank</span><strong>{selectedMission?.score ?? "unknown"} / {selectedMission?.rank ?? "unknown"}</strong><p>{selectedMission?.next_best ? "next best mission" : "not selected as next best"}</p></div>
               <div className="metric-card"><span>confidence</span><strong>{selectedMission?.confidence ?? "unknown"}</strong><p>unknown remains unknown</p></div>
+              <div className="metric-card"><span>data class</span><strong>{selectedMission?.data_class ?? "unknown"}</strong><p>fixture and unknown missions are never green</p></div>
             </div>
             <div className="doc-list">
               <div className="class-row"><span>priority explanation</span><strong>{selectedMission?.priority_explanation ?? "unavailable"}</strong></div>
@@ -373,28 +372,38 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
 
           <section className="panel">
             <div className="panel-head"><div><div className="section-kicker">Mission DAG</div><h3>Tasks, dependencies, attempts, and runs</h3></div><CompanyBadge label={`${connected.tasks.length} tasks`} tone={connected.tasks.length ? "attention" : "unknown"} /></div>
-            <div className="mission-dag">
-              {connected.tasks.map((task) => {
-                const dependencies = connected.dependencies.filter((item) => item.task_id === task.task_id);
-                const attempts = connected.attempts.filter((item) => item.task_id === task.task_id);
-                const attemptIds = new Set(attempts.map((item) => item.attempt_id));
-                const runs = connected.runs.filter((item) => attemptIds.has(item.attempt_id));
-                const assignments = connected.agentAssignments.filter((item) => item.task_id === task.task_id);
-                return (
-                  <article className="detail-card" key={task.task_id}>
-                    <div className="detail-card-title">{task.title ?? task.task_id}</div>
-                    <div className="status-cluster"><CompanyBadge label={String(task.status ?? "unknown")} tone={task.status === "failed" ? "risk" : "attention"} />{task.critical_path ? <CompanyBadge label="critical path" tone="attention" /> : null}</div>
-                    <p>{dependencies.length ? `depends on ${dependencies.map((item) => item.depends_on_task_id).join(", ")}` : "parallel-ready / no blocking dependency recorded"}</p>
-                    <div className="section-kicker">Agent assignments</div>
-                    {assignments.map((assignment) => <p key={assignment.assignment_id}>{assignment.agent_id ?? "unknown agent"} · {assignment.role ?? "unknown role"} · {assignment.status ?? "unknown"}</p>)}
-                    {!assignments.length ? <p>Agent assignment unavailable.</p> : null}
-                    {attempts.map((attempt) => <p key={attempt.attempt_id}>attempt {attempt.attempt_id} · {attempt.status ?? "unknown"}</p>)}
-                    {runs.map((run) => <p key={run.run_id}>run {run.run_id} · {run.status ?? "unknown"}</p>)}
-                    {!attempts.length ? <p>Attempt IDs unavailable.</p> : null}
-                  </article>
-                );
-              })}
-              {!connected.tasks.length ? <div className="empty-inline">Task DAG unavailable.</div> : null}
+            <div className="workspace-stack">
+              {taskGroups.map((group, groupIndex) => (
+                <section className="detail-card" key={group.workstream?.workstream_id ?? `unresolved-workstream-${groupIndex}`}>
+                  <div className="detail-card-title">Workstream: {group.workstream?.name ?? "name unavailable"}</div>
+                  <p>workstream ID: {group.workstream?.workstream_id ?? "unresolved from task linkage"}</p>
+                  <div className="mission-dag">
+                    {group.tasks.map((task) => {
+                      const dependencies = connected.dependencies.filter((item) => item.task_id === task.task_id);
+                      const attempts = connected.attempts.filter((item) => item.task_id === task.task_id);
+                      const attemptIds = new Set(attempts.map((item) => item.attempt_id));
+                      const runs = connected.runs.filter((item) => attemptIds.has(item.attempt_id));
+                      const assignments = connected.agentAssignments.filter((item) => item.task_id === task.task_id);
+                      return (
+                        <article className="detail-card" key={task.task_id}>
+                          <div className="detail-card-title">{task.title ?? task.task_id}</div>
+                          <div className="status-cluster"><CompanyBadge label={String(task.status ?? "unknown")} tone={task.status === "failed" ? "risk" : "attention"} />{task.critical_path ? <CompanyBadge label="critical path" tone="attention" /> : null}</div>
+                          <p>workstream: {group.workstream?.name ?? "name unavailable"} · {task.workstream_id ?? "ID unavailable"}</p>
+                          <p>{dependencies.length ? `depends on ${dependencies.map((item) => item.depends_on_task_id).join(", ")}` : "parallel-ready / no blocking dependency recorded"}</p>
+                          <div className="section-kicker">Agent assignments</div>
+                          {assignments.map((assignment) => <p key={assignment.assignment_id}>{assignment.agent_id ?? "unknown agent"} · {assignment.role ?? "unknown role"} · {assignment.status ?? "unknown"}</p>)}
+                          {!assignments.length ? <p>Agent assignment unavailable.</p> : null}
+                          {attempts.map((attempt) => <p key={attempt.attempt_id}>attempt {attempt.attempt_id} · {attempt.status ?? "unknown"}</p>)}
+                          {runs.map((run) => <p key={run.run_id}>run {run.run_id} · {run.status ?? "unknown"}</p>)}
+                          {!attempts.length ? <p>Attempt IDs unavailable.</p> : null}
+                        </article>
+                      );
+                    })}
+                    {!group.tasks.length ? <div className="empty-inline">No tasks recorded for this workstream.</div> : null}
+                  </div>
+                </section>
+              ))}
+              {!connected.workstreams.length && !connected.tasks.length ? <div className="empty-inline">Task DAG unavailable.</div> : null}
             </div>
           </section>
         </div>
@@ -432,7 +441,10 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
           {connected.approvals.map((approval) => {
             const approvalId = approval.approval_id ?? "";
             const status = localDecisions[approvalId] ?? approval.status ?? "unknown";
-            const decisionEnabled = approval.decision_trusted === true && typeof approval.revision === "number";
+            const decisionEnabled = status === "pending"
+              && approval.status === "pending"
+              && approval.decision_trusted === true
+              && typeof approval.revision === "number";
             return (
               <article className="detail-card" key={approvalId}>
                 <div className="detail-card-title">{approval.approval_type ?? approvalId}</div>
@@ -446,7 +458,7 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
                 {status === "pending" ? <>
                   <label className="company-owner-field"><span>Decision reason</span><input value={reasons[approvalId] ?? ""} onChange={(event) => setReasons((current) => ({ ...current, [approvalId]: event.target.value }))} maxLength={2000} /></label>
                   <div className="approval-actions"><button type="button" disabled={!decisionEnabled || pendingApproval === approvalId} onClick={() => decideApproval(approval, "approve")}>Approve decision</button><button type="button" disabled={!decisionEnabled || pendingApproval === approvalId} onClick={() => decideApproval(approval, "reject")}>Reject decision</button></div>
-                  {!decisionEnabled ? <p>Decision disabled: {approval.decision_trust_reason ?? "fresh, verified real approval data required"}. Fixture and synthetic missions never enable typed decisions.</p> : null}
+                  {!decisionEnabled ? <p>Decision disabled: {approval.decision_trust_reason ?? "fresh canonical real pending approval required"}. Fixture, unknown, stale, unavailable, and unsafe approval data never enable typed decisions.</p> : null}
                 </> : null}
               </article>
             );

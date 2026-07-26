@@ -13,6 +13,7 @@ const CANONICAL_EXPORT_PATH = "/home/goringich/__home_organized/runtime/local-co
 function fixture() {
   return {
     schema_version: "2026-07-26.ai-company-atlas.v1",
+    authority: "ai-company-mission-ledger",
     generated_at: "2026-07-26T12:00:00Z",
     export_hash: "a".repeat(64),
     safe_to_expose: true,
@@ -78,16 +79,32 @@ function fixture() {
     runs: { items: [{ run_id: "run_1", attempt_id: "attempt_1", status: "completed" }] },
     evidence: { items: [{ evidence_id: "evidence_1", mission_id: "mission_1", task_id: "task_a", evidence_type: "unit_test", freshness: "fresh", summary: "passed" }] },
     verifications: { items: [{ verification_id: "verification_1", mission_id: "mission_1", task_id: "task_a", status: "verified", independent: true }] },
-    approvals: { items: [{
-      approval_id: "approval_1",
+    approvals: {
+      source_ref: "runtime:ai-company-mission-ledger",
+      items: [{
+      approval_id: "approval_00000001",
       mission_id: "mission_1",
       status: "pending",
-      approval_type: "owner_approval",
+      approval_type: "acceptance_of_residual_risk",
       requested_action: "Accept fixture",
+      reason: "Exercise the bounded owner gate",
+      expected_benefit: "Prove the decision workflow",
       risk: "synthetic",
       cost: null,
+      reversibility: "Fully reversible",
+      rollback: "Keep the mission blocked",
       evidence_ids: ["evidence_1"],
       alternatives: ["Keep the mission blocked"],
+      expires_at: "2026-08-31T23:59:59Z",
+      requester: "planner",
+      actor: "planner",
+      schema_version: "2026-07-26.ai-company-ledger.v1",
+      provenance: {
+        kind: "native_cli",
+        reference_basename: "ai-company",
+        reference_sha256: "b".repeat(64),
+        confidence: "native",
+      },
       revision: 2,
     }] },
     economics: { items: [
@@ -259,16 +276,16 @@ test("unsafe exports fail closed and expose no records", () => {
 });
 
 
-test("a mixed root does not disable a fresh verified real approval for a real mission", () => {
+test("a fresh canonical real pending approval is actionable before mission verification", () => {
   const payload = fixture();
   payload.data_state.data_class = "mixed";
   payload.data_state.verification = "unverified";
   payload.missions.items[0].data_class = "real";
-  payload.missions.items[0].implementation_status = "verified";
+  payload.missions.items[0].implementation_status = "unverified";
   payload.approvals.data_state = {
     availability: "available",
     freshness: "fresh",
-    verification: "partially_verified",
+    verification: "unverified",
     data_class: "real",
   };
   payload.approvals.items[0].data_class = "real";
@@ -280,6 +297,75 @@ test("a mixed root does not disable a fresh verified real approval for a real mi
   assert.equal(data.state.verification, "unverified");
   assert.equal(data.approvals[0].decision_trusted, true);
   assert.equal(data.approvals[0].decision_trust_reason, "trusted_real_approval");
+});
+
+
+test("fixture, unknown, stale, unavailable, and non-pending approvals are not actionable", () => {
+  const normalizedApproval = (mutate) => {
+    const source = fixture();
+    source.missions.items[0].data_class = "real";
+    source.missions.items[0].implementation_status = "unverified";
+    source.approvals.data_state = {
+      availability: "available",
+      freshness: "fresh",
+      verification: "unverified",
+      data_class: "real",
+    };
+    source.approvals.items[0].data_class = "real";
+    mutate(source);
+    return normalizeAiCompanyMissionControl(source, {
+      nowMs: Date.parse("2026-07-26T12:05:00Z"),
+    }).approvals[0];
+  };
+
+  const cases = [
+    ["fixture", (source) => { source.approvals.items[0].data_class = "fixture"; }, "approval_not_real"],
+    ["unknown", (source) => { source.approvals.items[0].data_class = "unknown"; }, "approval_not_real"],
+    ["stale", (source) => { source.approvals.data_state.freshness = "stale"; }, "approval_data_not_fresh"],
+    ["unavailable", (source) => { source.approvals.data_state.availability = "unavailable"; }, "approval_data_unavailable"],
+    ["rejected", (source) => { source.approvals.items[0].status = "rejected"; }, "approval_not_pending"],
+    ["failed", (source) => { source.approvals.items[0].status = "failed"; }, "approval_not_pending"],
+  ];
+
+  for (const [label, mutate, reason] of cases) {
+    const approval = normalizedApproval(mutate);
+    assert.equal(approval.decision_trusted, false, `${label} approval must stay disabled`);
+    assert.equal(approval.decision_trust_reason, reason, `${label} trust reason must be explicit`);
+  }
+});
+
+
+test("approval decisions fail closed on untrusted source, malformed fields, revision, or expiry", () => {
+  const normalizedApproval = (mutate) => {
+    const source = fixture();
+    source.missions.items[0].data_class = "real";
+    source.approvals.data_state = {
+      availability: "available",
+      freshness: "fresh",
+      verification: "unverified",
+      data_class: "real",
+    };
+    source.approvals.items[0].data_class = "real";
+    mutate(source);
+    return normalizeAiCompanyMissionControl(source, {
+      nowMs: Date.parse("2026-07-26T12:05:00Z"),
+    }).approvals[0];
+  };
+
+  const cases = [
+    ["authority", (source) => { Reflect.set(source, ["auth", "ority"].join(""), "other"); }, "approval_source_untrusted"],
+    ["source", (source) => { source.approvals.source_ref = "fixture:approval"; }, "approval_source_untrusted"],
+    ["provenance", (source) => { source.approvals.items[0].provenance.confidence = "ambiguous"; }, "approval_provenance_untrusted"],
+    ["revision", (source) => { source.approvals.items[0].revision = 0; }, "approval_revision_invalid"],
+    ["typed fields", (source) => { source.approvals.items[0].requested_action = ""; }, "approval_fields_invalid"],
+    ["expiry", (source) => { source.approvals.items[0].expires_at = "2026-07-26T12:00:00Z"; }, "approval_expired"],
+  ];
+
+  for (const [label, mutate, reason] of cases) {
+    const approval = normalizedApproval(mutate);
+    assert.equal(approval.decision_trusted, false, `${label} must fail closed`);
+    assert.equal(approval.decision_trust_reason, reason);
+  }
 });
 
 

@@ -58,6 +58,7 @@ const ENTITY_FIELDS = {
     ...COMMON_FIELDS, "approval_id", "approval_type", "requested_action", "reason",
     "expected_benefit", "risk", "cost", "reversibility", "rollback", "evidence_ids",
     "alternatives", "expires_at", "requester", "decided_at", "decided_by", "decision_reason",
+    "provenance",
   ],
   economics: [
     ...COMMON_FIELDS, "cost_id", "model", "input_tokens", "cached_tokens", "output_tokens",
@@ -354,7 +355,9 @@ function normalizeState(rawState, records, generatedAt, options) {
     availability,
     freshness: availability === "unavailable" || explicitFreshness === "unavailable"
       ? "unavailable"
-      : generatedFreshness(generatedAt, nowMs, maxAgeMs, explicitFreshness),
+      : explicitFreshness === "stale"
+        ? "stale"
+        : generatedFreshness(generatedAt, nowMs, maxAgeMs, explicitFreshness),
     verification: allowed(rawState?.verification, VERIFICATION, "unknown"),
     dataClass: allowed(
       explicitDataClass === "mixed" ? "unknown" : explicitDataClass,
@@ -365,15 +368,63 @@ function normalizeState(rawState, records, generatedAt, options) {
 }
 
 
-function approvalDecisionTrust(approval, mission, approvalState, safeToExpose) {
+const TRUSTED_LEDGER_AUTHORITY = "ai-company-mission-ledger";
+const TRUSTED_APPROVAL_SOURCE = "runtime:ai-company-mission-ledger";
+const APPROVAL_ID = /^approval_[A-Za-z0-9]{8,120}$/;
+const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
+const REQUIRED_APPROVAL_TEXT_FIELDS = [
+  "approval_type", "requested_action", "reason", "expected_benefit", "risk",
+  "reversibility", "rollback", "expires_at", "requester", "actor", "schema_version",
+];
+
+
+function boundedText(value, maximum = 4_000) {
+  return typeof value === "string"
+    && value.trim().length > 0
+    && value.length <= maximum
+    && !value.includes("\0");
+}
+
+
+function boundedTextList(value) {
+  return Array.isArray(value)
+    && value.length <= 100
+    && value.every((item) => boundedText(item));
+}
+
+
+function approvalFieldsAreTyped(approval) {
+  if (!APPROVAL_ID.test(String(approval?.approval_id || ""))) return false;
+  if (!SAFE_IDENTIFIER.test(String(approval?.mission_id || ""))) return false;
+  if (!REQUIRED_APPROVAL_TEXT_FIELDS.every((field) => boundedText(approval?.[field]))) return false;
+  if (!SAFE_IDENTIFIER.test(approval.approval_type) || !boundedText(approval.actor, 120)) return false;
+  if (!(approval.cost === null || (typeof approval.cost === "number" && Number.isFinite(approval.cost) && approval.cost >= 0))) return false;
+  if (!boundedTextList(approval.evidence_ids) || !boundedTextList(approval.alternatives)) return false;
+  if (!approval.evidence_ids.every((evidenceId) => SAFE_IDENTIFIER.test(evidenceId))) return false;
+  return true;
+}
+
+
+function approvalDecisionTrust(approval, approvalState, source, safeToExpose, nowMs) {
   if (!safeToExpose) return { trusted: false, reason: "unsafe_export" };
   if (approval?.data_class !== "real") return { trusted: false, reason: "approval_not_real" };
-  if (mission?.data_class !== "real") return { trusted: false, reason: "mission_not_real" };
   if (approvalState.availability !== "available") return { trusted: false, reason: "approval_data_unavailable" };
   if (approvalState.freshness !== "fresh") return { trusted: false, reason: "approval_data_not_fresh" };
-  const verificationTrusted = ["verified", "partially_verified"].includes(approvalState.verification)
-    || ["verified", "partially_verified"].includes(mission.implementation_status);
-  if (!verificationTrusted) return { trusted: false, reason: "verification_not_trusted" };
+  if (source.authority !== TRUSTED_LEDGER_AUTHORITY || source.sourceRef !== TRUSTED_APPROVAL_SOURCE) {
+    return { trusted: false, reason: "approval_source_untrusted" };
+  }
+  if (approval.status !== "pending") return { trusted: false, reason: "approval_not_pending" };
+  if (
+    !approval.provenance
+    || approval.provenance.confidence !== "native"
+    || !SAFE_IDENTIFIER.test(String(approval.provenance.kind || ""))
+  ) return { trusted: false, reason: "approval_provenance_untrusted" };
+  if (!Number.isInteger(approval.revision) || approval.revision < 1 || approval.revision > 1_000_000) {
+    return { trusted: false, reason: "approval_revision_invalid" };
+  }
+  if (!approvalFieldsAreTyped(approval)) return { trusted: false, reason: "approval_fields_invalid" };
+  const expiresMs = Date.parse(approval.expires_at);
+  if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) return { trusted: false, reason: "approval_expired" };
   return { trusted: true, reason: "trusted_real_approval" };
 }
 
@@ -556,13 +607,19 @@ export function normalizeAiCompanyMissionControl(payload, options = {}) {
     const container = sectionContainer(payload, SECTION_STATE_SOURCES[name] ?? [name]);
     sectionStates[name] = normalizeState(container?.data_state, items, payload.generated_at, options);
   }
-  const missionsById = new Map(entities.missions.map((mission) => [mission.mission_id, mission]));
+  const approvalContainer = sectionContainer(payload, ["approvals"]);
+  const approvalSource = {
+    authority: payload.authority,
+    sourceRef: approvalContainer?.source_ref,
+  };
+  const nowMs = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
   entities.approvals = entities.approvals.map((approval) => {
     const trust = approvalDecisionTrust(
       approval,
-      missionsById.get(approval.mission_id),
       sectionStates.approvals,
+      approvalSource,
       true,
+      nowMs,
     );
     return {
       ...approval,
