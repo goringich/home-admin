@@ -118,6 +118,69 @@ export interface AiCompanyDataState {
   reason?: string;
 }
 
+export interface AiCompanyAggregateMetric {
+  complete?: boolean;
+  known_count?: number;
+  unknown_count?: number;
+  known_value?: number | null;
+  value?: number | null;
+  aggregation?: string;
+}
+
+export interface AiCompanyDerivedMetric {
+  value?: number | null;
+  numerator?: number | null;
+  denominator?: number | null;
+  status?: string;
+}
+
+export interface AiCompanyEconomicsSummary {
+  [key: string]: unknown;
+  cost_id?: string;
+  data_state?: {
+    availability?: string;
+    freshness?: string;
+    verification?: string;
+  };
+  scope?: { mission_id?: string | null };
+  budget?: {
+    actual_cost?: number | null;
+    budget_limit?: number | null;
+    ratio?: number | null;
+    status?: string;
+    variance?: number | null;
+    warning_ratio?: number | null;
+    stop_loss_ratio?: number | null;
+    action_executed?: boolean;
+  };
+  derived?: {
+    cost_per_verified_task?: AiCompanyDerivedMetric;
+    cost_per_completed_mission?: AiCompanyDerivedMetric;
+    cost_per_achieved_outcome?: AiCompanyDerivedMetric;
+  };
+  totals?: {
+    entity_id?: string | null;
+    entry_count?: number;
+    metrics?: Record<string, AiCompanyAggregateMetric>;
+  };
+}
+
+export interface AiCompanyModelProductivity {
+  model: string;
+  record_count: number;
+  linked_task_count: number;
+  unlinked_record_count: number;
+  verified_task_count: number | null;
+  verification_status: "known" | "partial" | "unknown";
+  model_cost: AiCompanyAggregateMetric;
+  runtime_duration: AiCompanyAggregateMetric;
+  input_tokens: AiCompanyAggregateMetric;
+  cached_tokens: AiCompanyAggregateMetric;
+  output_tokens: AiCompanyAggregateMetric;
+  reasoning_tokens: AiCompanyAggregateMetric;
+  cost_per_verified_task: AiCompanyDerivedMetric;
+}
+
 export interface AiCompanyEntity {
   [key: string]: unknown;
   portfolio_id?: string;
@@ -145,6 +208,11 @@ export interface AiCompanyEntity {
   status?: string;
   data_class?: string;
   score?: number | null;
+  rank?: number | null;
+  next_best?: boolean;
+  next_best_mission_id?: string | null;
+  priority_explanation?: string;
+  score_contributions?: Record<string, number | null>;
   expected_value?: number | null;
   actual_cost?: number | null;
   model_cost?: number | null;
@@ -159,6 +227,9 @@ export interface AiCompanyEntity {
   deployment_status?: string;
   outcome_status?: string;
   confidence?: number | null;
+  contract_completion_blockers?: unknown[];
+  owner_decisions?: unknown[];
+  economics?: AiCompanyEconomicsSummary;
   critical_path?: boolean;
   owner_gate?: boolean;
   depends_on_task_id?: string;
@@ -174,7 +245,10 @@ export interface AiCompanyEntity {
   reason?: string;
   approval_type?: string;
   requested_action?: string;
-  risk?: string;
+  risk?: string | number | null;
+  cost?: number | string | null;
+  evidence_ids?: unknown[];
+  alternatives?: unknown[];
   reversibility?: string;
   expires_at?: string;
   revision?: number;
@@ -216,6 +290,8 @@ export interface AiCompanyMissionControl {
   outcomes: AiCompanyEntity[];
   agentAssignments: AiCompanyEntity[];
   timeline: AiCompanyEntity[];
+  financialSummary: AiCompanyEconomicsSummary | null;
+  modelProductivity: AiCompanyModelProductivity[];
   operations: {
     offers: AiCompanyEntity[];
     leads: AiCompanyEntity[];

@@ -18,13 +18,17 @@ const COMMON_FIELDS = [
 const ENTITY_FIELDS = {
   portfolios: [
     ...COMMON_FIELDS, "portfolio_id", "title", "expected_value", "actual_cost", "score",
-    "priority_score", "priority_reason", "next_best_mission_id", "risk", "cost",
+    "priority_score", "priority_reason", "priority_explanation", "score_contributions",
+    "score_status", "next_best", "next_best_mission_id", "risk", "cost",
   ],
   missions: [
     ...COMMON_FIELDS, "mission_id", "title", "work_status", "implementation_status",
     "deployment_status", "outcome_status", "confidence", "expected_value", "actual_cost",
     "objective", "target_metric", "target_value", "deadline", "budget_limit", "risk_limit",
     "progress", "critical_path", "blockers", "owner_decisions", "outcome_contract",
+    "acceptance_criteria", "contract_completion_blockers", "score", "rank", "next_best",
+    "priority_explanation", "score_contributions", "score_normalized_inputs", "score_status",
+    "score_unknown_terms", "score_policy_schema_version", "economics",
   ],
   workstreams: [...COMMON_FIELDS, "workstream_id", "name", "logical_key"],
   tasks: [
@@ -59,7 +63,8 @@ const ENTITY_FIELDS = {
     ...COMMON_FIELDS, "cost_id", "model", "input_tokens", "cached_tokens", "output_tokens",
     "reasoning_tokens", "model_cost", "runtime_duration", "estimated_gpu_cost",
     "human_attention_events", "budget_limit", "actual_cost", "expected_value", "realized_value",
-    "currency", "source_ref", "observed_at", "budget_variance",
+    "currency", "source_ref", "observed_at", "budget_variance", "data_state", "budget",
+    "derived", "scope", "totals",
   ],
   incidents: [
     ...COMMON_FIELDS, "incident_id", "severity", "summary", "impact", "recovery",
@@ -178,7 +183,7 @@ const SECTION_STATE_SOURCES = {
 function safeValue(value, depth = 0) {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (depth >= 3) return null;
+  if (depth >= 6) return null;
   if (Array.isArray(value)) return value.slice(0, 100).map((item) => safeValue(item, depth + 1));
   if (!value || typeof value !== "object") return null;
   const result = {};
@@ -373,6 +378,96 @@ function approvalDecisionTrust(approval, mission, approvalState, safeToExpose) {
 }
 
 
+const PRODUCTIVITY_METRICS = [
+  "model_cost",
+  "runtime_duration",
+  "input_tokens",
+  "cached_tokens",
+  "output_tokens",
+  "reasoning_tokens",
+];
+
+
+function aggregateMetric(rows, field) {
+  const values = rows.map((row) => row?.[field]).filter((value) => typeof value === "number" && Number.isFinite(value));
+  const knownValue = values.length ? values.reduce((total, value) => total + value, 0) : null;
+  const unknownCount = rows.length - values.length;
+  return {
+    complete: rows.length > 0 && unknownCount === 0,
+    known_count: values.length,
+    unknown_count: unknownCount,
+    known_value: knownValue,
+    value: rows.length > 0 && unknownCount === 0 ? knownValue : null,
+  };
+}
+
+
+function derivedCostPerVerifiedTask(modelCost, verifiedTaskCount, verificationStatus) {
+  if (verificationStatus === "unknown" || verifiedTaskCount === null) {
+    return { value: null, numerator: modelCost.value, denominator: null, status: "verification_unknown" };
+  }
+  if (verificationStatus === "partial") {
+    return { value: null, numerator: modelCost.value, denominator: verifiedTaskCount, status: "partial_linkage" };
+  }
+  if (verifiedTaskCount < 1) {
+    return { value: null, numerator: modelCost.value, denominator: verifiedTaskCount, status: "missing_denominator" };
+  }
+  if (typeof modelCost.value !== "number") {
+    return { value: null, numerator: null, denominator: verifiedTaskCount, status: "missing_numerator" };
+  }
+  return {
+    value: modelCost.value / verifiedTaskCount,
+    numerator: modelCost.value,
+    denominator: verifiedTaskCount,
+    status: "known",
+  };
+}
+
+
+function buildModelProductivity(costRows, verifications, verificationState) {
+  const groups = new Map();
+  for (const row of costRows) {
+    if (typeof row?.model !== "string" || !row.model.trim()) continue;
+    const model = row.model.trim();
+    if (!groups.has(model)) groups.set(model, []);
+    groups.get(model).push(row);
+  }
+  const independentlyVerifiedTasks = new Set(
+    verifications
+      .filter((decision) => decision?.independent === true && decision?.status === "verified" && typeof decision.task_id === "string")
+      .map((decision) => decision.task_id),
+  );
+  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([model, rows]) => {
+    const linkedTaskIds = new Set(rows.map((row) => row.task_id).filter((taskId) => typeof taskId === "string" && taskId));
+    const unlinkedRecordCount = rows.filter((row) => typeof row.task_id !== "string" || !row.task_id).length;
+    const verificationAvailable = verificationState?.availability === "available";
+    const verifiedTaskCount = verificationAvailable && linkedTaskIds.size
+      ? [...linkedTaskIds].filter((taskId) => independentlyVerifiedTasks.has(taskId)).length
+      : null;
+    const verificationStatus = !verificationAvailable || !linkedTaskIds.size
+      ? "unknown"
+      : unlinkedRecordCount > 0
+        ? "partial"
+        : "known";
+    const metrics = Object.fromEntries(PRODUCTIVITY_METRICS.map((field) => [field, aggregateMetric(rows, field)]));
+    return {
+      model,
+      record_count: rows.length,
+      linked_task_count: linkedTaskIds.size,
+      unlinked_record_count: unlinkedRecordCount,
+      verified_task_count: verifiedTaskCount,
+      verification_status: verificationStatus,
+      ...metrics,
+      cost_per_verified_task: derivedCostPerVerifiedTask(
+        metrics.model_cost,
+        verifiedTaskCount,
+        verificationStatus,
+      ),
+    };
+  });
+}
+
+
 export function unavailableAiCompanyMissionControl(reason = "source_missing") {
   const emptyOperations = {
     offers: [], leads: [], opportunities: [], experiments: [], orders: [], deliveries: [],
@@ -396,6 +491,8 @@ export function unavailableAiCompanyMissionControl(reason = "source_missing") {
     portfolios: [], missions: [], workstreams: [], tasks: [], dependencies: [], attempts: [],
     runs: [], evidence: [], verifications: [], approvals: [], economics: [], incidents: [], decisions: [], outcomes: [],
     agentAssignments: [], timeline: [],
+    financialSummary: null,
+    modelProductivity: [],
     operations: emptyOperations,
   };
 }
@@ -473,6 +570,12 @@ export function normalizeAiCompanyMissionControl(payload, options = {}) {
       decision_trust_reason: trust.reason,
     };
   });
+  const financialSummary = entities.economics.find((item) => item.cost_id === "economics.global.summary") ?? null;
+  const modelProductivity = buildModelProductivity(
+    entities.economics.filter((item) => item.cost_id !== "economics.global.summary"),
+    entities.verifications,
+    sectionStates.verifications,
+  );
   return {
     schemaVersion: String(payload.schema_version || "unknown"),
     generatedAt: String(payload.generated_at || ""),
@@ -481,6 +584,8 @@ export function normalizeAiCompanyMissionControl(payload, options = {}) {
     state: rootState,
     sectionStates,
     ...entities,
+    financialSummary,
+    modelProductivity,
     operations,
   };
 }

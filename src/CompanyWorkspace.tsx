@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
+  AiCompanyAggregateMetric,
   AiCompanyDataState,
+  AiCompanyDerivedMetric,
   AiCompanyEntity,
   AiCompanyMissionControl,
   HealthTone,
@@ -38,6 +40,8 @@ const EMPTY_COMPANY: AiCompanyMissionControl = {
   outcomes: [],
   agentAssignments: [],
   timeline: [],
+  financialSummary: null,
+  modelProductivity: [],
   operations: {
     offers: [], leads: [], opportunities: [], experiments: [], orders: [], deliveries: [],
     payments: [], customerFeedback: [],
@@ -98,6 +102,48 @@ function displayValue(value: unknown) {
   if (value === null || value === undefined) return "unknown";
   if (["string", "number", "boolean"].includes(typeof value)) return String(value);
   return JSON.stringify(value);
+}
+
+
+function listValue(value: unknown) {
+  if (!Array.isArray(value)) return "unavailable";
+  if (!value.length) return "none recorded";
+  return value.map(displayValue).join(" · ");
+}
+
+
+function contributionValue(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "unavailable";
+  const entries = Object.entries(value);
+  if (!entries.length) return "none recorded";
+  return entries.map(([key, contribution]) => `${key}: ${displayValue(contribution)}`).join(" · ");
+}
+
+
+function aggregateValue(metric: AiCompanyAggregateMetric | undefined, unit = "") {
+  if (!metric) return "unknown";
+  const suffix = unit ? ` ${unit}` : "";
+  if (typeof metric.value === "number") return `${metric.value}${suffix}`;
+  if (typeof metric.known_value === "number") {
+    return `${metric.known_value}${suffix} known · ${metric.unknown_count ?? "unknown"} unknown rows`;
+  }
+  return `unknown · ${metric.unknown_count ?? "unknown"} unknown rows`;
+}
+
+
+function aggregateMoney(metric: AiCompanyAggregateMetric | undefined) {
+  if (!metric) return "unknown";
+  if (typeof metric.value === "number") return money(metric.value);
+  if (typeof metric.known_value === "number") {
+    return `${money(metric.known_value)} known · ${metric.unknown_count ?? "unknown"} unknown rows`;
+  }
+  return `unknown · ${metric.unknown_count ?? "unknown"} unknown rows`;
+}
+
+
+function derivedMoney(metric: AiCompanyDerivedMetric | undefined) {
+  if (!metric) return "unknown";
+  return `${money(metric.value)} · ${metric.status ?? "unknown"}`;
 }
 
 
@@ -176,6 +222,8 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
 
   const completedTasks = connected.tasks.filter((task) => task.status === "completed").length;
   const missionActualCost = exactCost(connected.economics);
+  const missionEconomics = selectedMission?.economics;
+  const financialMetrics = data.financialSummary?.totals?.metrics;
 
   async function decideApproval(approval: AiCompanyEntity, decision: "approve" | "reject") {
     const approvalId = approval.approval_id ?? "";
@@ -238,12 +286,58 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
                 <div className="class-row"><span>score</span><strong>{portfolio.score ?? "unknown"}</strong></div>
                 <div className="class-row"><span>expected value</span><strong>{portfolio.expected_value ?? "unknown"}</strong></div>
                 <div className="class-row"><span>actual cost</span><strong>{money(portfolio.actual_cost)}</strong></div>
+                <div className="class-row"><span>risk</span><strong>{portfolio.risk ?? "unknown"}</strong></div>
+                <div className="class-row"><span>next best mission</span><strong>{portfolio.next_best_mission_id ?? "unavailable"}</strong></div>
                 <div className="class-row"><span>status</span><strong>{portfolio.status ?? "unknown"}</strong></div>
               </div>
+              <p>priority explanation: {portfolio.priority_explanation ?? "unavailable"}</p>
+              <p>score contributions: {contributionValue(portfolio.score_contributions)}</p>
             </article>
           ))}
           {!data.portfolios.length ? <div className="empty-inline">Portfolio data unavailable.</div> : null}
         </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div><div className="section-kicker">Economics</div><h3>Financial summary</h3></div>
+          <CompanyBadge
+            label={data.financialSummary?.data_state?.availability ?? "unavailable"}
+            tone={stateTone(data.financialSummary?.data_state?.availability ?? "unavailable")}
+          />
+        </div>
+        <div className="local-status-grid">
+          <div className="metric-card"><span>actual cost</span><strong>{aggregateMoney(financialMetrics?.actual_cost)}</strong><p>{data.financialSummary?.totals?.entry_count ?? "unavailable"} cost records</p></div>
+          <div className="metric-card"><span>budget status</span><strong>{data.financialSummary?.budget?.status ?? "unknown"}</strong><p>limit {money(data.financialSummary?.budget?.budget_limit)}</p></div>
+          <div className="metric-card"><span>cost per verified task</span><strong>{derivedMoney(data.financialSummary?.derived?.cost_per_verified_task)}</strong><p>verified work only</p></div>
+          <div className="metric-card"><span>cost per completed mission</span><strong>{derivedMoney(data.financialSummary?.derived?.cost_per_completed_mission)}</strong><p>completed mission gate</p></div>
+          <div className="metric-card"><span>cost per achieved outcome</span><strong>{derivedMoney(data.financialSummary?.derived?.cost_per_achieved_outcome)}</strong><p>observed outcomes only</p></div>
+          <div className="metric-card"><span>scope</span><strong>{data.financialSummary?.scope?.mission_id ?? "all missions"}</strong><p>canonical ledger aggregate</p></div>
+        </div>
+        <p className="panel-note">Incomplete financial metrics remain unknown; unknown values are not treated as zero.</p>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><div><div className="section-kicker">Economics</div><h3>Model productivity</h3></div><CompanyBadge label={`${data.modelProductivity.length || "unavailable"} models`} tone={data.modelProductivity.length ? "attention" : "unknown"} /></div>
+        <div className="detail-grid compact-grid">
+          {data.modelProductivity.map((model) => (
+            <article className="detail-card" key={model.model}>
+              <div className="detail-card-title">{model.model}</div>
+              <div className="class-grid">
+                <div className="class-row"><span>records</span><strong>{model.record_count}</strong></div>
+                <div className="class-row"><span>model cost</span><strong>{aggregateMoney(model.model_cost)}</strong></div>
+                <div className="class-row"><span>runtime duration</span><strong>{aggregateValue(model.runtime_duration, "s")}</strong></div>
+                <div className="class-row"><span>input tokens</span><strong>{aggregateValue(model.input_tokens)}</strong></div>
+                <div className="class-row"><span>output tokens</span><strong>{aggregateValue(model.output_tokens)}</strong></div>
+                <div className="class-row"><span>verified tasks</span><strong>{model.verified_task_count ?? "unknown"}</strong></div>
+                <div className="class-row"><span>verification linkage</span><strong>{model.verification_status}</strong></div>
+                <div className="class-row"><span>cost / verified task</span><strong>{derivedMoney(model.cost_per_verified_task)}</strong></div>
+              </div>
+            </article>
+          ))}
+          {!data.modelProductivity.length ? <div className="empty-inline">Model-linked economics unavailable.</div> : null}
+        </div>
+        <p className="panel-note">Only canonical cost rows with a model are aggregated; missing cost, latency, tokens, or task linkage remains unknown.</p>
       </section>
 
       <section className="company-mission-layout">
@@ -251,7 +345,7 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
           {data.missions.map((mission) => (
             <button key={mission.mission_id} className={`project-list-item ${mission.mission_id === selectedMissionId ? "project-list-item-active" : ""}`} type="button" onClick={() => setSelectedMissionId(mission.mission_id ?? "")}>
               <span className={`project-health-dot tone-${missionTone(mission)}`} />
-              <span><strong>{mission.title ?? mission.mission_id}</strong><small>{mission.status ?? "unknown"} · {mission.outcome_status ?? "not_measured"}</small></span>
+              <span><strong>{mission.title ?? mission.mission_id}</strong><small>{mission.status ?? "unknown"} · {mission.outcome_status ?? "not_measured"} · score {mission.score ?? "unknown"} · rank {mission.rank ?? "unknown"}{mission.next_best ? " · next best" : ""}</small></span>
             </button>
           ))}
           {!data.missions.length ? <div className="empty-inline">Missions unavailable.</div> : null}
@@ -266,6 +360,14 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
               <div className="metric-card"><span>implementation</span><strong>{selectedMission?.implementation_status ?? "unknown"}</strong><p>not inferred from commits</p></div>
               <div className="metric-card"><span>outcome</span><strong>{selectedMission?.outcome_status ?? "not_measured"}</strong><p>{selectedMission?.target_metric ?? "target unavailable"}</p></div>
               <div className="metric-card"><span>actual cost</span><strong>{money(missionActualCost)}</strong><p>{connected.economics.length} cost records</p></div>
+              <div className="metric-card"><span>score / rank</span><strong>{selectedMission?.score ?? "unknown"} / {selectedMission?.rank ?? "unknown"}</strong><p>{selectedMission?.next_best ? "next best mission" : "not selected as next best"}</p></div>
+              <div className="metric-card"><span>confidence</span><strong>{selectedMission?.confidence ?? "unknown"}</strong><p>unknown remains unknown</p></div>
+            </div>
+            <div className="doc-list">
+              <div className="class-row"><span>priority explanation</span><strong>{selectedMission?.priority_explanation ?? "unavailable"}</strong></div>
+              <div className="class-row"><span>score contributions</span><strong>{contributionValue(selectedMission?.score_contributions)}</strong></div>
+              <div className="class-row"><span>completion blockers</span><strong>{listValue(selectedMission?.contract_completion_blockers)}</strong></div>
+              <div className="class-row"><span>owner decisions</span><strong>{listValue(selectedMission?.owner_decisions)}</strong></div>
             </div>
           </section>
 
@@ -313,6 +415,9 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
           <div className="class-grid">
             <div className="class-row"><span>actual cost</span><strong>{money(missionActualCost)}</strong></div>
             <div className="class-row"><span>budget</span><strong>{money(selectedMission?.budget_limit)}</strong></div>
+            <div className="class-row"><span>budget gate</span><strong>{missionEconomics?.budget?.status ?? "unknown"}</strong></div>
+            <div className="class-row"><span>cost per verified task</span><strong>{derivedMoney(missionEconomics?.derived?.cost_per_verified_task)}</strong></div>
+            <div className="class-row"><span>cost per completed mission</span><strong>{derivedMoney(missionEconomics?.derived?.cost_per_completed_mission)}</strong></div>
             <div className="class-row"><span>cost records</span><strong>{connected.economics.length || "unavailable"}</strong></div>
             <div className="class-row"><span>outcomes</span><strong>{connected.outcomes.length || "not measured"}</strong></div>
           </div>
@@ -333,6 +438,9 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
                 <div className="detail-card-title">{approval.approval_type ?? approvalId}</div>
                 <p>{approval.requested_action ?? "Requested action unavailable"}</p>
                 <p>risk: {approval.risk ?? "unknown"} · reversibility: {approval.reversibility ?? "unknown"}</p>
+                <p>cost: {typeof approval.cost === "number" ? money(approval.cost) : displayValue(approval.cost)}</p>
+                <p>evidence IDs: {listValue(approval.evidence_ids)}</p>
+                <p>alternatives: {listValue(approval.alternatives)}</p>
                 <p>decision trust: {approval.decision_trusted === true ? "trusted real approval" : approval.decision_trust_reason ?? "unknown"}</p>
                 <CompanyBadge label={status} tone={status === "rejected" ? "risk" : status === "approved" ? "ok" : "attention"} />
                 {status === "pending" ? <>

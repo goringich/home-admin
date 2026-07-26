@@ -12,7 +12,13 @@ test("Company is one connected Atlas workspace with explicit trust states", () =
   assert.match(app, /id: "company"/);
   assert.match(company, /function CompanyWorkspace/);
   assert.match(company, /Portfolio/);
+  assert.match(company, /priority explanation/);
+  assert.match(company, /next best mission/);
+  assert.match(company, /score contributions/);
   assert.match(company, /Mission DAG/);
+  assert.match(company, /completion blockers/);
+  assert.match(company, /owner decisions/);
+  assert.match(company, /confidence/);
   assert.match(company, /Evidence & verification/);
   assert.match(company, /Agent assignments/);
   assert.match(company, /attempt\.attempt_id/);
@@ -25,6 +31,13 @@ test("Company is one connected Atlas workspace with explicit trust states", () =
   assert.match(company, /incident\.incident_id/);
   assert.match(company, /decision\.decision_id/);
   assert.match(company, /Approvals/);
+  assert.match(company, /evidence IDs/);
+  assert.match(company, /alternatives/);
+  assert.match(company, /Financial summary/);
+  assert.match(company, /cost per verified task/);
+  assert.match(company, /cost per completed mission/);
+  assert.match(company, /Model productivity/);
+  assert.match(company, /unknown values are not treated as zero/);
   assert.match(company, /Company operations/);
   assert.match(company, /availability/);
   assert.match(company, /freshness/);

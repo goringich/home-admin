@@ -23,7 +23,16 @@ function fixture() {
       data_class: "fixture",
     },
     portfolios: {
-      items: [{ portfolio_id: "portfolio_1", title: "Control plane", status: "active", score: 7.5 }],
+      items: [{
+        portfolio_id: "portfolio_1",
+        title: "Control plane",
+        status: "active",
+        score: 7.5,
+        risk: 30,
+        next_best_mission_id: "mission_1",
+        priority_explanation: "highest eligible bounded mission",
+        score_contributions: { expected_value: 4.5, risk: -1.5 },
+      }],
     },
     missions: {
       items: [{
@@ -37,7 +46,23 @@ function fixture() {
         objective: "Prove a bounded workflow",
         target_metric: "verified_demo",
         target_value: 1,
+        score: 7.5,
+        rank: 1,
+        next_best: true,
+        priority_explanation: "ranked first by deterministic policy",
+        score_contributions: { expected_value: 4.5, risk: -1.5 },
+        confidence: 0.7,
+        contract_completion_blockers: ["owner_decision_pending"],
         prompt: "must never pass the parser",
+      }],
+    },
+    mission_details: {
+      items: [{
+        mission_id: "mission_1",
+        outcome_contract: {
+          objective: "Prove a bounded workflow",
+          owner_decisions: ["Accept bounded residual risk"],
+        },
       }],
     },
     workstreams: { items: [{ workstream_id: "workstream_1", mission_id: "mission_1", name: "Demo" }] },
@@ -53,8 +78,66 @@ function fixture() {
     runs: { items: [{ run_id: "run_1", attempt_id: "attempt_1", status: "completed" }] },
     evidence: { items: [{ evidence_id: "evidence_1", mission_id: "mission_1", task_id: "task_a", evidence_type: "unit_test", freshness: "fresh", summary: "passed" }] },
     verifications: { items: [{ verification_id: "verification_1", mission_id: "mission_1", task_id: "task_a", status: "verified", independent: true }] },
-    approvals: { items: [{ approval_id: "approval_1", mission_id: "mission_1", status: "pending", approval_type: "owner_approval", requested_action: "Accept fixture", risk: "synthetic", revision: 2 }] },
-    economics: { items: [{ cost_id: "cost_1", mission_id: "mission_1", task_id: "task_a", actual_cost: null, model_cost: 0.2, runtime_duration: 3.5 }] },
+    approvals: { items: [{
+      approval_id: "approval_1",
+      mission_id: "mission_1",
+      status: "pending",
+      approval_type: "owner_approval",
+      requested_action: "Accept fixture",
+      risk: "synthetic",
+      cost: null,
+      evidence_ids: ["evidence_1"],
+      alternatives: ["Keep the mission blocked"],
+      revision: 2,
+    }] },
+    economics: { items: [
+      {
+        cost_id: "cost_1",
+        mission_id: "mission_1",
+        task_id: "task_a",
+        model: "model-a",
+        actual_cost: null,
+        model_cost: 0.2,
+        runtime_duration: 3.5,
+        input_tokens: 100,
+        output_tokens: 20,
+      },
+      {
+        cost_id: "cost_2",
+        mission_id: "mission_1",
+        task_id: null,
+        model: "model-a",
+        actual_cost: null,
+        model_cost: null,
+        runtime_duration: null,
+        input_tokens: null,
+        output_tokens: null,
+      },
+      {
+        id: "economics.global.summary",
+        data_class: "fixture",
+        scope: { mission_id: null },
+        budget: {
+          actual_cost: null,
+          budget_limit: 1,
+          ratio: null,
+          status: "unknown",
+          variance: null,
+        },
+        derived: {
+          cost_per_verified_task: { value: null, numerator: null, denominator: 1, status: "missing_numerator" },
+          cost_per_completed_mission: { value: null, numerator: null, denominator: 0, status: "missing_denominator" },
+          cost_per_achieved_outcome: { value: null, numerator: null, denominator: 0, status: "missing_denominator" },
+        },
+        totals: {
+          entry_count: 2,
+          metrics: {
+            actual_cost: { complete: false, known_count: 0, unknown_count: 2, known_value: null, value: null },
+            model_cost: { complete: false, known_count: 1, unknown_count: 1, known_value: 0.2, value: null },
+          },
+        },
+      },
+    ] },
     offers: { items: [{ offer_id: "offer_1", mission_id: "mission_1", status: "draft", data_class: "fixture" }] },
     leads: { items: [{ lead_id: "lead_1", mission_id: "mission_1", status: "new", data_class: "fixture" }] },
     opportunities: { items: [] },
@@ -81,9 +164,59 @@ test("parser connects mission entities and only retains the sanitized allowlist"
   assert.equal(data.attempts[0].task_id, "task_a");
   assert.equal(data.runs[0].attempt_id, "attempt_1");
   assert.equal(data.economics[0].actual_cost, null);
+  assert.equal(data.portfolios[0].priority_explanation, "highest eligible bounded mission");
+  assert.deepEqual(data.portfolios[0].score_contributions, { expected_value: 4.5, risk: -1.5 });
+  assert.equal(data.portfolios[0].next_best_mission_id, "mission_1");
+  assert.equal(data.portfolios[0].risk, 30);
+  assert.equal(data.missions[0].score, 7.5);
+  assert.equal(data.missions[0].rank, 1);
+  assert.equal(data.missions[0].next_best, true);
+  assert.equal(data.missions[0].confidence, 0.7);
+  assert.deepEqual(data.missions[0].contract_completion_blockers, ["owner_decision_pending"]);
+  assert.deepEqual(data.missions[0].owner_decisions, ["Accept bounded residual risk"]);
+  assert.equal(data.approvals[0].cost, null);
+  assert.deepEqual(data.approvals[0].evidence_ids, ["evidence_1"]);
+  assert.deepEqual(data.approvals[0].alternatives, ["Keep the mission blocked"]);
+  assert.equal(data.financialSummary?.cost_id, "economics.global.summary");
+  assert.equal(data.financialSummary?.totals?.entry_count, 2);
+  assert.equal(data.financialSummary?.totals?.metrics?.model_cost?.known_value, 0.2);
+  assert.equal(data.financialSummary?.totals?.metrics?.model_cost?.value, null);
+  assert.equal(data.financialSummary?.derived?.cost_per_verified_task?.status, "missing_numerator");
+  assert.equal(data.financialSummary?.budget?.status, "unknown");
+  assert.equal(data.financialSummary?.scope?.mission_id, null);
+  assert.equal(data.modelProductivity.length, 1);
+  assert.equal(data.modelProductivity[0].model, "model-a");
+  assert.equal(data.modelProductivity[0].record_count, 2);
+  assert.equal(data.modelProductivity[0].linked_task_count, 1);
+  assert.equal(data.modelProductivity[0].verified_task_count, 1);
+  assert.equal(data.modelProductivity[0].verification_status, "partial");
+  assert.equal(data.modelProductivity[0].model_cost.known_value, 0.2);
+  assert.equal(data.modelProductivity[0].model_cost.value, null, "unknown model cost must not be coerced to zero");
+  assert.equal(data.modelProductivity[0].cost_per_verified_task.value, null);
+  assert.equal(data.modelProductivity[0].cost_per_verified_task.status, "partial_linkage");
   assert.equal(data.operations.counters.offers, 1);
   assert.equal(data.operations.counters.orders, 0);
   assert.equal(JSON.stringify(data).includes("must never pass"), false);
+});
+
+
+test("model productivity only calculates a ratio with complete cost and task linkage", () => {
+  const payload = fixture();
+  payload.economics.items = payload.economics.items.filter((item) => item.cost_id !== "cost_2");
+  const data = normalizeAiCompanyMissionControl(payload, {
+    nowMs: Date.parse("2026-07-26T12:05:00Z"),
+  });
+  const model = data.modelProductivity.find((item) => item.model === "model-a");
+
+  assert.equal(model?.verification_status, "known");
+  assert.equal(model?.model_cost.value, 0.2);
+  assert.equal(model?.verified_task_count, 1);
+  assert.deepEqual(model?.cost_per_verified_task, {
+    value: 0.2,
+    numerator: 0.2,
+    denominator: 1,
+    status: "known",
+  });
 });
 
 
@@ -121,6 +254,8 @@ test("unsafe exports fail closed and expose no records", () => {
   assert.equal(data.state.reason, "unsafe_export");
   assert.deepEqual(data.approvals, []);
   assert.deepEqual(data.economics, []);
+  assert.equal(data.financialSummary, null);
+  assert.deepEqual(data.modelProductivity, []);
 });
 
 
@@ -156,53 +291,112 @@ test("canonical nested Mission Ledger export retains mission details and company
     nowMs: Date.parse(payload.generated_at),
   });
 
-  const demoMissionId = "mission_56cff22f6b6328350d0f754c0973f7f4";
-  const masterMissionId = "mission_860f06105b4e0d22a75527fc34260d05";
-  const atlasTaskId = "task_5fe7c53eaaa4017621c1279c";
-  const demo = data.missions.find((mission) => mission.mission_id === demoMissionId);
-  const master = data.missions.find((mission) => mission.mission_id === masterMissionId);
-
-  assert.equal(data.state.dataClass, "unknown", "mixed data must not be promoted to real");
-  assert.equal(demo?.title, "AI Company Governed Demo Mission");
-  assert.equal(demo?.status, "completed");
-  assert.equal(master?.title, "Build AI Company Control Plane v1");
-  assert.equal(master?.status, "blocked");
-
-  const missionTasks = (missionId) => data.tasks.filter((item) => item.mission_id === missionId);
-  const connectedAttempts = (missionId) => {
-    const taskIds = new Set(missionTasks(missionId).map((item) => item.task_id));
-    return data.attempts.filter((item) => taskIds.has(item.task_id));
-  };
-  const connectedRuns = (missionId) => {
-    const attemptIds = new Set(connectedAttempts(missionId).map((item) => item.attempt_id));
-    return data.runs.filter((item) => attemptIds.has(item.attempt_id));
+  const rawMission = (title) => payload.missions.items.find((mission) => mission.title === title);
+  const rawDetail = (missionId) => payload.mission_details.items.find((detail) => detail.mission_id === missionId);
+  const nestedRecords = (section) => Array.isArray(section) ? section : Array.isArray(section?.items) ? section.items : [];
+  const assertRetained = (rawRecords, normalizedRecords, idField, missionId) => {
+    for (const raw of rawRecords) {
+      const rawId = raw[idField] ?? raw.id;
+      assert.ok(
+        normalizedRecords.some((item) => item[idField] === rawId && (!missionId || item.mission_id === missionId)),
+        `${idField} ${rawId} must remain connected to ${missionId ?? "the canonical section"}`,
+      );
+    }
   };
 
-  assert.equal(missionTasks(demoMissionId).length, 3);
-  assert.equal(connectedAttempts(demoMissionId).length, 5);
-  assert.equal(connectedRuns(demoMissionId).length, 3);
-  assert.equal(data.evidence.filter((item) => item.mission_id === demoMissionId).length, 10);
-  assert.equal(data.verifications.filter((item) => item.mission_id === demoMissionId).length, 5);
-  assert.equal(data.approvals.filter((item) => item.mission_id === demoMissionId).length, 1);
-  assert.equal(data.approvals.find((item) => item.mission_id === demoMissionId)?.decision_trusted, false);
-  assert.equal(data.approvals.find((item) => item.mission_id === demoMissionId)?.decision_trust_reason, "mission_not_real");
-  assert.equal(data.agentAssignments.filter((item) => item.mission_id === demoMissionId).length, 5);
-  assert.equal(data.timeline.filter((item) => item.mission_id === demoMissionId).length, 90);
-  assert.equal(data.outcomes.filter((item) => item.mission_id === demoMissionId).length, 1);
+  const rawDemo = rawMission("AI Company Governed Demo Mission");
+  const rawMaster = rawMission("Build AI Company Control Plane v1");
+  assert.ok(rawDemo?.id, "canonical demo mission must exist");
+  assert.ok(rawMaster?.id, "canonical bootstrap mission must exist");
+  const demo = data.missions.find((mission) => mission.mission_id === rawDemo.id);
+  const master = data.missions.find((mission) => mission.mission_id === rawMaster.id);
 
-  assert.equal(missionTasks(masterMissionId).length, 10);
-  assert.equal(connectedAttempts(masterMissionId).length, 9);
-  assert.equal(data.evidence.filter((item) => item.mission_id === masterMissionId).length, 44);
-  assert.equal(data.evidence.filter((item) => item.mission_id === masterMissionId && item.evidence_type === "commit").length, 13);
-  assert.equal(data.agentAssignments.filter((item) => item.mission_id === masterMissionId).length, 9);
-  assert.equal(data.incidents.filter((item) => item.mission_id === masterMissionId).length, 2);
-  assert.equal(data.decisions.filter((item) => item.mission_id === masterMissionId).length, 1);
-  assert.equal(data.timeline.filter((item) => item.mission_id === masterMissionId).length, 148);
-  assert.equal(data.tasks.find((item) => item.task_id === atlasTaskId)?.status, "blocked");
-
-  for (const key of ["offers", "leads", "opportunities", "experiments", "orders", "deliveries", "payments", "feedback"]) {
-    assert.ok((data.operations.counters[key] ?? 0) > 0, `${key} counter must retain canonical records`);
+  if (payload.data_state.data_class === "mixed") {
+    assert.equal(data.state.dataClass, "unknown", "mixed data must not be promoted to real");
   }
-  assert.equal(data.operations.offers[0]?.offer_id, "offer_f081627fff38debb4c1fa4f794071fbf");
-  assert.equal(data.operations.customerFeedback[0]?.feedback_id, "feedback_b51b2c7436738ec9c5d5be3949314734");
+  assert.equal(demo?.status, rawDemo.status);
+  assert.equal(master?.status, rawMaster.status);
+
+  for (const raw of [rawDemo, rawMaster]) {
+    const mission = data.missions.find((item) => item.mission_id === raw.id);
+    const detail = rawDetail(raw.id);
+    assert.equal(mission?.score, raw.score);
+    assert.equal(mission?.rank, raw.rank);
+    assert.equal(mission?.next_best, raw.next_best);
+    assert.equal(mission?.priority_explanation, raw.priority_explanation);
+    assert.deepEqual(mission?.score_contributions, raw.score_contributions);
+    assert.deepEqual(mission?.contract_completion_blockers, raw.contract_completion_blockers);
+    assert.equal(mission?.confidence, raw.confidence);
+    assert.deepEqual(mission?.owner_decisions, detail?.outcome_contract?.owner_decisions);
+
+    const taskIds = new Set(nestedRecords(detail?.tasks).map((item) => item.task_id ?? item.id));
+    const attemptIds = new Set(nestedRecords(detail?.attempts).map((item) => item.attempt_id ?? item.id));
+    assertRetained(nestedRecords(detail?.tasks), data.tasks, "task_id", raw.id);
+    assertRetained(nestedRecords(detail?.attempts), data.attempts, "attempt_id", raw.id);
+    assertRetained(nestedRecords(detail?.runs), data.runs, "run_id", raw.id);
+    assertRetained(nestedRecords(detail?.evidence), data.evidence, "evidence_id", raw.id);
+    assertRetained(nestedRecords(detail?.verification_decisions), data.verifications, "verification_id", raw.id);
+    assertRetained(nestedRecords(detail?.approvals), data.approvals, "approval_id", raw.id);
+    assertRetained(nestedRecords(detail?.agent_assignments), data.agentAssignments, "assignment_id", raw.id);
+    assertRetained(nestedRecords(detail?.incidents), data.incidents, "incident_id", raw.id);
+    assertRetained(nestedRecords(detail?.decisions), data.decisions, "decision_id", raw.id);
+    assertRetained(nestedRecords(detail?.outcome_measurements), data.outcomes, "outcome_id", raw.id);
+    assertRetained(nestedRecords(detail?.timeline), data.timeline, "event_id", raw.id);
+
+    for (const attempt of data.attempts.filter((item) => item.mission_id === raw.id)) {
+      assert.ok(taskIds.has(attempt.task_id), `attempt ${attempt.attempt_id} must reference a retained mission task`);
+    }
+    for (const run of data.runs.filter((item) => item.mission_id === raw.id)) {
+      assert.ok(attemptIds.has(run.attempt_id), `run ${run.run_id} must reference a retained mission attempt`);
+    }
+  }
+
+  const rawPortfolio = payload.portfolio.items.find((item) => item.id === rawMaster.portfolio_id);
+  const portfolio = data.portfolios.find((item) => item.portfolio_id === rawMaster.portfolio_id);
+  assert.equal(portfolio?.priority_explanation, rawPortfolio.priority_explanation);
+  assert.deepEqual(portfolio?.score_contributions, rawPortfolio.score_contributions);
+  assert.equal(portfolio?.next_best_mission_id, rawPortfolio.next_best_mission_id);
+  assert.equal(portfolio?.risk, rawPortfolio.risk);
+
+  const rawApproval = nestedRecords(rawDetail(rawDemo.id)?.approvals)[0];
+  const approval = data.approvals.find((item) => item.approval_id === (rawApproval?.approval_id ?? rawApproval?.id));
+  assert.equal(approval?.cost, rawApproval?.cost);
+  assert.deepEqual(approval?.evidence_ids, rawApproval?.evidence_ids);
+  assert.deepEqual(approval?.alternatives, rawApproval?.alternatives);
+  if (approval) {
+    assert.equal(approval.decision_trusted, false);
+    assert.notEqual(approval.decision_trust_reason, "trusted_real_approval");
+  }
+
+  const rawFinancial = payload.economics.items.find((item) => item.id === "economics.global.summary");
+  assert.ok(rawFinancial, "canonical global economics summary must exist");
+  assert.deepEqual(data.financialSummary?.scope, rawFinancial.scope);
+  assert.deepEqual(data.financialSummary?.budget, rawFinancial.budget);
+  assert.deepEqual(data.financialSummary?.derived, rawFinancial.derived);
+  assert.deepEqual(data.financialSummary?.totals, rawFinancial.totals);
+
+  const modeledRows = payload.economics.items.filter((item) => typeof item.model === "string" && item.model);
+  for (const model of new Set(modeledRows.map((item) => item.model))) {
+    const summary = data.modelProductivity.find((item) => item.model === model);
+    const rows = modeledRows.filter((item) => item.model === model);
+    assert.equal(summary?.record_count, rows.length);
+    assert.equal(summary?.model_cost.known_count + summary?.model_cost.unknown_count, rows.length);
+    assert.equal(summary?.runtime_duration.known_count + summary?.runtime_duration.unknown_count, rows.length);
+  }
+
+  const operationMap = {
+    offers: data.operations.offers,
+    leads: data.operations.leads,
+    opportunities: data.operations.opportunities,
+    experiments: data.operations.experiments,
+    orders: data.operations.orders,
+    deliveries: data.operations.deliveries,
+    payments: data.operations.payments,
+    customer_feedback: data.operations.customerFeedback,
+  };
+  for (const [recordType, normalized] of Object.entries(operationMap)) {
+    const rawRecords = payload.company_operations.items.filter((item) => item.record_type === recordType);
+    assert.equal(normalized.length, rawRecords.length, `${recordType} counter must reflect canonical records`);
+    assert.ok(rawRecords.every((raw) => normalized.some((item) => Object.values(item).includes(raw.id))));
+  }
 });
