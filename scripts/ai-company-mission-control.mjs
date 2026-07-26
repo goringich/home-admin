@@ -44,7 +44,7 @@ const ENTITY_FIELDS = {
   evidence: [
     ...COMMON_FIELDS, "evidence_id", "evidence_type", "source", "path_or_reference", "sha256",
     "command", "exit_code", "started_at", "finished_at", "environment", "producer",
-    "verified_by", "freshness", "summary",
+    "verified_by", "freshness", "summary", "reference_basename", "reference_sha256",
   ],
   verifications: [
     ...COMMON_FIELDS, "verification_id", "evidence_id", "verifier", "producer", "independent",
@@ -72,6 +72,13 @@ const ENTITY_FIELDS = {
     ...COMMON_FIELDS, "outcome_id", "metric", "baseline", "target", "observed", "measured_at",
     "source_ref", "summary",
   ],
+  agentAssignments: [
+    ...COMMON_FIELDS, "assignment_id", "agent_id", "role", "status",
+  ],
+  timeline: [
+    ...COMMON_FIELDS, "event_id", "entity_id", "entity_type", "event_type", "event_hash",
+    "occurred_at", "sequence",
+  ],
   offers: [...COMMON_FIELDS, "offer_id", "name", "value_proposition", "price_amount", "currency"],
   leads: [...COMMON_FIELDS, "lead_id", "display_name", "source", "external_ref_hash"],
   opportunities: [
@@ -92,6 +99,79 @@ const ENTITY_FIELDS = {
   customerFeedback: [
     ...COMMON_FIELDS, "feedback_id", "order_id", "rating", "summary", "source_ref_hash",
   ],
+};
+
+const ENTITY_ID_FIELDS = {
+  portfolios: "portfolio_id",
+  missions: "mission_id",
+  workstreams: "workstream_id",
+  tasks: "task_id",
+  attempts: "attempt_id",
+  runs: "run_id",
+  evidence: "evidence_id",
+  verifications: "verification_id",
+  approvals: "approval_id",
+  economics: "cost_id",
+  incidents: "incident_id",
+  decisions: "decision_id",
+  outcomes: "outcome_id",
+  agentAssignments: "assignment_id",
+  timeline: "event_id",
+  offers: "offer_id",
+  leads: "lead_id",
+  opportunities: "opportunity_id",
+  experiments: "experiment_id",
+  orders: "order_id",
+  deliveries: "delivery_id",
+  payments: "payment_id",
+  customerFeedback: "feedback_id",
+};
+
+const DETAIL_SECTIONS = {
+  workstreams: "workstreams",
+  tasks: "tasks",
+  dependencies: "dependencies",
+  attempts: "attempts",
+  runs: "runs",
+  evidence: "evidence",
+  verifications: "verification_decisions",
+  approvals: "approvals",
+  economics: "costs",
+  incidents: "incidents",
+  decisions: "decisions",
+  outcomes: "outcome_measurements",
+  agentAssignments: "agent_assignments",
+  timeline: "timeline",
+};
+
+const OPERATION_TYPES = {
+  offers: "offers",
+  leads: "leads",
+  opportunities: "opportunities",
+  experiments: "experiments",
+  orders: "orders",
+  deliveries: "deliveries",
+  payments: "payments",
+  customerFeedback: "customer_feedback",
+};
+
+const SECTION_STATE_SOURCES = {
+  portfolios: ["portfolios", "portfolio"],
+  missions: ["missions"],
+  workstreams: ["workstreams", "mission_details"],
+  tasks: ["tasks", "mission_details"],
+  dependencies: ["dependencies", "task_dependencies", "mission_details"],
+  attempts: ["attempts", "mission_details"],
+  runs: ["runs", "mission_details"],
+  evidence: ["evidence", "mission_details"],
+  verifications: ["verifications", "verification", "mission_details"],
+  approvals: ["approvals", "mission_details"],
+  economics: ["economics", "costs", "mission_details"],
+  incidents: ["incidents", "mission_details"],
+  decisions: ["decisions", "mission_details"],
+  outcomes: ["outcomes", "outcome_measurements", "mission_details"],
+  agentAssignments: ["agent_assignments", "mission_details"],
+  timeline: ["timeline", "mission_details"],
 };
 
 
@@ -120,6 +200,31 @@ function projectRecord(record, fields) {
 }
 
 
+function projectEntity(record, entityName, missionId = null) {
+  const projected = projectRecord(record, ENTITY_FIELDS[entityName]);
+  if (!projected) return null;
+  const idField = ENTITY_ID_FIELDS[entityName];
+  if (idField && !projected[idField] && typeof record.id === "string") {
+    projected[idField] = record.id;
+  }
+  if (!projected.mission_id && typeof missionId === "string") {
+    projected.mission_id = missionId;
+  }
+  if (entityName === "evidence" && !projected.evidence_type && typeof record.type === "string") {
+    projected.evidence_type = record.type;
+  }
+  if (entityName === "decisions" && !projected.decision_type && typeof record.type === "string") {
+    projected.decision_type = record.type;
+  }
+  if (entityName === "missions" && record.outcome_target && typeof record.outcome_target === "object") {
+    if (!Object.hasOwn(projected, "target_metric")) projected.target_metric = safeValue(record.outcome_target.metric);
+    if (!Object.hasOwn(projected, "target_value")) projected.target_value = safeValue(record.outcome_target.value);
+    if (!Object.hasOwn(projected, "deadline")) projected.deadline = safeValue(record.outcome_target.deadline);
+  }
+  return projected;
+}
+
+
 function sectionContainer(payload, names) {
   for (const name of names) {
     const value = payload?.[name];
@@ -129,16 +234,82 @@ function sectionContainer(payload, names) {
 }
 
 
-function sectionItems(payload, names, fields) {
+function rawSectionItems(payload, names) {
   const container = sectionContainer(payload, names);
-  const raw = Array.isArray(container)
-    ? container
-    : Array.isArray(container?.items)
-      ? container.items
-      : Array.isArray(container?.records)
-        ? container.records
+  if (Array.isArray(container)) return container.slice(0, 20_000);
+  if (Array.isArray(container?.items)) return container.items.slice(0, 20_000);
+  if (Array.isArray(container?.records)) return container.records.slice(0, 20_000);
+  return [];
+}
+
+
+function sectionItems(payload, names, entityName) {
+  return rawSectionItems(payload, names).map((record) => projectEntity(record, entityName)).filter(Boolean);
+}
+
+
+function nestedDetailItems(payload, entityName) {
+  const detailKey = DETAIL_SECTIONS[entityName];
+  if (!detailKey) return [];
+  const result = [];
+  for (const detail of rawSectionItems(payload, ["mission_details"])) {
+    const section = detail?.[detailKey];
+    const records = Array.isArray(section)
+      ? section
+      : Array.isArray(section?.items)
+        ? section.items
         : [];
-  return raw.slice(0, 20_000).map((record) => projectRecord(record, fields)).filter(Boolean);
+    for (const record of records.slice(0, 20_000 - result.length)) {
+      const projected = projectEntity(record, entityName, detail.mission_id);
+      if (projected) result.push(projected);
+    }
+    if (result.length >= 20_000) break;
+  }
+  return result;
+}
+
+
+function mergeEntityItems(entityName, ...groups) {
+  const idField = ENTITY_ID_FIELDS[entityName];
+  const result = [];
+  const seen = new Set();
+  for (const item of groups.flat()) {
+    const identity = idField && item?.[idField]
+      ? `${idField}:${item[idField]}`
+      : JSON.stringify(item);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    result.push(item);
+  }
+  return result.slice(0, 20_000);
+}
+
+
+function missionItems(payload) {
+  const details = new Map(
+    rawSectionItems(payload, ["mission_details"])
+      .filter((detail) => typeof detail?.mission_id === "string")
+      .map((detail) => [detail.mission_id, detail]),
+  );
+  return rawSectionItems(payload, ["missions"]).map((record) => {
+    const detail = details.get(record.mission_id ?? record.id);
+    const contract = detail?.outcome_contract;
+    const enriched = contract && typeof contract === "object"
+      ? { ...contract, ...record, outcome_contract: contract }
+      : record;
+    return projectEntity(enriched, "missions");
+  }).filter(Boolean);
+}
+
+
+function operationItems(operationRoot, entityName, legacyNames) {
+  const legacy = sectionItems(operationRoot, legacyNames, entityName);
+  const recordType = OPERATION_TYPES[entityName];
+  const canonical = (Array.isArray(operationRoot?.items) ? operationRoot.items : [])
+    .filter((record) => record?.record_type === recordType)
+    .map((record) => projectEntity(record, entityName))
+    .filter(Boolean);
+  return mergeEntityItems(entityName, legacy, canonical);
 }
 
 
@@ -156,8 +327,10 @@ function generatedFreshness(generatedAt, nowMs, maxAgeMs, fallback) {
 
 function inferDataClass(records) {
   const classes = new Set(records.map((item) => item?.data_class).filter(Boolean));
-  if (classes.size === 1 && classes.has("fixture")) return "fixture";
-  if (classes.has("real")) return "real";
+  if (classes.size === 1) {
+    const [value] = classes;
+    return DATA_CLASSES.has(value) ? value : "unknown";
+  }
   return "unknown";
 }
 
@@ -166,20 +339,37 @@ function normalizeState(rawState, records, generatedAt, options) {
   const nowMs = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
   const maxAgeMs = Number.isFinite(options.maxAgeMs) ? options.maxAgeMs : 15 * 60 * 1000;
   const explicitFreshness = allowed(rawState?.freshness, FRESHNESS, "unknown");
+  const explicitDataClass = rawState?.data_class ?? rawState?.dataClass;
+  const availability = allowed(
+    rawState?.availability,
+    AVAILABILITY,
+    records.length ? "available" : "unavailable",
+  );
   return {
-    availability: allowed(
-      rawState?.availability,
-      AVAILABILITY,
-      records.length ? "available" : "unavailable",
-    ),
-    freshness: generatedFreshness(generatedAt, nowMs, maxAgeMs, explicitFreshness),
+    availability,
+    freshness: availability === "unavailable" || explicitFreshness === "unavailable"
+      ? "unavailable"
+      : generatedFreshness(generatedAt, nowMs, maxAgeMs, explicitFreshness),
     verification: allowed(rawState?.verification, VERIFICATION, "unknown"),
     dataClass: allowed(
-      rawState?.data_class ?? rawState?.dataClass,
+      explicitDataClass === "mixed" ? "unknown" : explicitDataClass,
       DATA_CLASSES,
       inferDataClass(records),
     ),
   };
+}
+
+
+function approvalDecisionTrust(approval, mission, approvalState, safeToExpose) {
+  if (!safeToExpose) return { trusted: false, reason: "unsafe_export" };
+  if (approval?.data_class !== "real") return { trusted: false, reason: "approval_not_real" };
+  if (mission?.data_class !== "real") return { trusted: false, reason: "mission_not_real" };
+  if (approvalState.availability !== "available") return { trusted: false, reason: "approval_data_unavailable" };
+  if (approvalState.freshness !== "fresh") return { trusted: false, reason: "approval_data_not_fresh" };
+  const verificationTrusted = ["verified", "partially_verified"].includes(approvalState.verification)
+    || ["verified", "partially_verified"].includes(mission.implementation_status);
+  if (!verificationTrusted) return { trusted: false, reason: "verification_not_trusted" };
+  return { trusted: true, reason: "trusted_real_approval" };
 }
 
 
@@ -205,6 +395,7 @@ export function unavailableAiCompanyMissionControl(reason = "source_missing") {
     sectionStates: {},
     portfolios: [], missions: [], workstreams: [], tasks: [], dependencies: [], attempts: [],
     runs: [], evidence: [], verifications: [], approvals: [], economics: [], incidents: [], decisions: [], outcomes: [],
+    agentAssignments: [], timeline: [],
     operations: emptyOperations,
   };
 }
@@ -215,33 +406,35 @@ export function normalizeAiCompanyMissionControl(payload, options = {}) {
     return unavailableAiCompanyMissionControl(payload ? "unsafe_export" : "source_missing");
   }
   const entities = {
-    portfolios: sectionItems(payload, ["portfolios"], ENTITY_FIELDS.portfolios),
-    missions: sectionItems(payload, ["missions"], ENTITY_FIELDS.missions),
-    workstreams: sectionItems(payload, ["workstreams"], ENTITY_FIELDS.workstreams),
-    tasks: sectionItems(payload, ["tasks"], ENTITY_FIELDS.tasks),
-    dependencies: sectionItems(payload, ["dependencies", "task_dependencies"], ENTITY_FIELDS.dependencies),
-    attempts: sectionItems(payload, ["attempts"], ENTITY_FIELDS.attempts),
-    runs: sectionItems(payload, ["runs"], ENTITY_FIELDS.runs),
-    evidence: sectionItems(payload, ["evidence"], ENTITY_FIELDS.evidence),
-    verifications: sectionItems(payload, ["verifications", "verification"], ENTITY_FIELDS.verifications),
-    approvals: sectionItems(payload, ["approvals"], ENTITY_FIELDS.approvals),
-    economics: sectionItems(payload, ["economics", "costs"], ENTITY_FIELDS.economics),
-    incidents: sectionItems(payload, ["incidents"], ENTITY_FIELDS.incidents),
-    decisions: sectionItems(payload, ["decisions"], ENTITY_FIELDS.decisions),
-    outcomes: sectionItems(payload, ["outcomes", "outcome_measurements"], ENTITY_FIELDS.outcomes),
+    portfolios: sectionItems(payload, ["portfolios", "portfolio"], "portfolios"),
+    missions: missionItems(payload),
+    workstreams: mergeEntityItems("workstreams", sectionItems(payload, ["workstreams"], "workstreams"), nestedDetailItems(payload, "workstreams")),
+    tasks: mergeEntityItems("tasks", sectionItems(payload, ["tasks"], "tasks"), nestedDetailItems(payload, "tasks")),
+    dependencies: mergeEntityItems("dependencies", sectionItems(payload, ["dependencies", "task_dependencies"], "dependencies"), nestedDetailItems(payload, "dependencies")),
+    attempts: mergeEntityItems("attempts", sectionItems(payload, ["attempts"], "attempts"), nestedDetailItems(payload, "attempts")),
+    runs: mergeEntityItems("runs", sectionItems(payload, ["runs"], "runs"), nestedDetailItems(payload, "runs")),
+    evidence: mergeEntityItems("evidence", sectionItems(payload, ["evidence"], "evidence"), nestedDetailItems(payload, "evidence")),
+    verifications: mergeEntityItems("verifications", sectionItems(payload, ["verifications", "verification"], "verifications"), nestedDetailItems(payload, "verifications")),
+    approvals: mergeEntityItems("approvals", sectionItems(payload, ["approvals"], "approvals"), nestedDetailItems(payload, "approvals")),
+    economics: mergeEntityItems("economics", sectionItems(payload, ["economics", "costs"], "economics"), nestedDetailItems(payload, "economics")),
+    incidents: mergeEntityItems("incidents", sectionItems(payload, ["incidents"], "incidents"), nestedDetailItems(payload, "incidents")),
+    decisions: mergeEntityItems("decisions", sectionItems(payload, ["decisions"], "decisions"), nestedDetailItems(payload, "decisions")),
+    outcomes: mergeEntityItems("outcomes", sectionItems(payload, ["outcomes", "outcome_measurements"], "outcomes"), nestedDetailItems(payload, "outcomes")),
+    agentAssignments: mergeEntityItems("agentAssignments", sectionItems(payload, ["agent_assignments"], "agentAssignments"), nestedDetailItems(payload, "agentAssignments")),
+    timeline: mergeEntityItems("timeline", sectionItems(payload, ["timeline"], "timeline"), nestedDetailItems(payload, "timeline")),
   };
   const operationRoot = payload.company_operations && typeof payload.company_operations === "object"
     ? payload.company_operations
     : payload;
   const operations = {
-    offers: sectionItems(operationRoot, ["offers"], ENTITY_FIELDS.offers),
-    leads: sectionItems(operationRoot, ["leads"], ENTITY_FIELDS.leads),
-    opportunities: sectionItems(operationRoot, ["opportunities"], ENTITY_FIELDS.opportunities),
-    experiments: sectionItems(operationRoot, ["experiments"], ENTITY_FIELDS.experiments),
-    orders: sectionItems(operationRoot, ["orders"], ENTITY_FIELDS.orders),
-    deliveries: sectionItems(operationRoot, ["deliveries"], ENTITY_FIELDS.deliveries),
-    payments: sectionItems(operationRoot, ["payments", "payment_states"], ENTITY_FIELDS.payments),
-    customerFeedback: sectionItems(operationRoot, ["customer_feedback", "feedback"], ENTITY_FIELDS.customerFeedback),
+    offers: operationItems(operationRoot, "offers", ["offers"]),
+    leads: operationItems(operationRoot, "leads", ["leads"]),
+    opportunities: operationItems(operationRoot, "opportunities", ["opportunities"]),
+    experiments: operationItems(operationRoot, "experiments", ["experiments"]),
+    orders: operationItems(operationRoot, "orders", ["orders"]),
+    deliveries: operationItems(operationRoot, "deliveries", ["deliveries"]),
+    payments: operationItems(operationRoot, "payments", ["payments", "payment_states"]),
+    customerFeedback: operationItems(operationRoot, "customerFeedback", ["customer_feedback", "feedback"]),
   };
   operations.counters = {
     offers: operations.offers.length,
@@ -263,9 +456,23 @@ export function normalizeAiCompanyMissionControl(payload, options = {}) {
   );
   const sectionStates = {};
   for (const [name, items] of Object.entries(entities)) {
-    const container = sectionContainer(payload, [name]);
+    const container = sectionContainer(payload, SECTION_STATE_SOURCES[name] ?? [name]);
     sectionStates[name] = normalizeState(container?.data_state, items, payload.generated_at, options);
   }
+  const missionsById = new Map(entities.missions.map((mission) => [mission.mission_id, mission]));
+  entities.approvals = entities.approvals.map((approval) => {
+    const trust = approvalDecisionTrust(
+      approval,
+      missionsById.get(approval.mission_id),
+      sectionStates.approvals,
+      true,
+    );
+    return {
+      ...approval,
+      decision_trusted: trust.trusted,
+      decision_trust_reason: trust.reason,
+    };
+  });
   return {
     schemaVersion: String(payload.schema_version || "unknown"),
     generatedAt: String(payload.generated_at || ""),

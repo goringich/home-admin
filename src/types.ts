@@ -130,8 +130,18 @@ export interface AiCompanyEntity {
   verification_id?: string;
   approval_id?: string;
   cost_id?: string;
+  incident_id?: string;
+  decision_id?: string;
+  outcome_id?: string;
+  assignment_id?: string;
+  agent_id?: string;
+  event_id?: string;
+  entity_id?: string;
+  entity_type?: string;
+  event_type?: string;
   title?: string;
   name?: string;
+  actor?: string;
   status?: string;
   data_class?: string;
   score?: number | null;
@@ -157,6 +167,7 @@ export interface AiCompanyEntity {
   worker_id?: string | null;
   executor?: string;
   evidence_type?: string;
+  reference_basename?: string;
   freshness?: string;
   summary?: string;
   independent?: boolean;
@@ -167,6 +178,19 @@ export interface AiCompanyEntity {
   reversibility?: string;
   expires_at?: string;
   revision?: number;
+  role?: string;
+  occurred_at?: string;
+  sequence?: number;
+  metric?: string;
+  observed?: unknown;
+  target?: unknown;
+  severity?: string;
+  impact?: string;
+  recovery?: string;
+  question?: string;
+  decision?: string;
+  decision_trusted?: boolean;
+  decision_trust_reason?: string;
 }
 
 export interface AiCompanyMissionControl {
@@ -190,6 +214,8 @@ export interface AiCompanyMissionControl {
   incidents: AiCompanyEntity[];
   decisions: AiCompanyEntity[];
   outcomes: AiCompanyEntity[];
+  agentAssignments: AiCompanyEntity[];
+  timeline: AiCompanyEntity[];
   operations: {
     offers: AiCompanyEntity[];
     leads: AiCompanyEntity[];

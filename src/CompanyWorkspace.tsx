@@ -36,6 +36,8 @@ const EMPTY_COMPANY: AiCompanyMissionControl = {
   incidents: [],
   decisions: [],
   outcomes: [],
+  agentAssignments: [],
+  timeline: [],
   operations: {
     offers: [], leads: [], opportunities: [], experiments: [], orders: [], deliveries: [],
     payments: [], customerFeedback: [],
@@ -89,6 +91,13 @@ function exactCost(rows: AiCompanyEntity[]) {
 
 function money(value: number | null | undefined) {
   return typeof value === "number" ? `$${value.toFixed(4)}` : "unknown";
+}
+
+
+function displayValue(value: unknown) {
+  if (value === null || value === undefined) return "unknown";
+  if (["string", "number", "boolean"].includes(typeof value)) return String(value);
+  return JSON.stringify(value);
 }
 
 
@@ -160,16 +169,13 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
       incidents: data.incidents.filter((item) => item.mission_id === missionId),
       decisions: data.decisions.filter((item) => item.mission_id === missionId),
       outcomes: data.outcomes.filter((item) => item.mission_id === missionId),
+      agentAssignments: (data.agentAssignments ?? []).filter((item) => item.mission_id === missionId || (item.task_id && taskIds.has(item.task_id))),
+      timeline: (data.timeline ?? []).filter((item) => item.mission_id === missionId),
     };
   }, [data, selectedMission]);
 
   const completedTasks = connected.tasks.filter((task) => task.status === "completed").length;
   const missionActualCost = exactCost(connected.economics);
-  const decisionsTrusted = data.safeToExpose
-    && data.state.availability === "available"
-    && data.state.freshness === "fresh"
-    && data.state.dataClass === "real"
-    && !["unverified", "rejected", "unknown"].includes(data.state.verification);
 
   async function decideApproval(approval: AiCompanyEntity, decision: "approve" | "reject") {
     const approvalId = approval.approval_id ?? "";
@@ -178,8 +184,8 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
       setApprovalMessage("Actor and reason are required; no decision was sent.");
       return;
     }
-    if (!decisionsTrusted || typeof approval.revision !== "number") {
-      setApprovalMessage(`${approvalId}: fresh verified real data and a concrete revision are required.`);
+    if (approval.decision_trusted !== true || typeof approval.revision !== "number") {
+      setApprovalMessage(`${approvalId}: decision disabled (${approval.decision_trust_reason ?? "approval_trust_unknown"}).`);
       return;
     }
     setPendingApproval(approvalId);
@@ -271,12 +277,18 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
                 const attempts = connected.attempts.filter((item) => item.task_id === task.task_id);
                 const attemptIds = new Set(attempts.map((item) => item.attempt_id));
                 const runs = connected.runs.filter((item) => attemptIds.has(item.attempt_id));
+                const assignments = connected.agentAssignments.filter((item) => item.task_id === task.task_id);
                 return (
                   <article className="detail-card" key={task.task_id}>
                     <div className="detail-card-title">{task.title ?? task.task_id}</div>
                     <div className="status-cluster"><CompanyBadge label={String(task.status ?? "unknown")} tone={task.status === "failed" ? "risk" : "attention"} />{task.critical_path ? <CompanyBadge label="critical path" tone="attention" /> : null}</div>
                     <p>{dependencies.length ? `depends on ${dependencies.map((item) => item.depends_on_task_id).join(", ")}` : "parallel-ready / no blocking dependency recorded"}</p>
-                    <p>{attempts.length} attempts · {runs.length} runs</p>
+                    <div className="section-kicker">Agent assignments</div>
+                    {assignments.map((assignment) => <p key={assignment.assignment_id}>{assignment.agent_id ?? "unknown agent"} · {assignment.role ?? "unknown role"} · {assignment.status ?? "unknown"}</p>)}
+                    {!assignments.length ? <p>Agent assignment unavailable.</p> : null}
+                    {attempts.map((attempt) => <p key={attempt.attempt_id}>attempt {attempt.attempt_id} · {attempt.status ?? "unknown"}</p>)}
+                    {runs.map((run) => <p key={run.run_id}>run {run.run_id} · {run.status ?? "unknown"}</p>)}
+                    {!attempts.length ? <p>Attempt IDs unavailable.</p> : null}
                   </article>
                 );
               })}
@@ -290,7 +302,7 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
         <article className="panel">
           <div className="panel-head"><div><div className="section-kicker">Evidence & verification</div><h3>Independent proof</h3></div><CompanyBadge label={data.sectionStates.verifications?.verification ?? "unknown"} tone={stateTone(data.sectionStates.verifications?.verification ?? "unknown")} /></div>
           <div className="doc-list">
-            {connected.evidence.map((item) => <div className="class-row" key={item.evidence_id}><span>{item.evidence_type ?? "evidence"}</span><strong>{item.freshness ?? "unknown"} · {item.summary ?? item.evidence_id}</strong></div>)}
+            {connected.evidence.map((item) => <div className="class-row" key={item.evidence_id}><span>{item.evidence_type ?? "evidence"}</span><strong>{item.freshness ?? "unknown"} · {item.summary ?? item.evidence_id} · {item.reference_basename ?? item.evidence_id}</strong></div>)}
             {connected.verifications.map((item) => <div className="class-row" key={item.verification_id}><span>{item.independent ? "independent" : "author"}</span><strong>{item.status ?? "unverified"} · {item.reason ?? "no reason"}</strong></div>)}
             {!connected.evidence.length && !connected.verifications.length ? <div className="empty-inline">Evidence unavailable; mission is not verified.</div> : null}
           </div>
@@ -315,17 +327,18 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
           {connected.approvals.map((approval) => {
             const approvalId = approval.approval_id ?? "";
             const status = localDecisions[approvalId] ?? approval.status ?? "unknown";
-            const decisionEnabled = decisionsTrusted && typeof approval.revision === "number";
+            const decisionEnabled = approval.decision_trusted === true && typeof approval.revision === "number";
             return (
               <article className="detail-card" key={approvalId}>
                 <div className="detail-card-title">{approval.approval_type ?? approvalId}</div>
                 <p>{approval.requested_action ?? "Requested action unavailable"}</p>
                 <p>risk: {approval.risk ?? "unknown"} · reversibility: {approval.reversibility ?? "unknown"}</p>
+                <p>decision trust: {approval.decision_trusted === true ? "trusted real approval" : approval.decision_trust_reason ?? "unknown"}</p>
                 <CompanyBadge label={status} tone={status === "rejected" ? "risk" : status === "approved" ? "ok" : "attention"} />
                 {status === "pending" ? <>
                   <label className="company-owner-field"><span>Decision reason</span><input value={reasons[approvalId] ?? ""} onChange={(event) => setReasons((current) => ({ ...current, [approvalId]: event.target.value }))} maxLength={2000} /></label>
                   <div className="approval-actions"><button type="button" disabled={!decisionEnabled || pendingApproval === approvalId} onClick={() => decideApproval(approval, "approve")}>Approve decision</button><button type="button" disabled={!decisionEnabled || pendingApproval === approvalId} onClick={() => decideApproval(approval, "reject")}>Reject decision</button></div>
-                  {!decisionEnabled ? <p>Decision disabled: fresh, partially/fully verified real data and a concrete revision are required.</p> : null}
+                  {!decisionEnabled ? <p>Decision disabled: {approval.decision_trust_reason ?? "fresh, verified real approval data required"}. Fixture and synthetic missions never enable typed decisions.</p> : null}
                 </> : null}
               </article>
             );
@@ -339,13 +352,22 @@ export function CompanyWorkspace(props: CompanyWorkspaceProps) {
       <OperationsGrid data={data.operations} />
 
       <section className="panel">
-        <div className="panel-head"><div><div className="section-kicker">Organizational record</div><h3>Incidents, decisions, and outcome measurements</h3></div></div>
-        <div className="detail-grid compact-grid">
-          <article className="detail-card"><div className="detail-card-title">Incidents</div><strong>{connected.incidents.length || "none recorded"}</strong></article>
-          <article className="detail-card"><div className="detail-card-title">Decisions</div><strong>{connected.decisions.length || "none recorded"}</strong></article>
-          <article className="detail-card"><div className="detail-card-title">Outcome measurements</div><strong>{connected.outcomes.length || "not measured"}</strong></article>
-          <article className="detail-card"><div className="detail-card-title">Timeline</div><strong>{connected.attempts.length + connected.runs.length + connected.evidence.length + connected.approvals.length} linked records</strong></article>
+        <div className="panel-head"><div><div className="section-kicker">Organizational record</div><h3>Incidents, decisions & outcomes</h3></div></div>
+        <div className="doc-list">
+          {connected.incidents.map((incident) => <div className="class-row" key={incident.incident_id}><span>incident · {incident.severity ?? "unknown"}</span><strong>{incident.incident_id} · {incident.summary ?? "summary unavailable"} · {incident.status ?? "unknown"}</strong></div>)}
+          {connected.decisions.map((decision) => <div className="class-row" key={decision.decision_id}><span>decision</span><strong>{decision.decision_id} · {decision.question ?? "question unavailable"} · {decision.decision ?? "undecided"}</strong></div>)}
+          {connected.outcomes.map((outcome) => <div className="class-row" key={outcome.outcome_id}><span>outcome · {outcome.metric ?? "metric unavailable"}</span><strong>{outcome.outcome_id} · {outcome.status ?? "unknown"} · observed {displayValue(outcome.observed)} / target {displayValue(outcome.target)}</strong></div>)}
+          {!connected.incidents.length && !connected.decisions.length && !connected.outcomes.length ? <div className="empty-inline">No incident, decision, or measured outcome records available.</div> : null}
         </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><div><div className="section-kicker">Audit trail</div><h3>Event timeline</h3></div><CompanyBadge label={`${connected.timeline.length} events`} tone={connected.timeline.length ? "attention" : "unknown"} /></div>
+        <div className="doc-list">
+          {connected.timeline.slice(-50).reverse().map((event) => <div className="class-row" key={event.event_id}><span>{event.occurred_at ?? "time unknown"}</span><strong>{event.event_type ?? "event unknown"} · {event.entity_type ?? "entity"}:{event.entity_id ?? "unknown"} · {event.actor ?? "actor unknown"}</strong></div>)}
+          {!connected.timeline.length ? <div className="empty-inline">Timeline unavailable; no synthetic activity count is inferred.</div> : null}
+        </div>
+        {connected.timeline.length > 50 ? <p className="panel-note">Showing the newest 50 of {connected.timeline.length} real ledger events.</p> : null}
       </section>
     </div>
   );

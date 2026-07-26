@@ -14,6 +14,16 @@ test("Company is one connected Atlas workspace with explicit trust states", () =
   assert.match(company, /Portfolio/);
   assert.match(company, /Mission DAG/);
   assert.match(company, /Evidence & verification/);
+  assert.match(company, /Agent assignments/);
+  assert.match(company, /attempt\.attempt_id/);
+  assert.match(company, /run\.run_id/);
+  assert.match(company, /reference_basename/);
+  assert.match(company, /Incidents, decisions & outcomes/);
+  assert.match(company, /Event timeline/);
+  assert.match(company, /event\.event_type/);
+  assert.match(company, /outcome\.outcome_id/);
+  assert.match(company, /incident\.incident_id/);
+  assert.match(company, /decision\.decision_id/);
   assert.match(company, /Approvals/);
   assert.match(company, /Company operations/);
   assert.match(company, /availability/);
@@ -21,8 +31,9 @@ test("Company is one connected Atlas workspace with explicit trust states", () =
   assert.match(company, /verification/);
   assert.match(company, /data class/);
   assert.match(company, /typeof approval\.revision === "number"/);
-  assert.match(company, /data\.state\.freshness === "fresh"/);
-  assert.match(company, /data\.state\.dataClass === "real"/);
+  assert.match(company, /approval\.decision_trusted === true/);
+  assert.match(company, /approval\.decision_trust_reason/);
+  assert.match(company, /Fixture and synthetic missions never enable typed decisions/);
   assert.match(company, /underlying action was not executed/);
   assert.match(types, /aiCompany: AiCompanyMissionControl/);
   assert.match(host, /\/api\/company\/approvals\/decision/);
