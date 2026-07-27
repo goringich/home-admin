@@ -7,7 +7,7 @@ import type {
   AiCompanyMissionControl,
   HealthTone,
 } from "./types";
-import { groupMissionTasks, missionTone } from "./ai-company-view-policy.ts";
+import { groupMissionTasks, missionTone, operationTone } from "./ai-company-view-policy.ts";
 
 
 const EMPTY_STATE: AiCompanyDataState = {
@@ -49,6 +49,8 @@ const EMPTY_COMPANY: AiCompanyMissionControl = {
     offers: [], leads: [], opportunities: [], experiments: [], orders: [], deliveries: [],
     payments: [], customerFeedback: [],
     counters: { offers: null, leads: null, opportunities: null, experiments: null, orders: null, deliveries: null, payments: null, feedback: null },
+    recordCounters: { offers: null, leads: null, opportunities: null, experiments: null, orders: null, deliveries: null, payments: null, feedback: null },
+    nonRealCounters: { offers: null, leads: null, opportunities: null, experiments: null, orders: null, deliveries: null, payments: null, feedback: null },
     state: EMPTY_STATE,
   },
 };
@@ -145,22 +147,34 @@ function OperationsGrid(props: { data: AiCompanyMissionControl["operations"] }) 
     ["experiments", "Experiments"], ["orders", "Orders"], ["deliveries", "Deliveries"],
     ["payments", "Payments"], ["feedback", "Feedback"],
   ] as const;
+  const trustTone = operationTone(props.data.state);
+  const recordCounters = props.data.recordCounters ?? {};
+  const nonRealCounters = props.data.nonRealCounters ?? {};
   return (
     <section className="panel">
       <div className="panel-head">
         <div><div className="section-kicker">Company operations</div><h3>Minimal commercial core</h3></div>
-        <CompanyBadge label={props.data.state.availability} tone={stateTone(props.data.state.availability)} />
+        <CompanyBadge
+          label={`${props.data.state.availability} · ${props.data.state.freshness} · ${props.data.state.verification}`}
+          tone={trustTone}
+        />
       </div>
       <div className="local-status-grid">
         {entries.map(([key, label]) => (
           <div className="metric-card" key={key}>
             <span>{label}</span>
-            <strong>{props.data.counters[key] ?? "unavailable"}</strong>
-            <p>{props.data.state.dataClass} data</p>
+            <strong>{props.data.counters[key] ?? "unknown"}</strong>
+            <p>
+              {typeof nonRealCounters[key] === "number" && nonRealCounters[key] > 0
+                ? `${nonRealCounters[key]} non-real records excluded`
+                : props.data.counters[key] === null && typeof recordCounters[key] === "number"
+                  ? `${recordCounters[key]} unverified records withheld`
+                  : `${props.data.state.dataClass} data`}
+            </p>
           </div>
         ))}
       </div>
-      <p className="panel-note">No outreach, publication, payment, or delivery action is executed from this view.</p>
+      <p className="panel-note">Only fresh verified real records become production counters. Fixture, unknown, stale, and unverified rows remain excluded; no action is executed from this view.</p>
     </section>
   );
 }

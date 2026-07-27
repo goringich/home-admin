@@ -26,6 +26,7 @@ export const LOCAL_CODEX_LAB_SCHEMA = "2026-07-25.local-codex-lab.v1";
 const MAX_SOURCE_AGE_MS = 48 * 60 * 60 * 1000;
 const MAX_QUALITY_DRIFT_MS = 6 * 60 * 60 * 1000;
 const FUTURE_CLOCK_TOLERANCE_MS = 5 * 60 * 1000;
+const SERVICE_STATUS_MAX_AGE_MS = 15 * 60 * 1000;
 const REQUIRED_CORE_FIELDS = Object.freeze([
   "generated_at",
   "host_health",
@@ -69,6 +70,63 @@ export function localCodexLabQuality(payload) {
 function generatedAtMs(payload) {
   const timestamp = Date.parse(String(payload.generated_at || ""));
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+export function normalizeAtlasServiceStatus(raw, now = new Date()) {
+  const unavailable = {
+    unit: "project-atlas.service",
+    enabled: null,
+    activeState: "unknown",
+    healthStatus: "unknown",
+    reportedHealthStatus: "unknown",
+    freshness: "unavailable",
+    evidenceSource: "unknown",
+    updatedAt: "",
+    healthUrl: "",
+  };
+  if (!isObject(raw)) return unavailable;
+
+  const nowMs = now instanceof Date ? now.getTime() : Date.parse(String(now));
+  const updatedAt = typeof raw.updated_at === "string" ? raw.updated_at : "";
+  const updatedAtMs = Date.parse(updatedAt);
+  const evidenceSource = raw.evidence_source === "live_probe"
+    || raw.evidence_source === "cached_live_export"
+    ? raw.evidence_source
+    : "unknown";
+  let freshness = "unavailable";
+  if (Number.isFinite(nowMs) && Number.isFinite(updatedAtMs)) {
+    const ageMs = nowMs - updatedAtMs;
+    if (ageMs >= -FUTURE_CLOCK_TOLERANCE_MS) {
+      freshness = evidenceSource === "cached_live_export" || ageMs > SERVICE_STATUS_MAX_AGE_MS
+        ? "stale"
+        : "fresh";
+    }
+  }
+
+  const reportedHealthStatus = typeof raw.health_status === "string"
+    ? raw.health_status
+    : "unknown";
+  const healthStatus = freshness === "fresh"
+    ? reportedHealthStatus
+    : freshness === "stale"
+      ? "stale"
+      : "unknown";
+  const healthUrl = typeof raw.health_url === "string"
+    && /^http:\/\/(?:127\.0\.0\.1|localhost):4174(?:\/|$)/.test(raw.health_url)
+    ? raw.health_url
+    : "";
+
+  return {
+    unit: typeof raw.unit === "string" ? raw.unit : "project-atlas.service",
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : null,
+    activeState: typeof raw.active_state === "string" ? raw.active_state : "unknown",
+    healthStatus,
+    reportedHealthStatus,
+    freshness,
+    evidenceSource,
+    updatedAt,
+    healthUrl,
+  };
 }
 
 export function localCodexLabCompatible(payload) {

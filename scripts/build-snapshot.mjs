@@ -5,9 +5,12 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { normalizeCommercialBilling } from "./commercial-billing.mjs";
 import { normalizeCommercialLaunchObservability } from "./commercial-launch-observability.mjs";
-import { normalizeRevenueAutopilot } from "./commercial-summary.mjs";
+import { normalizeCommercialSummary, normalizeRevenueAutopilot } from "./commercial-summary.mjs";
 import { normalizeLocalAgentPlatform } from "./local-agent-platform.mjs";
-import { selectLocalCodexLabRecord } from "./snapshot-source-selection.mjs";
+import {
+  normalizeAtlasServiceStatus,
+  selectLocalCodexLabRecord,
+} from "./snapshot-source-selection.mjs";
 import { normalizeCodexAudit } from "./codex-audit.mjs";
 import {
   normalizeAiCompanyMissionControl,
@@ -50,6 +53,7 @@ const codexOrchestratorArtifacts = path.join(home, "__home_organized", "artifact
 const sharedRunReportsRoot = path.join(canonicalLocalCodexRuntime, "run-reports");
 const localAgentRunScript = path.join(home, ".local", "bin", "local-agent-run");
 const localAgentExecScript = path.join(home, ".local", "bin", "local-agent-exec");
+const engineeringControlPlanePath = path.join(canonicalLocalCodexRuntime, "engineering-control-plane.json");
 const projectTargetsPath = path.join(home, "__home_organized", "local-codex-stack", "configs", "targets.json");
 const operationPolicyScript = path.join(home, "__home_organized", "local-codex-stack", "scripts", "operation_policy.py");
 const codexBridgeFixCommand =
@@ -765,6 +769,10 @@ function summarizeRepo(repoEntry) {
 function buildLocalCodexLab() {
   const codexOrchestratorBridge = buildCodexOrchestratorBridge();
   const lab = selectLocalCodexLabRecord(readJsonCandidates([canonicalLocalCodexAtlasPath, legacyLocalCodexAtlasPath]));
+  const engineeringControlPlane = readJsonFirst([engineeringControlPlanePath], {});
+  const serviceStatusPayload = engineeringControlPlane.payload?.service_status
+    || lab.payload?.service_status
+    || null;
   const aiLabRegistry = readJsonFirst([aiLabRegistryPath], {});
   const researchSummary = readJsonFirst(
     [
@@ -882,6 +890,7 @@ function buildLocalCodexLab() {
     generatedAt: lab.payload?.generated_at || new Date().toISOString(),
     hostHealth: lab.payload?.host_health || "unknown",
     source: statMeta(lab.path, lab.payload?.generated_at || ""),
+    serviceStatus: normalizeAtlasServiceStatus(serviceStatusPayload),
     modelRouting: {
       fast: lab.payload?.fast_model || "unknown",
       balanced: lab.payload?.balanced_model || "unknown",
@@ -1345,6 +1354,7 @@ function buildCodexHistory() {
 }
 
 function buildCommercialReadiness() {
+  const now = Date.now();
   const report = readJsonFirst([commercialReadinessPath], {});
   const productIntel = readJsonFirst([productIntelPath], {});
   const productOperatingStandard = readJsonFirst([productOperatingStandardPath], {});
@@ -1352,14 +1362,14 @@ function buildCommercialReadiness() {
   const safeProductOperatingStandard = productOperatingStandard.payload?.safe_to_expose === true
     ? productOperatingStandard.payload
     : null;
-  const firstMoneySummary = report.payload?.first_money_summary || {};
+  const firstMoneySummary = normalizeCommercialSummary(report.payload?.first_money_summary, now);
   const commercialBilling = normalizeCommercialBilling(safeProductOperatingStandard?.commercial_billing);
-  const normalizedRevenueAutopilot = normalizeRevenueAutopilot(revenueAutopilot.payload);
+  const normalizedRevenueAutopilot = normalizeRevenueAutopilot(revenueAutopilot.payload, now);
   const commercialLaunch = normalizeCommercialLaunchObservability({
     summary: firstMoneySummary,
     revenue: normalizedRevenueAutopilot,
     billing: commercialBilling,
-  });
+  }, now);
   return {
     generatedAt: report.payload?.generated_at || new Date().toISOString(),
     overallStatus: report.payload?.overall_status || "unknown",

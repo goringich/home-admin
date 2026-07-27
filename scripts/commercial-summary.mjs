@@ -12,6 +12,8 @@ const UNKNOWN_FUNNEL = Object.freeze({
 
 const FUNNEL_KEYS = Object.keys(UNKNOWN_FUNNEL);
 const STALE_AFTER_MS = 15 * 60 * 1000;
+const REVENUE_STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 function unavailable(error = "Источник недоступен") {
   return {
@@ -34,10 +36,31 @@ function isNullableNumber(value) {
   return value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0);
 }
 
+function projectionFreshness(raw, now, staleAfterMs) {
+  if (!Number.isFinite(now)) return "unavailable";
+  if (raw?.freshness === "stale") return "stale";
+
+  const expiresAt = Date.parse(typeof raw?.expires_at === "string" ? raw.expires_at : "");
+  if (Number.isFinite(expiresAt) && now >= expiresAt) return "stale";
+
+  const observedAt = Date.parse(typeof raw?.observed_at === "string" ? raw.observed_at : "");
+  if (Number.isFinite(observedAt)) {
+    const observedAge = now - observedAt;
+    if (observedAge < -MAX_FUTURE_SKEW_MS) return "unavailable";
+    if (observedAge > staleAfterMs) return "stale";
+  }
+
+  const generatedAt = Date.parse(typeof raw?.generated_at === "string" ? raw.generated_at : "");
+  if (!Number.isFinite(generatedAt)) return "unavailable";
+  const generatedAge = now - generatedAt;
+  if (generatedAge < -MAX_FUTURE_SKEW_MS) return "unavailable";
+  return generatedAge > staleAfterMs ? "stale" : "fresh";
+}
+
 /** Sanitizes the generated Elizabeth aggregate before it is ever served by Atlas. */
 export function normalizeCommercialSummary(raw, now = Date.now()) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return unavailable("Malformed commercial summary source");
-  if (raw.source_status !== "available" || raw.freshness !== "fresh") {
+  if (raw.source_status !== "available" || !["fresh", "stale"].includes(raw.freshness)) {
     return unavailable(typeof raw.error === "string" ? raw.error : "Источник недоступен");
   }
   const offer = raw.primary_offer;
@@ -47,11 +70,12 @@ export function normalizeCommercialSummary(raw, now = Date.now()) {
   if (typeof offer.title !== "string" || typeof offer.product_id !== "string" || typeof offer.offer_id !== "string" || !isNullableNumber(offer.starting_price_rub)) {
     return unavailable("Malformed commercial summary source");
   }
-  const generatedAt = typeof raw.generated_at === "string" ? Date.parse(raw.generated_at) : Number.NaN;
-  const stale = !Number.isFinite(generatedAt) || now - generatedAt > STALE_AFTER_MS;
+  const freshness = projectionFreshness(raw, now, STALE_AFTER_MS);
+  if (freshness === "unavailable") return unavailable("Commercial summary timestamp is unavailable or outside the allowed clock skew");
   return {
     source_status: "available",
-    freshness: stale ? "stale" : "fresh",
+    freshness,
+    generated_at: typeof raw.generated_at === "string" ? raw.generated_at : null,
     last_refresh: typeof raw.generated_at === "string" ? raw.generated_at : new Date(now).toISOString(),
     primary_offer: {
       product_id: offer.product_id,
@@ -110,11 +134,18 @@ function normalizeCreativeFactory(raw) {
 }
 
 /** Reads only the sanitized generated projection; manifests/configs remain authoritative. */
-export function normalizeRevenueAutopilot(raw) {
-  const unavailable = { status: "unavailable", active_revenue_lane: null, funnel_counters: {} };
+export function normalizeRevenueAutopilot(raw, now = Date.now()) {
+  const unavailable = {
+    status: "unavailable",
+    freshness: "unavailable",
+    active_revenue_lane: null,
+    funnel_counters: {},
+  };
   if (!raw || typeof raw !== "object" || Array.isArray(raw) || raw.safe_to_expose !== true) return unavailable;
   if (typeof raw.active_revenue_lane !== "string" || typeof raw.product_readiness !== "string" || typeof raw.campaign_readiness !== "string") return unavailable;
   if (!raw.funnel_counters || typeof raw.funnel_counters !== "object" || Array.isArray(raw.funnel_counters)) return unavailable;
+  const freshness = projectionFreshness(raw, now, REVENUE_STALE_AFTER_MS);
+  if (freshness === "unavailable") return unavailable;
   const funnelCounters = {};
   for (const key of REVENUE_COUNTER_KEYS) {
     const value = raw.funnel_counters[key];
@@ -123,6 +154,7 @@ export function normalizeRevenueAutopilot(raw) {
   }
   return {
     status: "available",
+    freshness,
     generated_at: typeof raw.generated_at === "string" ? raw.generated_at : null,
     active_revenue_lane: raw.active_revenue_lane,
     active_experiment: typeof raw.active_experiment === "string" ? raw.active_experiment : null,

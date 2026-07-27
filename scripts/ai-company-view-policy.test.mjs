@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   groupMissionTasks,
   missionTone,
+  operationTone,
 } from "../src/ai-company-view-policy.ts";
 
 
@@ -49,6 +50,23 @@ test("failed mission remains risk even when projection trust is degraded", () =>
       trustedState,
     ),
     "risk",
+  );
+});
+
+
+test("commercial operations only render success for fresh verified real data", () => {
+  assert.equal(operationTone(trustedState), "ok");
+  assert.equal(operationTone({ ...trustedState, dataClass: "unknown" }), "attention");
+  assert.equal(operationTone({ ...trustedState, freshness: "stale" }), "attention");
+  assert.equal(operationTone({ ...trustedState, verification: "unknown" }), "attention");
+  assert.equal(
+    operationTone({
+      ...trustedState,
+      availability: "unavailable",
+      freshness: "unavailable",
+      dataClass: "unavailable",
+    }),
+    "attention",
   );
 });
 

@@ -405,6 +405,17 @@ function commercialTone(status: string): HealthTone {
   return "risk";
 }
 
+function revenueAutopilotTone(revenue: RevenueAutopilotStatus): HealthTone {
+  if (revenue.status !== "available" || revenue.freshness !== "fresh") return "attention";
+  return commercialTone(revenue.product_readiness ?? "");
+}
+
+function revenueAutopilotLabel(revenue: RevenueAutopilotStatus) {
+  const readiness = revenue.product_readiness ?? "unknown";
+  if (revenue.status !== "available") return "unavailable";
+  return revenue.freshness === "fresh" ? readiness : `${readiness} · ${revenue.freshness ?? "unknown"}`;
+}
+
 function topReliabilityClass(classifications: Record<string, number>) {
   return Object.entries(classifications)
     .filter(([name, count]) => count > 0 && name !== "completed" && name !== "partial")
@@ -1190,6 +1201,7 @@ function LocalCodexLabPanel(props: {
   const [dispatchError, setDispatchError] = useState("");
   const aiLabRuns = props.lab.aiLab.control.activeRuns.length > 0 ? props.lab.aiLab.control.activeRuns : props.lab.activeRuns;
   const latestRunReports = props.lab.aiLab.control.latestRunReports.length > 0 ? props.lab.aiLab.control.latestRunReports : props.lab.latestRunReports;
+  const serviceStatus = props.lab.serviceStatus ?? { healthStatus: "unknown", freshness: "unavailable" };
   const launcherLookup = new Map(props.lab.aiLab.scientificTools.launchers.map((launcher) => [launcher.id, launcher]));
   const allowlistedLaunchers = props.lab.aiLab.prepareFlow.launcherIds.map((launcherId) => {
     const launcher = launcherLookup.get(launcherId);
@@ -1220,6 +1232,9 @@ function LocalCodexLabPanel(props: {
         <div className="ai-lab-hero-main">
           <div className="ai-lab-status-strip">
             <span className={`health-pill ${toneClass(props.lab.hostHealth === "ok" ? "ok" : "attention")}`}>Host {props.lab.hostHealth}</span>
+            <span className={`health-pill ${toneClass(serviceStatus.healthStatus === "ok" && serviceStatus.freshness === "fresh" ? "ok" : "attention")}`}>
+              Atlas service {serviceStatus.healthStatus} · {serviceStatus.freshness}
+            </span>
             <span className={`health-pill ${toneClass(aiLabStatusTone(props.lab.aiLab.status))}`}>Lab {props.lab.aiLab.status}</span>
             <span className={`health-pill ${toneClass(props.lab.localGpuLiveBenchStatus.status === "ok" ? "ok" : "attention")}`}>GPU {props.lab.localGpuLiveBenchStatus.status}</span>
             <span className={`health-pill ${toneClass(aiLabRuns.length > 0 ? "attention" : "unknown")}`}>Runs {aiLabRuns.length}</span>
@@ -2163,7 +2178,9 @@ function CommercialBillingPanel(props: {
 
 function FirstMoneyPanel(props: { summary: FirstMoneySummary | null; revenue: RevenueAutopilotStatus }) {
   const summary = props.summary;
-  const sourceUnavailable = !summary || summary.source_status === "unavailable";
+  const sourceUnavailable = !summary
+    || summary.source_status === "unavailable"
+    || summary.freshness === "unavailable";
   const stale = summary?.freshness === "stale";
   const funnel = summary?.funnel;
   const offer = summary?.primary_offer;
@@ -2227,6 +2244,7 @@ function FirstMoneyPanel(props: { summary: FirstMoneySummary | null; revenue: Re
             <div className="class-row"><span>Лимит</span><strong>{typeof props.revenue.current_spend_cap_rub === "number" ? `${props.revenue.current_spend_cap_rub} ₽` : "Нет проверенных данных"}</strong></div>
             <div className="class-row"><span>Готовность продукта</span><strong>{firstMoneyValue(props.revenue.product_readiness)}</strong></div>
             <div className="class-row"><span>Готовность кампании</span><strong>{firstMoneyValue(props.revenue.campaign_readiness)}</strong></div>
+            <div className="class-row"><span>Свежесть проекции</span><strong>{firstMoneyValue(props.revenue.freshness)}</strong></div>
             <div className="class-row"><span>Аналитика</span><strong>{firstMoneyValue(props.revenue.analytics_status)}</strong></div>
             <div className="class-row"><span>Решение цикла</span><strong>{firstMoneyValue(props.revenue.experiment_action)}</strong></div>
             <div className="class-row"><span>Safe mode</span><strong>{props.revenue.host_safe_mode ? "ON" : "OFF"}</strong></div>
@@ -2269,7 +2287,7 @@ function RevenueOrbitPanel(props: {
         <article className="revenue-hero-card">
           <div className="revenue-hero-topline">
             <span className="orbit-eyebrow">ACTIVE REVENUE LANE</span>
-            <StatusBadge label={props.revenue.product_readiness ?? "unavailable"} tone={commercialTone(props.revenue.product_readiness ?? "")} />
+            <StatusBadge label={revenueAutopilotLabel(props.revenue)} tone={revenueAutopilotTone(props.revenue)} />
           </div>
           <div className="revenue-hero-title">{props.revenue.active_revenue_lane ?? "unavailable"}</div>
           <p>{props.revenue.next_exact_money_action ?? "Нет безопасно сформированного следующего действия."}</p>
@@ -4201,7 +4219,7 @@ export function App() {
 
         <section className="sidebar-status" aria-label="Current status">
           <div><span className={`sync-dot ${snapshot.system.safeMode ? "sync-dot-warn" : ""}`} /><span>Host</span><strong>{snapshot.system.systemStatus}</strong></div>
-          <div><span className={`sync-dot ${snapshot.commercialReadiness.revenueAutopilot.product_readiness === "blocked" ? "sync-dot-warn" : ""}`} /><span>Revenue</span><strong>{snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "unknown"}</strong></div>
+          <div><span className={`sync-dot ${revenueAutopilotTone(snapshot.commercialReadiness.revenueAutopilot) !== "ok" ? "sync-dot-warn" : ""}`} /><span>Revenue</span><strong>{revenueAutopilotLabel(snapshot.commercialReadiness.revenueAutopilot)}</strong></div>
         </section>
 
         <footer className="sidebar-footer">
@@ -4238,7 +4256,7 @@ export function App() {
           {activeWorkspace === "overview" && !selectedProject ? <section className="panel"><div className="empty-inline">Project inventory unavailable. Company and system workspaces remain available.</div></section> : null}
           {activeWorkspace === "company" ? <CompanyWorkspace data={snapshot.aiCompany} onRefresh={() => refreshSnapshot(true)} /> : null}
           {activeWorkspace === "revenue" ? <div className="workspace-stack">
-            <WorkspaceHeader eyebrow="Atlas / Revenue" title="От сигнала к деньгам" description="Воронка, creative factory и owner gates собраны в одном коммерческом контексте." status={{ label: snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "unknown", tone: commercialTone(snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "") }} />
+            <WorkspaceHeader eyebrow="Atlas / Revenue" title="От сигнала к деньгам" description="Воронка, creative factory и owner gates собраны в одном коммерческом контексте." status={{ label: revenueAutopilotLabel(snapshot.commercialReadiness.revenueAutopilot), tone: revenueAutopilotTone(snapshot.commercialReadiness.revenueAutopilot) }} />
             <CommercialLaunchEvidencePanel launch={snapshot.commercialReadiness.commercialLaunch} commercialSource={snapshot.commercialReadiness.source} revenueSource={snapshot.commercialReadiness.revenueAutopilotSource} billingSource={snapshot.commercialReadiness.productOperatingStandardSource} onOpen={open} onCopy={copy} />
             <RevenueOrbitPanel revenue={snapshot.commercialReadiness.revenueAutopilot} source={snapshot.commercialReadiness.revenueAutopilotSource} onOpen={open} onCopy={copy} />
             <CommercialBillingPanel billing={snapshot.commercialReadiness.commercialBilling} source={snapshot.commercialReadiness.productOperatingStandardSource} onOpen={open} onCopy={copy} />

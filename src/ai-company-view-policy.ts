@@ -30,6 +30,16 @@ export function missionTone(
 }
 
 
+export function operationTone(state: AiCompanyDataState): HealthTone {
+  return state.availability === "available"
+    && state.freshness === "fresh"
+    && state.verification === "verified"
+    && state.dataClass === "real"
+    ? "ok"
+    : "attention";
+}
+
+
 export type MissionTaskGroup = {
   workstream: AiCompanyEntity | null;
   tasks: AiCompanyEntity[];

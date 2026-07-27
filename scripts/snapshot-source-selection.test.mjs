@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   LOCAL_CODEX_LAB_SCHEMA,
   localCodexLabCompatible,
+  normalizeAtlasServiceStatus,
   selectLocalCodexLabRecord,
 } from "./snapshot-source-selection.mjs";
 
@@ -91,4 +92,50 @@ test("an old rich artifact cannot outrank a fresh compatible source", () => {
   };
 
   assert.equal(selectLocalCodexLabRecord([partialCanonical, oldRich], now).path, partialCanonical.path);
+});
+
+test("cached, stale, and future Atlas service evidence cannot render healthy", () => {
+  const cached = normalizeAtlasServiceStatus({
+    unit: "project-atlas.service",
+    enabled: true,
+    active_state: "active",
+    health_status: "ok",
+    health_url: "http://127.0.0.1:4174/api/health",
+    updated_at: "2026-07-25T19:59:00Z",
+    evidence_source: "cached_live_export",
+  }, now);
+  assert.equal(cached.freshness, "stale");
+  assert.equal(cached.healthStatus, "stale");
+  assert.equal(cached.reportedHealthStatus, "ok");
+
+  const oldLive = normalizeAtlasServiceStatus({
+    unit: "project-atlas.service",
+    enabled: true,
+    active_state: "active",
+    health_status: "ok",
+    updated_at: "2026-07-25T18:00:00Z",
+    evidence_source: "live_probe",
+  }, now);
+  assert.equal(oldLive.freshness, "stale");
+  assert.equal(oldLive.healthStatus, "stale");
+
+  const future = normalizeAtlasServiceStatus({
+    unit: "project-atlas.service",
+    health_status: "ok",
+    updated_at: "2026-07-25T20:06:00Z",
+    evidence_source: "live_probe",
+  }, now);
+  assert.equal(future.freshness, "unavailable");
+  assert.equal(future.healthStatus, "unknown");
+
+  const freshLive = normalizeAtlasServiceStatus({
+    unit: "project-atlas.service",
+    enabled: true,
+    active_state: "active",
+    health_status: "ok",
+    updated_at: "2026-07-25T19:59:00Z",
+    evidence_source: "live_probe",
+  }, now);
+  assert.equal(freshLive.freshness, "fresh");
+  assert.equal(freshLive.healthStatus, "ok");
 });

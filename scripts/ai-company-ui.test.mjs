@@ -10,6 +10,8 @@ test("Company is one connected Atlas workspace with explicit trust states", () =
   const host = readFileSync(new URL("./atlas-host.mjs", import.meta.url), "utf8");
 
   assert.match(app, /id: "company"/);
+  assert.match(app, /serviceStatus\.freshness/);
+  assert.match(app, /Atlas service/);
   assert.match(company, /function CompanyWorkspace/);
   assert.match(company, /Portfolio/);
   assert.match(company, /priority explanation/);
@@ -42,6 +44,9 @@ test("Company is one connected Atlas workspace with explicit trust states", () =
   assert.match(company, /Model productivity/);
   assert.match(company, /unknown values are not treated as zero/);
   assert.match(company, /Company operations/);
+  assert.match(company, /recordCounters/);
+  assert.match(company, /nonRealCounters/);
+  assert.match(company, /operationTone\(props\.data\.state\)/);
   assert.match(company, /availability/);
   assert.match(company, /freshness/);
   assert.match(company, /verification/);
@@ -73,4 +78,6 @@ test("Vite build is source-only and snapshot refresh remains an explicit command
   assert.equal(packageJson.scripts.snapshot, "node scripts/build-snapshot.mjs");
   assert.match(snapshotSource, /fileURLToPath\(new URL\("\.\."/);
   assert.match(snapshotSource, /ai-company-mission-control\.v1\.json/);
+  assert.match(snapshotSource, /normalizeCommercialSummary/);
+  assert.match(snapshotSource, /firstMoneySummary = normalizeCommercialSummary/);
 });

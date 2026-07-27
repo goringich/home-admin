@@ -211,6 +211,18 @@ test("age-gates commercial aggregates and keeps unavailable receipt evidence fai
   }, NOW);
   assert.equal(byId(staleRevenue, "readiness").status, "stale");
 
+  const explicitlyStaleRevenue = normalizeCommercialLaunchObservability({
+    revenue: {
+      status: "available",
+      freshness: "stale",
+      generated_at: GENERATED_AT,
+      product_readiness: "ready",
+      campaign_readiness: "allow",
+    },
+    billing: verifiedBilling,
+  }, NOW);
+  assert.equal(byId(explicitlyStaleRevenue, "readiness").status, "stale");
+
   const missingTimestamps = normalizeCommercialLaunchObservability({
     summary: {
       source_status: "available",

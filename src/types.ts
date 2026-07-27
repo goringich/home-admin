@@ -302,6 +302,8 @@ export interface AiCompanyMissionControl {
     payments: AiCompanyEntity[];
     customerFeedback: AiCompanyEntity[];
     counters: Record<string, number | null>;
+    recordCounters?: Record<string, number | null>;
+    nonRealCounters?: Record<string, number | null>;
     state: AiCompanyDataState;
   };
   source?: SourceMeta;
@@ -893,6 +895,17 @@ export interface LocalCodexLab {
   generatedAt: string;
   hostHealth: string;
   source: SourceMeta;
+  serviceStatus?: {
+    unit: string;
+    enabled: boolean | null;
+    activeState: string;
+    healthStatus: string;
+    reportedHealthStatus: string;
+    freshness: "fresh" | "stale" | "unavailable";
+    evidenceSource: string;
+    updatedAt: string;
+    healthUrl: string;
+  };
   modelRouting: {
     fast: string;
     balanced: string;
@@ -2181,6 +2194,7 @@ export interface FirstMoneySummary {
 
 export interface RevenueAutopilotStatus {
   status: "available" | "unavailable";
+  freshness?: "fresh" | "stale" | "unavailable";
   generated_at?: string | null;
   active_revenue_lane: string | null;
   active_experiment?: string | null;

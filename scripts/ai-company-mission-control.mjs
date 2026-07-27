@@ -8,6 +8,7 @@ const VERIFICATION = new Set([
   "unknown",
 ]);
 const DATA_CLASSES = new Set(["real", "fixture", "unknown", "unavailable"]);
+const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 const COMMON_FIELDS = [
   "status", "created_at", "updated_at", "actor", "schema_version", "revision",
@@ -327,7 +328,33 @@ function allowed(value, choices, fallback) {
 function generatedFreshness(generatedAt, nowMs, maxAgeMs, fallback) {
   const generatedMs = Date.parse(String(generatedAt || ""));
   if (!Number.isFinite(generatedMs)) return fallback;
-  return nowMs - generatedMs > maxAgeMs ? "stale" : "fresh";
+  const ageMs = nowMs - generatedMs;
+  if (ageMs < -MAX_FUTURE_SKEW_MS) return "unavailable";
+  return ageMs > maxAgeMs ? "stale" : "fresh";
+}
+
+
+function projectionFreshness(timing, nowMs, maxAgeMs, fallback) {
+  const expiresMs = Date.parse(String(timing?.expiresAt || ""));
+  if (Number.isFinite(expiresMs) && nowMs >= expiresMs) return "stale";
+
+  const observedMs = Date.parse(String(timing?.observedAt || ""));
+  if (Number.isFinite(observedMs)) {
+    const observedAgeMs = nowMs - observedMs;
+    if (observedAgeMs < -MAX_FUTURE_SKEW_MS) return "unavailable";
+    if (observedAgeMs > maxAgeMs) return "stale";
+  }
+
+  return generatedFreshness(timing?.generatedAt, nowMs, maxAgeMs, fallback);
+}
+
+
+function projectionTiming(primary, fallback = {}) {
+  return {
+    generatedAt: primary?.generated_at ?? fallback?.generated_at,
+    observedAt: primary?.observed_at ?? fallback?.observed_at,
+    expiresAt: primary?.expires_at ?? fallback?.expires_at,
+  };
 }
 
 
@@ -341,7 +368,7 @@ function inferDataClass(records) {
 }
 
 
-function normalizeState(rawState, records, generatedAt, options) {
+function normalizeState(rawState, records, timing, options) {
   const nowMs = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
   const maxAgeMs = Number.isFinite(options.maxAgeMs) ? options.maxAgeMs : 15 * 60 * 1000;
   const explicitFreshness = allowed(rawState?.freshness, FRESHNESS, "unknown");
@@ -357,7 +384,7 @@ function normalizeState(rawState, records, generatedAt, options) {
       ? "unavailable"
       : explicitFreshness === "stale"
         ? "stale"
-        : generatedFreshness(generatedAt, nowMs, maxAgeMs, explicitFreshness),
+        : projectionFreshness(timing, nowMs, maxAgeMs, explicitFreshness),
     verification: allowed(rawState?.verification, VERIFICATION, "unknown"),
     dataClass: allowed(
       explicitDataClass === "mixed" ? "unknown" : explicitDataClass,
@@ -365,6 +392,54 @@ function normalizeState(rawState, records, generatedAt, options) {
       inferDataClass(records),
     ),
   };
+}
+
+
+function hasArrayRecords(container) {
+  return Array.isArray(container)
+    || Array.isArray(container?.items)
+    || Array.isArray(container?.records);
+}
+
+
+function operationSourceKnown(operationRoot, legacyNames) {
+  if (Array.isArray(operationRoot?.items)) return true;
+  return legacyNames.some((name) => hasArrayRecords(operationRoot?.[name]));
+}
+
+
+function operationCounterSet(operations, operationRoot, operationState) {
+  const trustedSource = operationState.availability === "available"
+    && operationState.freshness === "fresh"
+    && operationState.verification === "verified"
+    && operationState.dataClass === "real";
+  const entries = [
+    ["offers", "offers", ["offers"]],
+    ["leads", "leads", ["leads"]],
+    ["opportunities", "opportunities", ["opportunities"]],
+    ["experiments", "experiments", ["experiments"]],
+    ["orders", "orders", ["orders"]],
+    ["deliveries", "deliveries", ["deliveries"]],
+    ["payments", "payments", ["payments", "payment_states"]],
+    ["feedback", "customerFeedback", ["customer_feedback", "feedback"]],
+  ];
+  const counters = {};
+  const recordCounters = {};
+  const nonRealCounters = {};
+
+  for (const [counterName, entityName, legacyNames] of entries) {
+    const sourceKnown = operationSourceKnown(operationRoot, legacyNames);
+    const records = operations[entityName];
+    recordCounters[counterName] = sourceKnown ? records.length : null;
+    nonRealCounters[counterName] = sourceKnown
+      ? records.filter((record) => record?.data_class !== "real").length
+      : null;
+    counters[counterName] = trustedSource && sourceKnown
+      ? records.filter((record) => record?.data_class === "real").length
+      : null;
+  }
+
+  return { counters, recordCounters, nonRealCounters };
 }
 
 
@@ -524,6 +599,8 @@ export function unavailableAiCompanyMissionControl(reason = "source_missing") {
     offers: [], leads: [], opportunities: [], experiments: [], orders: [], deliveries: [],
     payments: [], customerFeedback: [],
     counters: { offers: null, leads: null, opportunities: null, experiments: null, orders: null, deliveries: null, payments: null, feedback: null },
+    recordCounters: { offers: null, leads: null, opportunities: null, experiments: null, orders: null, deliveries: null, payments: null, feedback: null },
+    nonRealCounters: { offers: null, leads: null, opportunities: null, experiments: null, orders: null, deliveries: null, payments: null, feedback: null },
     state: { availability: "unavailable", freshness: "unavailable", verification: "unverified", dataClass: "unavailable" },
   };
   return {
@@ -584,28 +661,29 @@ export function normalizeAiCompanyMissionControl(payload, options = {}) {
     payments: operationItems(operationRoot, "payments", ["payments", "payment_states"]),
     customerFeedback: operationItems(operationRoot, "customerFeedback", ["customer_feedback", "feedback"]),
   };
-  operations.counters = {
-    offers: operations.offers.length,
-    leads: operations.leads.length,
-    opportunities: operations.opportunities.length,
-    experiments: operations.experiments.length,
-    orders: operations.orders.length,
-    deliveries: operations.deliveries.length,
-    payments: operations.payments.length,
-    feedback: operations.customerFeedback.length,
-  };
   const records = [...Object.values(entities).flat(), ...Object.values(operations).filter(Array.isArray).flat()];
-  const rootState = normalizeState(payload.data_state, records, payload.generated_at, options);
+  const rootState = normalizeState(
+    payload.data_state,
+    records,
+    projectionTiming(payload),
+    options,
+  );
   operations.state = normalizeState(
     operationRoot.data_state,
     Object.values(operations).filter(Array.isArray).flat(),
-    payload.generated_at,
+    projectionTiming(operationRoot, payload),
     options,
   );
+  Object.assign(operations, operationCounterSet(operations, operationRoot, operations.state));
   const sectionStates = {};
   for (const [name, items] of Object.entries(entities)) {
     const container = sectionContainer(payload, SECTION_STATE_SOURCES[name] ?? [name]);
-    sectionStates[name] = normalizeState(container?.data_state, items, payload.generated_at, options);
+    sectionStates[name] = normalizeState(
+      container?.data_state,
+      items,
+      projectionTiming(container, payload),
+      options,
+    );
   }
   const approvalContainer = sectionContainer(payload, ["approvals"]);
   const approvalSource = {

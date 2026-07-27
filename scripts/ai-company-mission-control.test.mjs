@@ -211,8 +211,11 @@ test("parser connects mission entities and only retains the sanitized allowlist"
   assert.equal(data.modelProductivity[0].model_cost.value, null, "unknown model cost must not be coerced to zero");
   assert.equal(data.modelProductivity[0].cost_per_verified_task.value, null);
   assert.equal(data.modelProductivity[0].cost_per_verified_task.status, "partial_linkage");
-  assert.equal(data.operations.counters.offers, 1);
-  assert.equal(data.operations.counters.orders, 0);
+  assert.equal(data.operations.counters.offers, null);
+  assert.equal(data.operations.counters.orders, null);
+  assert.equal(data.operations.recordCounters.offers, 1);
+  assert.equal(data.operations.recordCounters.orders, 0);
+  assert.equal(data.operations.nonRealCounters.offers, 1);
   assert.equal(JSON.stringify(data).includes("must never pass"), false);
 });
 
@@ -260,6 +263,96 @@ test("stale, unavailable, fixture, and unknown states remain explicit", () => {
   });
   assert.equal(normalizedUnavailable.state.availability, "unavailable");
   assert.equal(normalizedUnavailable.state.freshness, "unavailable");
+});
+
+
+test("projection expiry and observation age override embedded fresh state", () => {
+  const expired = fixture();
+  expired.generated_at = "2026-07-26T12:29:00Z";
+  expired.observed_at = "2026-07-26T12:29:00Z";
+  expired.expires_at = "2026-07-26T12:30:00Z";
+  const normalizedExpired = normalizeAiCompanyMissionControl(expired, {
+    nowMs: Date.parse("2026-07-26T12:30:01Z"),
+    maxAgeMs: 60 * 60 * 1000,
+  });
+
+  assert.equal(normalizedExpired.state.freshness, "stale");
+  assert.equal(normalizedExpired.sectionStates.missions.freshness, "stale");
+  assert.equal(normalizedExpired.operations.state.freshness, "stale");
+
+  const oldObservation = fixture();
+  oldObservation.generated_at = "2026-07-26T12:29:00Z";
+  oldObservation.observed_at = "2026-07-26T12:00:00Z";
+  oldObservation.expires_at = "2026-07-26T13:00:00Z";
+  const normalizedOldObservation = normalizeAiCompanyMissionControl(oldObservation, {
+    nowMs: Date.parse("2026-07-26T12:30:00Z"),
+    maxAgeMs: 15 * 60 * 1000,
+  });
+
+  assert.equal(normalizedOldObservation.state.freshness, "stale");
+  assert.equal(normalizedOldObservation.sectionStates.missions.freshness, "stale");
+  assert.equal(normalizedOldObservation.operations.state.freshness, "stale");
+
+  const futureObservation = fixture();
+  futureObservation.generated_at = "2026-07-26T12:29:00Z";
+  futureObservation.observed_at = "2026-07-26T12:36:00Z";
+  futureObservation.expires_at = "2026-07-26T13:00:00Z";
+  const normalizedFutureObservation = normalizeAiCompanyMissionControl(futureObservation, {
+    nowMs: Date.parse("2026-07-26T12:30:00Z"),
+  });
+
+  assert.equal(normalizedFutureObservation.state.freshness, "unavailable");
+  assert.equal(normalizedFutureObservation.sectionStates.missions.freshness, "unavailable");
+});
+
+
+test("commercial counters distinguish a known empty source from missing data", () => {
+  const partialLegacy = fixture();
+  partialLegacy.data_state.data_class = "real";
+  partialLegacy.data_state.verification = "verified";
+  for (const section of [
+    partialLegacy.offers,
+    partialLegacy.leads,
+    partialLegacy.opportunities,
+    partialLegacy.experiments,
+    partialLegacy.orders,
+    partialLegacy.deliveries,
+    partialLegacy.payments,
+    partialLegacy.customer_feedback,
+  ]) {
+    for (const item of section.items) item.data_class = "real";
+  }
+  delete partialLegacy.orders;
+  delete partialLegacy.deliveries;
+  const normalizedPartial = normalizeAiCompanyMissionControl(partialLegacy, {
+    nowMs: Date.parse("2026-07-26T12:05:00Z"),
+  });
+
+  assert.equal(normalizedPartial.operations.counters.offers, 1);
+  assert.equal(normalizedPartial.operations.counters.opportunities, 0);
+  assert.equal(normalizedPartial.operations.counters.orders, null);
+  assert.equal(normalizedPartial.operations.counters.deliveries, null);
+  assert.equal(normalizedPartial.operations.recordCounters.orders, null);
+  assert.equal(normalizedPartial.operations.nonRealCounters.offers, 0);
+
+  const canonicalEmpty = fixture();
+  canonicalEmpty.company_operations = {
+    data_state: {
+      availability: "available",
+      freshness: "fresh",
+      verification: "verified",
+      data_class: "real",
+    },
+    items: [],
+  };
+  const normalizedCanonicalEmpty = normalizeAiCompanyMissionControl(canonicalEmpty, {
+    nowMs: Date.parse("2026-07-26T12:05:00Z"),
+  });
+
+  assert.equal(normalizedCanonicalEmpty.operations.counters.orders, 0);
+  assert.equal(normalizedCanonicalEmpty.operations.counters.payments, 0);
+  assert.equal(normalizedCanonicalEmpty.operations.recordCounters.orders, 0);
+  assert.equal(normalizedCanonicalEmpty.operations.state.verification, "verified");
 });
 
 
@@ -392,16 +485,21 @@ test("canonical nested Mission Ledger export retains mission details and company
 
   const rawDemo = rawMission("AI Company Governed Demo Mission");
   const rawMaster = rawMission("Build AI Company Control Plane v1");
+  const rawFirstMoney = rawMission("AI Company First Money Mission");
   assert.ok(rawDemo?.id, "canonical demo mission must exist");
   assert.ok(rawMaster?.id, "canonical bootstrap mission must exist");
+  assert.ok(rawFirstMoney?.id, "current first-money master mission must exist");
   const demo = data.missions.find((mission) => mission.mission_id === rawDemo.id);
   const master = data.missions.find((mission) => mission.mission_id === rawMaster.id);
+  const firstMoney = data.missions.find((mission) => mission.mission_id === rawFirstMoney.id);
 
   if (payload.data_state.data_class === "mixed") {
     assert.equal(data.state.dataClass, "unknown", "mixed data must not be promoted to real");
   }
   assert.equal(demo?.status, rawDemo.status);
   assert.equal(master?.status, rawMaster.status);
+  assert.equal(firstMoney?.status, rawFirstMoney.status);
+  assertRetained(payload.missions.items, data.missions, "mission_id");
 
   for (const raw of [rawDemo, rawMaster]) {
     const mission = data.missions.find((item) => item.mission_id === raw.id);
@@ -484,5 +582,18 @@ test("canonical nested Mission Ledger export retains mission details and company
     const rawRecords = payload.company_operations.items.filter((item) => item.record_type === recordType);
     assert.equal(normalized.length, rawRecords.length, `${recordType} counter must reflect canonical records`);
     assert.ok(rawRecords.every((raw) => normalized.some((item) => Object.values(item).includes(raw.id))));
+  }
+  if (
+    payload.company_operations.data_state.verification !== "verified"
+    || payload.company_operations.data_state.data_class !== "real"
+  ) {
+    assert.ok(
+      Object.values(data.operations.counters).every((value) => value === null),
+      "fixture, mixed, unknown, or unverified company operations must not become production counters",
+    );
+    assert.ok(
+      Object.values(data.operations.recordCounters).some((value) => typeof value === "number" && value > 0),
+      "sanitized non-production rows should remain separately observable",
+    );
   }
 });

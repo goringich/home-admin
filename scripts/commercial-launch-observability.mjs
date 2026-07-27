@@ -59,9 +59,13 @@ function billingReadinessSignal(billing) {
 }
 
 function readinessStage(revenue, billing, now) {
-  const revenueState = revenue.status === "available"
-    ? generatedSourceState(revenue.generated_at, now, REVENUE_STALE_AFTER_MS)
-    : "unavailable";
+  const revenueState = revenue.status !== "available"
+    ? "unavailable"
+    : revenue.freshness === "stale"
+      ? "stale"
+      : revenue.freshness === "unavailable"
+        ? "unavailable"
+        : generatedSourceState(revenue.generated_at, now, REVENUE_STALE_AFTER_MS);
   if (revenueState === "stale") {
     return stage("readiness", "Readiness", "stale", "Product and campaign readiness evidence is stale and cannot verify launch readiness.");
   }
