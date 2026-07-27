@@ -67,6 +67,8 @@ test("Company is one connected Atlas workspace with explicit trust states", () =
     assert.match(company, new RegExp(field));
   }
   assert.doesNotMatch(company, /fetch\([^)]*command/);
+  assert.match(app, /revenueProjectionLabel\(revenue\)/);
+  assert.match(app, /revenueProjectionTrusted\(props\.revenue\)/);
 });
 
 

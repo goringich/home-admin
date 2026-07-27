@@ -4,6 +4,8 @@ import {
   groupMissionTasks,
   missionTone,
   operationTone,
+  revenueProjectionLabel,
+  revenueProjectionTrusted,
 } from "../src/ai-company-view-policy.ts";
 
 
@@ -68,6 +70,22 @@ test("commercial operations only render success for fresh verified real data", (
     }),
     "attention",
   );
+});
+
+
+test("revenue readiness is trusted only for a fresh available projection", () => {
+  const fresh = { status: "available", freshness: "fresh", product_readiness: "ready" };
+  assert.equal(revenueProjectionTrusted(fresh), true);
+  assert.equal(revenueProjectionLabel(fresh), "ready");
+
+  for (const projection of [
+    { status: "available", freshness: "stale", product_readiness: "ready" },
+    { status: "available", freshness: "unavailable", product_readiness: "ready" },
+    { status: "unavailable", freshness: "unavailable", product_readiness: "ready" },
+  ]) {
+    assert.equal(revenueProjectionTrusted(projection), false);
+    assert.doesNotMatch(revenueProjectionLabel(projection), /^ready$/);
+  }
 });
 
 

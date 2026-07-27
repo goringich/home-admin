@@ -9,6 +9,8 @@ const VERIFICATION = new Set([
 ]);
 const DATA_CLASSES = new Set(["real", "fixture", "unknown", "unavailable"]);
 const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+const AI_COMPANY_ATLAS_SCHEMA = "2026-07-26.ai-company-atlas.v1";
+const EXPORT_HASH = /^[a-f0-9]{64}$/;
 
 const COMMON_FIELDS = [
   "status", "created_at", "updated_at", "actor", "schema_version", "revision",
@@ -161,6 +163,9 @@ const OPERATION_TYPES = {
   payments: "payments",
   customerFeedback: "customer_feedback",
 };
+const OPERATION_ENTITY_BY_TYPE = Object.fromEntries(
+  Object.entries(OPERATION_TYPES).map(([entityName, recordType]) => [recordType, entityName]),
+);
 
 const SECTION_STATE_SOURCES = {
   portfolios: ["portfolios", "portfolio"],
@@ -326,8 +331,9 @@ function allowed(value, choices, fallback) {
 
 
 function generatedFreshness(generatedAt, nowMs, maxAgeMs, fallback) {
+  void fallback;
   const generatedMs = Date.parse(String(generatedAt || ""));
-  if (!Number.isFinite(generatedMs)) return fallback;
+  if (!Number.isFinite(generatedMs)) return "unavailable";
   const ageMs = nowMs - generatedMs;
   if (ageMs < -MAX_FUTURE_SKEW_MS) return "unavailable";
   return ageMs > maxAgeMs ? "stale" : "fresh";
@@ -408,7 +414,53 @@ function operationSourceKnown(operationRoot, legacyNames) {
 }
 
 
-function operationCounterSet(operations, operationRoot, operationState) {
+function containerRecords(container) {
+  if (Array.isArray(container)) return container;
+  if (Array.isArray(container?.items)) return container.items;
+  if (Array.isArray(container?.records)) return container.records;
+  return null;
+}
+
+
+function validOperationRecord(record, entityName) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return false;
+  const projected = projectEntity(record, entityName);
+  const idField = ENTITY_ID_FIELDS[entityName];
+  return Boolean(projected && idField && typeof projected[idField] === "string" && projected[idField]);
+}
+
+
+function operationSourcesValid(operationRoot) {
+  if (!operationRoot || typeof operationRoot !== "object" || Array.isArray(operationRoot)) return false;
+  if (Object.hasOwn(operationRoot, "items")) {
+    if (!Array.isArray(operationRoot.items)) return false;
+    if (!operationRoot.items.every((record) => {
+      if (!record || typeof record !== "object" || Array.isArray(record)) return false;
+      const entityName = OPERATION_ENTITY_BY_TYPE[record.record_type];
+      return Boolean(entityName) && validOperationRecord(record, entityName);
+    })) return false;
+  }
+  for (const [entityName, legacyNames] of [
+    ["offers", ["offers"]],
+    ["leads", ["leads"]],
+    ["opportunities", ["opportunities"]],
+    ["experiments", ["experiments"]],
+    ["orders", ["orders"]],
+    ["deliveries", ["deliveries"]],
+    ["payments", ["payments", "payment_states"]],
+    ["customerFeedback", ["customer_feedback", "feedback"]],
+  ]) {
+    for (const name of legacyNames) {
+      if (!Object.hasOwn(operationRoot, name)) continue;
+      const records = containerRecords(operationRoot[name]);
+      if (!records || !records.every((record) => validOperationRecord(record, entityName))) return false;
+    }
+  }
+  return true;
+}
+
+
+function operationCounterSet(operations, operationRoot, operationState, sourceShapeValid = true) {
   const trustedSource = operationState.availability === "available"
     && operationState.freshness === "fresh"
     && operationState.verification === "verified"
@@ -428,7 +480,7 @@ function operationCounterSet(operations, operationRoot, operationState) {
   const nonRealCounters = {};
 
   for (const [counterName, entityName, legacyNames] of entries) {
-    const sourceKnown = operationSourceKnown(operationRoot, legacyNames);
+    const sourceKnown = sourceShapeValid && operationSourceKnown(operationRoot, legacyNames);
     const records = operations[entityName];
     recordCounters[counterName] = sourceKnown ? records.length : null;
     nonRealCounters[counterName] = sourceKnown
@@ -483,11 +535,11 @@ function approvalFieldsAreTyped(approval) {
 function approvalDecisionTrust(approval, approvalState, source, safeToExpose, nowMs) {
   if (!safeToExpose) return { trusted: false, reason: "unsafe_export" };
   if (approval?.data_class !== "real") return { trusted: false, reason: "approval_not_real" };
-  if (approvalState.availability !== "available") return { trusted: false, reason: "approval_data_unavailable" };
-  if (approvalState.freshness !== "fresh") return { trusted: false, reason: "approval_data_not_fresh" };
   if (source.authority !== TRUSTED_LEDGER_AUTHORITY || source.sourceRef !== TRUSTED_APPROVAL_SOURCE) {
     return { trusted: false, reason: "approval_source_untrusted" };
   }
+  if (approvalState.availability !== "available") return { trusted: false, reason: "approval_data_unavailable" };
+  if (approvalState.freshness !== "fresh") return { trusted: false, reason: "approval_data_not_fresh" };
   if (approval.status !== "pending") return { trusted: false, reason: "approval_not_pending" };
   if (
     !approval.provenance
@@ -630,6 +682,13 @@ export function normalizeAiCompanyMissionControl(payload, options = {}) {
   if (!payload || typeof payload !== "object" || payload.safe_to_expose !== true) {
     return unavailableAiCompanyMissionControl(payload ? "unsafe_export" : "source_missing");
   }
+  if (
+    payload.schema_version !== AI_COMPANY_ATLAS_SCHEMA
+    || !EXPORT_HASH.test(String(payload.export_hash || ""))
+  ) {
+    return unavailableAiCompanyMissionControl("untrusted_export");
+  }
+  const authorityTrusted = payload.authority === TRUSTED_LEDGER_AUTHORITY;
   const entities = {
     portfolios: sectionItems(payload, ["portfolios", "portfolio"], "portfolios"),
     missions: missionItems(payload),
@@ -651,6 +710,7 @@ export function normalizeAiCompanyMissionControl(payload, options = {}) {
   const operationRoot = payload.company_operations && typeof payload.company_operations === "object"
     ? payload.company_operations
     : payload;
+  const operationShapeValid = authorityTrusted && operationSourcesValid(operationRoot);
   const operations = {
     offers: operationItems(operationRoot, "offers", ["offers"]),
     leads: operationItems(operationRoot, "leads", ["leads"]),
@@ -662,19 +722,38 @@ export function normalizeAiCompanyMissionControl(payload, options = {}) {
     customerFeedback: operationItems(operationRoot, "customerFeedback", ["customer_feedback", "feedback"]),
   };
   const records = [...Object.values(entities).flat(), ...Object.values(operations).filter(Array.isArray).flat()];
-  const rootState = normalizeState(
+  let rootState = normalizeState(
     payload.data_state,
     records,
     projectionTiming(payload),
     options,
   );
+  if (!authorityTrusted) {
+    rootState = {
+      availability: "unavailable",
+      freshness: "unavailable",
+      verification: "unverified",
+      dataClass: "unavailable",
+    };
+  }
   operations.state = normalizeState(
     operationRoot.data_state,
     Object.values(operations).filter(Array.isArray).flat(),
     projectionTiming(operationRoot, payload),
     options,
   );
-  Object.assign(operations, operationCounterSet(operations, operationRoot, operations.state));
+  if (!operationShapeValid) {
+    operations.state = {
+      availability: "unavailable",
+      freshness: "unavailable",
+      verification: "unverified",
+      dataClass: "unavailable",
+    };
+  }
+  Object.assign(
+    operations,
+    operationCounterSet(operations, operationRoot, operations.state, operationShapeValid),
+  );
   const sectionStates = {};
   for (const [name, items] of Object.entries(entities)) {
     const container = sectionContainer(payload, SECTION_STATE_SOURCES[name] ?? [name]);
@@ -684,6 +763,14 @@ export function normalizeAiCompanyMissionControl(payload, options = {}) {
       projectionTiming(container, payload),
       options,
     );
+    if (!authorityTrusted) {
+      sectionStates[name] = {
+        availability: "unavailable",
+        freshness: "unavailable",
+        verification: "unverified",
+        dataClass: "unavailable",
+      };
+    }
   }
   const approvalContainer = sectionContainer(payload, ["approvals"]);
   const approvalSource = {

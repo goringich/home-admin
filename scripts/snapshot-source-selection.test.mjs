@@ -138,4 +138,16 @@ test("cached, stale, and future Atlas service evidence cannot render healthy", (
   }, now);
   assert.equal(freshLive.freshness, "fresh");
   assert.equal(freshLive.healthStatus, "ok");
+
+  const unknownEvidence = normalizeAtlasServiceStatus({
+    unit: "project-atlas.service",
+    enabled: true,
+    active_state: "active",
+    health_status: "ok",
+    updated_at: "2026-07-25T19:59:00Z",
+    evidence_source: "forged",
+  }, now);
+  assert.equal(unknownEvidence.evidenceSource, "unknown");
+  assert.equal(unknownEvidence.freshness, "unavailable");
+  assert.equal(unknownEvidence.healthStatus, "unknown");
 });

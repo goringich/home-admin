@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { CompanyWorkspace } from "./CompanyWorkspace";
+import {
+  revenueProjectionLabel,
+  revenueProjectionTrusted,
+} from "./ai-company-view-policy";
 import type {
   AiLabPrepareResponse,
   AdministrationRegistry,
@@ -406,14 +410,12 @@ function commercialTone(status: string): HealthTone {
 }
 
 function revenueAutopilotTone(revenue: RevenueAutopilotStatus): HealthTone {
-  if (revenue.status !== "available" || revenue.freshness !== "fresh") return "attention";
+  if (!revenueProjectionTrusted(revenue)) return "attention";
   return commercialTone(revenue.product_readiness ?? "");
 }
 
 function revenueAutopilotLabel(revenue: RevenueAutopilotStatus) {
-  const readiness = revenue.product_readiness ?? "unknown";
-  if (revenue.status !== "available") return "unavailable";
-  return revenue.freshness === "fresh" ? readiness : `${readiness} · ${revenue.freshness ?? "unknown"}`;
+  return revenueProjectionLabel(revenue);
 }
 
 function topReliabilityClass(classifications: Record<string, number>) {
@@ -2242,8 +2244,8 @@ function FirstMoneyPanel(props: { summary: FirstMoneySummary | null; revenue: Re
             <div className="class-row"><span>Активная линия</span><strong>{firstMoneyValue(props.revenue.active_revenue_lane)}</strong></div>
             <div className="class-row"><span>Эксперимент</span><strong>{firstMoneyValue(props.revenue.active_experiment)}</strong></div>
             <div className="class-row"><span>Лимит</span><strong>{typeof props.revenue.current_spend_cap_rub === "number" ? `${props.revenue.current_spend_cap_rub} ₽` : "Нет проверенных данных"}</strong></div>
-            <div className="class-row"><span>Готовность продукта</span><strong>{firstMoneyValue(props.revenue.product_readiness)}</strong></div>
-            <div className="class-row"><span>Готовность кампании</span><strong>{firstMoneyValue(props.revenue.campaign_readiness)}</strong></div>
+            <div className="class-row"><span>Готовность продукта</span><strong>{revenueProjectionLabel(props.revenue)}</strong></div>
+            <div className="class-row"><span>Готовность кампании</span><strong>{revenueProjectionTrusted(props.revenue) ? firstMoneyValue(props.revenue.campaign_readiness) : revenueProjectionLabel(props.revenue)}</strong></div>
             <div className="class-row"><span>Свежесть проекции</span><strong>{firstMoneyValue(props.revenue.freshness)}</strong></div>
             <div className="class-row"><span>Аналитика</span><strong>{firstMoneyValue(props.revenue.analytics_status)}</strong></div>
             <div className="class-row"><span>Решение цикла</span><strong>{firstMoneyValue(props.revenue.experiment_action)}</strong></div>
@@ -2266,9 +2268,16 @@ function RevenueOrbitPanel(props: {
   onOpen: (label: string, target: string) => void;
   onCopy: (label: string, value: string) => void;
 }) {
-  const factory = props.revenue.creative_factory;
+  const trustedProjection = revenueProjectionTrusted(props.revenue);
+  const factory = trustedProjection ? props.revenue.creative_factory : null;
   const status = factory?.status ?? "unavailable";
-  const statusLabel = status.includes("blocked") ? "asset gate blocked" : status === "unavailable" ? "status unavailable" : "ready for review";
+  const statusLabel = !trustedProjection
+    ? revenueProjectionLabel(props.revenue)
+    : status.includes("blocked")
+      ? "asset gate blocked"
+      : status === "unavailable"
+        ? "status unavailable"
+        : "ready for review";
   const assetLabel = factory?.asset_status?.includes("blocked") ? "waiting for approved media" : factory?.asset_status ?? "unavailable";
   const approvalLabel = factory?.publish_policy === "owner_approval_required" ? "owner gate" : factory?.publish_policy ?? "unavailable";
   return (
@@ -2280,7 +2289,7 @@ function RevenueOrbitPanel(props: {
           <h3>Креативы — только после доказуемого asset gate</h3>
           <p>Atlas показывает безопасный operational status, а не сырой контент, лиды или выдуманную эффективность.</p>
         </div>
-        <StatusBadge label={statusLabel} tone={status.includes("blocked") || status === "unavailable" ? "attention" : "ok"} />
+        <StatusBadge label={statusLabel} tone={!trustedProjection || status.includes("blocked") || status === "unavailable" ? "attention" : "ok"} />
       </div>
 
       <div className="revenue-orbit-layout">
@@ -3846,7 +3855,7 @@ function OverviewWorkspace(props: {
 
       <section className="pulse-grid" aria-label="Key signals">
         <button className="pulse-card" type="button" onClick={() => props.onNavigate("revenue")}>
-          <span>Revenue lane</span><strong>{revenue.active_revenue_lane ?? "unavailable"}</strong><p>{revenue.product_readiness ?? "no readiness"}</p>
+          <span>Revenue lane</span><strong>{revenue.active_revenue_lane ?? "unavailable"}</strong><p>{revenueProjectionLabel(revenue)}</p>
         </button>
         <button className="pulse-card" type="button" onClick={() => props.onNavigate("ai-control")}>
           <span>Host</span><strong>{snapshot.system.systemStatus}</strong><p>{snapshot.system.hyprlandOnline ? "Hyprland online" : "Hyprland unconfirmed"}</p>

@@ -2,6 +2,7 @@ import type {
   AiCompanyDataState,
   AiCompanyEntity,
   HealthTone,
+  RevenueAutopilotStatus,
 } from "./types.ts";
 
 
@@ -37,6 +38,24 @@ export function operationTone(state: AiCompanyDataState): HealthTone {
     && state.dataClass === "real"
     ? "ok"
     : "attention";
+}
+
+
+export function revenueProjectionTrusted(
+  revenue: Pick<RevenueAutopilotStatus, "status" | "freshness">,
+): boolean {
+  return revenue.status === "available" && revenue.freshness === "fresh";
+}
+
+
+export function revenueProjectionLabel(
+  revenue: Pick<RevenueAutopilotStatus, "status" | "freshness" | "product_readiness">,
+): string {
+  if (revenue.status !== "available") return "projection unavailable";
+  if (revenue.freshness !== "fresh") {
+    return `projection ${revenue.freshness ?? "unavailable"}`;
+  }
+  return revenue.product_readiness?.trim() || "unknown";
 }
 
 

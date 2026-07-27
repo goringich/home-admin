@@ -68,12 +68,15 @@ test("expiry and observation age override embedded fresh commercial state", () =
 
 test("First Money UI keeps unknown, zero, stale and pending-payment wording safe", () => {
   const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const policy = readFileSync(new URL("../src/ai-company-view-policy.ts", import.meta.url), "utf8");
   assert.match(source, /Нет проверенных данных/);
   assert.match(source, /Данные устарели/);
   assert.match(source, /Ожидающие проверки оплаты/);
   assert.match(source, /Подтверждённые оплаты/);
   assert.match(source, /revenueAutopilotTone/);
-  assert.match(source, /revenue\.freshness !== "fresh"/);
+  assert.match(source, /revenueProjectionTrusted/);
+  assert.match(source, /revenueProjectionLabel/);
+  assert.match(policy, /revenue\.freshness !== "fresh"/);
   assert.doesNotMatch(source, /выручк/i);
 });
 

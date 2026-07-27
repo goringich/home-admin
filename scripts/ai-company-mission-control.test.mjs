@@ -303,6 +303,17 @@ test("projection expiry and observation age override embedded fresh state", () =
 
   assert.equal(normalizedFutureObservation.state.freshness, "unavailable");
   assert.equal(normalizedFutureObservation.sectionStates.missions.freshness, "unavailable");
+
+  const missingTiming = fixture();
+  delete missingTiming.generated_at;
+  delete missingTiming.observed_at;
+  delete missingTiming.expires_at;
+  const normalizedMissingTiming = normalizeAiCompanyMissionControl(missingTiming, {
+    nowMs: Date.parse("2026-07-26T12:30:00Z"),
+  });
+
+  assert.equal(normalizedMissingTiming.state.freshness, "unavailable");
+  assert.equal(normalizedMissingTiming.operations.state.freshness, "unavailable");
 });
 
 
@@ -353,6 +364,73 @@ test("commercial counters distinguish a known empty source from missing data", (
   assert.equal(normalizedCanonicalEmpty.operations.counters.payments, 0);
   assert.equal(normalizedCanonicalEmpty.operations.recordCounters.orders, 0);
   assert.equal(normalizedCanonicalEmpty.operations.state.verification, "verified");
+});
+
+
+test("commercial production counters require the canonical Mission Ledger authority", () => {
+  const untrusted = fixture();
+  untrusted.authority = "untrusted-export";
+  untrusted.data_state.data_class = "real";
+  untrusted.data_state.verification = "verified";
+  untrusted.company_operations = {
+    generated_at: untrusted.generated_at,
+    data_state: {
+      availability: "available",
+      freshness: "fresh",
+      verification: "verified",
+      data_class: "real",
+    },
+    items: [{
+      record_type: "payments",
+      payment_id: "payment_external_1",
+      mission_id: "mission_1",
+      status: "completed",
+      data_class: "real",
+      amount: 4900,
+      currency: "RUB",
+    }],
+  };
+
+  const normalized = normalizeAiCompanyMissionControl(untrusted, {
+    nowMs: Date.parse("2026-07-26T12:05:00Z"),
+  });
+
+  assert.equal(normalized.state.availability, "unavailable");
+  assert.equal(normalized.operations.counters.payments, null);
+});
+
+
+test("malformed canonical company operations cannot become authoritative zeros", () => {
+  const malformed = fixture();
+  malformed.data_state.data_class = "real";
+  malformed.data_state.verification = "verified";
+  malformed.company_operations = {
+    generated_at: malformed.generated_at,
+    data_state: {
+      availability: "available",
+      freshness: "fresh",
+      verification: "verified",
+      data_class: "real",
+    },
+    items: ["malformed"],
+  };
+
+  const normalized = normalizeAiCompanyMissionControl(malformed, {
+    nowMs: Date.parse("2026-07-26T12:05:00Z"),
+  });
+
+  assert.equal(normalized.operations.state.availability, "unavailable");
+  assert.equal(normalized.operations.state.freshness, "unavailable");
+  assert.deepEqual(normalized.operations.counters, {
+    offers: null,
+    leads: null,
+    opportunities: null,
+    experiments: null,
+    orders: null,
+    deliveries: null,
+    payments: null,
+    feedback: null,
+  });
 });
 
 

@@ -97,9 +97,11 @@ export function normalizeAtlasServiceStatus(raw, now = new Date()) {
   if (Number.isFinite(nowMs) && Number.isFinite(updatedAtMs)) {
     const ageMs = nowMs - updatedAtMs;
     if (ageMs >= -FUTURE_CLOCK_TOLERANCE_MS) {
-      freshness = evidenceSource === "cached_live_export" || ageMs > SERVICE_STATUS_MAX_AGE_MS
-        ? "stale"
-        : "fresh";
+      freshness = evidenceSource === "live_probe"
+        ? ageMs > SERVICE_STATUS_MAX_AGE_MS ? "stale" : "fresh"
+        : evidenceSource === "cached_live_export"
+          ? "stale"
+          : "unavailable";
     }
   }
 
