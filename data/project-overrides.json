@@ -33,7 +33,7 @@
         "deploy": "npm run deploy:prod"
       },
       "deploy": {
-        "surface": "deployuser@178.236.253.46:333 / apps/elizabet",
+        "surface": "deployuser@2.26.250.194:333 / apps/elizabet",
         "environment": "prod",
         "status": "attention",
         "note": "Release flow идёт через develop -> master, а продовый деплой использует SSH port 333."
@@ -134,7 +134,7 @@
         "deploy": "npm run deploy"
       },
       "deploy": {
-        "surface": "deployuser@178.236.253.46:333 / quench-my-sorrows-temp",
+        "surface": "deployuser@2.26.250.194:333 / quench-my-sorrows-temp",
         "environment": "prod",
         "status": "attention",
         "note": "Worktree ahead 2 и большой незакоммиченный слой вокруг страниц и CMS."
