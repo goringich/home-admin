@@ -29,6 +29,7 @@ const canonicalLocalCodexAtlasPath = path.join(canonicalLocalCodexRuntime, "atla
 const codexHistorySummaryPath = path.join(canonicalLocalCodexRuntime, "atlas", "codex-history-summary.json");
 const legacyLocalCodexAtlasPath = path.join(home, "__home_organized", "local-codex-stack", "atlas", "local-codex-lab.json");
 const localAiStatePath = path.join(home, "__home_organized", "runtime", "local-ai-control", "state.json");
+const localAiOsStatusPath = path.join(canonicalLocalCodexRuntime, "atlas", "local-ai-os-status.json");
 const agentHealthStatePath = path.join(home, "__home_organized", "runtime", "agent-health-gate", "state.json");
 const hostAuditOutputPath = path.join(canonicalLocalCodexRuntime, "host-audit-latest.json");
 const aiTelemetryExportPath = path.join(home, "__home_organized", "runtime", "ai-telemetry", "exports", "atlas.json");
@@ -1226,7 +1227,9 @@ function buildLocalCodexLab() {
 
 function buildLocalAiControl() {
   const state = readJsonFirst([localAiStatePath], {});
+  const terminalState = readJsonFirst([localAiOsStatusPath], {});
   const payload = state.payload ?? {};
+  const terminalPayload = terminalState.payload ?? {};
   const emptyCleanup = {
     keep: [],
     "keep-but-manual": [],
@@ -1255,6 +1258,17 @@ function buildLocalAiControl() {
     security: {
       summary: payload.openclaw_audit?.summary || { critical: 0, warn: 0, info: 0 },
       findings: payload.openclaw_audit?.findings || [],
+    },
+    terminalCompletion: {
+      contract: terminalPayload.terminal_completion_contract || {},
+      latestRun: terminalPayload.local_codex_stack_runs?.latest || {},
+      dormantComponents: terminalPayload.dormant_components || {
+        status: "missing",
+        component_count: 0,
+        decisions: { activate: 0, retire: 0, defer: 0 },
+        components: [],
+      },
+      source: statMeta(terminalState.path, terminalPayload.generated_at || ""),
     },
     source: statMeta(state.path, payload.generated_at || ""),
   };

@@ -2415,6 +2415,16 @@ function RuntimeRegistryPanel(props: {
       </div>
 
       <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Terminal completion</div>
+          <div className="class-grid">
+            <div className="class-row"><span>contract</span><strong>{props.control.terminalCompletion.contract.version || "missing"}</strong></div>
+            <div className="class-row"><span>latest stage</span><strong>{props.control.terminalCompletion.latestRun.current_stage || "discovered"}</strong></div>
+            <div className="class-row"><span>terminal</span><strong>{props.control.terminalCompletion.latestRun.terminal === true ? "done" : "no"}</strong></div>
+            <div className="class-row"><span>activate / retire / defer</span><strong>{`${props.control.terminalCompletion.dormantComponents.decisions.activate} / ${props.control.terminalCompletion.dormantComponents.decisions.retire} / ${props.control.terminalCompletion.dormantComponents.decisions.defer}`}</strong></div>
+          </div>
+          <SourceFootnote source={props.control.terminalCompletion.source} label="terminal completion" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
         <article className="detail-card detail-card-wide">
           <div className="detail-card-title">Live runtimes</div>
           <div className="repo-intel-list">

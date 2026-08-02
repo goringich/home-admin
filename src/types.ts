@@ -1258,6 +1258,27 @@ export interface LocalAiControl {
     };
     findings: LocalAiSecurityFinding[];
   };
+  terminalCompletion: {
+    contract: {
+      version?: string;
+      terminal_status?: string;
+      false_terminal_statuses?: string[];
+    };
+    latestRun: {
+      run_id?: string;
+      status?: string;
+      terminal?: boolean;
+      completion_status?: string;
+      current_stage?: string;
+    };
+    dormantComponents: {
+      status: string;
+      component_count: number;
+      decisions: { activate: number; retire: number; defer: number };
+      components: Array<{ id: string; decision: "activate" | "retire" | "defer" }>;
+    };
+    source: SourceMeta;
+  };
   source: SourceMeta;
 }
 

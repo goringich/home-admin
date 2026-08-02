@@ -12,8 +12,8 @@
     {
       "id": "mcp-gateways",
       "label": "MCP Gateways",
-      "status": "local_tested",
-      "summary": "Read-only redacted MCP gateway tested on 127.0.0.1:18765; public tunnel remains blocked.",
+      "status": "retired_as_runtime",
+      "summary": "Read-only redacted MCP bridge source is retained for diagnostics, but the competing always-on gateway is retired and public exposure remains forbidden.",
       "path": "/home/goringich/__home_organized/local-codex-stack/mcp-gateways/chatgpt-readonly-bridge"
     },
     {
@@ -40,15 +40,15 @@
     {
       "id": "chatgpt-readonly-bridge",
       "label": "ChatGPT Read-only Bridge",
-      "status": "local_e2e_pass",
-      "summary": "Nine read-only/status tools passed local redaction and denial tests; bridge is stopped after verification.",
+      "status": "retired_as_runtime",
+      "summary": "Historical local E2E passed; the bridge remains stopped and is retired as an always-on runtime.",
       "path": "/home/goringich/__home_organized/local-codex-stack/mcp-gateways/chatgpt-readonly-bridge"
     },
     {
       "id": "mcp-gateway-status",
       "label": "MCP Gateway Status",
-      "status": "loopback_ready",
-      "summary": "Local start/stop commands ready on port 18765; HTTPS/public exposure requires explicit later approval.",
+      "status": "retired_as_runtime",
+      "summary": "Start/stop diagnostics remain, but no MCP gateway service is activated; HTTPS/public exposure is forbidden without a new explicit decision.",
       "path": "/home/goringich/__home_organized/local-codex-stack/mcp-gateways/chatgpt-readonly-bridge/README.md"
     },
     {
@@ -61,8 +61,8 @@
     {
       "id": "codex-handoffs",
       "label": "Codex Handoffs",
-      "status": "staged",
-      "summary": "Runtime-only reviewed task manifests; no authentication-file access required.",
+      "status": "activated_queue_v2",
+      "summary": "Governed Queue-v2 handoffs are installed; execution success remains non-terminal until the completion contract reaches done.",
       "path": "/home/goringich/__home_organized/runtime/codex-handoffs"
     }
   ],
