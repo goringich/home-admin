@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 import { normalizeRevenueAutopilot } from "./commercial-summary.mjs";
 import { reconcileRecentRuns, safeProjectionText, sanitizeSharedRunReport } from "./codex-orchestrator-projection.mjs";
 import { sanitizeServicePlacementProjection } from "./service-placement-projection.mjs";
+import {
+  normalizeAtlasServiceStatus,
+  selectLocalCodexLabRecord,
+} from "./snapshot-source-selection.mjs";
 
 const home = os.homedir();
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
