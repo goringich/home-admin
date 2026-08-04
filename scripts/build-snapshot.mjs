@@ -405,8 +405,8 @@ function buildCodexOrchestratorBridge() {
       status: "/api/codex-orchestrator/status",
       queue: "/api/codex-orchestrator/queue",
       recentRuns: "/api/codex-orchestrator/recent-runs",
-      dispatch: "/api/local-agent/dispatch",
-      enqueue: "/api/codex-orchestrator/enqueue",
+      dispatch: "/api/local-agent/prepare",
+      enqueue: "/api/local-agent/prepare",
     },
     scripts: {
       prepare: localAgentRunScript,
@@ -426,7 +426,7 @@ function buildCodexOrchestratorBridge() {
     nextExactAction:
       latestRunReports[0]?.nextAction ||
       (available
-        ? "Prepare in Atlas and dispatch through `/api/local-agent/dispatch`; the governed local-agent run creates the report and queues the reviewed Codex handoff."
+        ? "Prepare in Atlas and dispatch through `/api/local-agent/prepare`; the governed local-agent run creates the report and queues the reviewed Codex handoff."
         : codexBridgeFixCommand),
     source: statMeta(sharedRunReportsRoot, ""),
   };
