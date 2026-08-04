@@ -2,20 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { normalizeCommercialBilling } from "./commercial-billing.mjs";
-import { normalizeCommercialLaunchObservability } from "./commercial-launch-observability.mjs";
-import { normalizeCommercialSummary, normalizeRevenueAutopilot } from "./commercial-summary.mjs";
-import { normalizeLocalAgentPlatform } from "./local-agent-platform.mjs";
-import {
-  normalizeAtlasServiceStatus,
-  selectLocalCodexLabRecord,
-} from "./snapshot-source-selection.mjs";
-import { normalizeCodexAudit } from "./codex-audit.mjs";
-import {
-  normalizeAiCompanyMissionControl,
-  unavailableAiCompanyMissionControl,
-} from "./ai-company-mission-control.mjs";
+import { normalizeRevenueAutopilot } from "./commercial-summary.mjs";
+import { reconcileRecentRuns, safeProjectionText, sanitizeSharedRunReport } from "./codex-orchestrator-projection.mjs";
+import { sanitizeServicePlacementProjection } from "./service-placement-projection.mjs";
 
 const home = os.homedir();
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
@@ -48,6 +37,7 @@ const codexAuditRuntimeLatestPath = process.env.CODEX_AUDIT_LATEST_PATH
 const codexAuditObsidianLatestPath = path.join(home, "Desktop", "Obsidian", "codex-audit", "latest.json");
 const codexAuditExporterPath = path.join(canonicalLocalCodexRuntime, "codex-audit", "export-status.json");
 const revenueAutopilotPath = path.join(canonicalLocalCodexRuntime, "atlas", "revenue-autopilot.json");
+const servicePlacementPath = path.join(canonicalLocalCodexRuntime, "atlas", "ai-os-service-placement.json");
 const aiLabRegistryPath = path.join(rootDir, "data", "ai-lab-registry.json");
 const codexOrchestratorRuntime = path.join(home, "__home_organized", "runtime", "codex-orchestrator");
 const codexOrchestratorArtifacts = path.join(home, "__home_organized", "artifacts", "codex-orchestrator");
@@ -351,16 +341,16 @@ function codexQueueEntries(kind, limit = 8) {
     });
 }
 
-function codexRecentRuns(limit = 8) {
-  return listDirs(codexOrchestratorArtifacts)
+function codexRecentRuns(limit = 8, sharedReports = []) {
+  const artifacts = listDirs(codexOrchestratorArtifacts)
     .slice(-limit)
     .reverse()
     .map((targetPath) => {
       const stats = fs.statSync(targetPath);
       const summary = parseSimpleKeyValueFile(path.join(targetPath, "summary.txt"));
       return {
-        id: path.basename(targetPath),
-        title: summary.title || path.basename(targetPath),
+        artifactId: path.basename(targetPath),
+        title: safeProjectionText(summary.title || path.basename(targetPath)),
         workdir: summary.workdir || "",
         sandbox: summary.sandbox || "",
         model: summary.model || "",
@@ -369,36 +359,16 @@ function codexRecentRuns(limit = 8) {
         updatedAt: new Date(stats.mtimeMs).toISOString(),
       };
     });
+  return reconcileRecentRuns(artifacts, sharedReports);
 }
 
 function normalizeSharedRunReport(targetPath, payload = {}) {
   const stats = fs.statSync(targetPath);
-  const verificationResults = Array.isArray(payload.verification_results) ? payload.verification_results : [];
-  const failedVerification = verificationResults.filter((entry) => ["failed", "blocked"].includes(String(entry?.status || "")));
-  const dirtyAfter = toNumber(payload.dirty_after || 0);
   return {
-    runId: payload.run_id || path.basename(targetPath, ".json"),
-    createdAt: payload.created_at || new Date(stats.mtimeMs).toISOString(),
-    taskTitle: payload.task_title || "",
-    taskText: payload.task_text || "",
-    workdir: payload.workdir || "",
-    repo: payload.repo || {},
-    branchBefore: payload.branch_before || "",
-    branchAfter: payload.branch_after || "",
-    dirtyBefore: toNumber(payload.dirty_before || 0),
-    dirtyAfter,
-    commitBefore: payload.commit_before || "",
-    commitAfter: payload.commit_after || "",
-    filesChanged: Array.isArray(payload.files_changed) ? payload.files_changed : [],
-    verificationCommands: Array.isArray(payload.verification_commands) ? payload.verification_commands : [],
-    verificationResults,
-    failedVerificationCount: failedVerification.length,
-    status: payload.status || "unknown",
-    summary: payload.summary || "",
-    nextAction: payload.next_action || "",
-    sourceFiles: Array.isArray(payload.source_files) ? payload.source_files : [],
-    reportPath: targetPath,
-    dirtyAfterRun: dirtyAfter > 0,
+    ...sanitizeSharedRunReport(payload, {
+      reportPath: targetPath,
+      modifiedAt: new Date(stats.mtimeMs).toISOString(),
+    }),
     source: statMeta(targetPath, payload.created_at || ""),
   };
 }
@@ -449,7 +419,7 @@ function buildCodexOrchestratorBridge() {
     queueCounts: codexQueueCounts(),
     queue: codexQueueEntries("queue"),
     running: codexQueueEntries("claims"),
-    recentRuns: codexRecentRuns(),
+    recentRuns: codexRecentRuns(8, latestRunReports),
     latestRunReports,
     failedVerification,
     dirtyAfterRun,
@@ -1633,6 +1603,16 @@ function buildHostAudit(system, localAiControl) {
   };
 }
 
+function buildServicePlacement() {
+  const source = readJsonFirst([servicePlacementPath], {});
+  const payload = source.payload && typeof source.payload === "object" ? source.payload : {};
+  const placement = sanitizeServicePlacementProjection(payload);
+  return {
+    ...placement,
+    source: statMeta(source.path, payload.generated_at || ""),
+  };
+}
+
 const inventory = injectOverrideRepos(parseInventory(readText(inventoryPath)));
 const projects = inventory
   .map(summarizeRepo)
@@ -1679,7 +1659,7 @@ const localAgentPlatform = buildLocalAgentPlatform();
 const aiCompany = buildAiCompanyMissionControl();
 const codexAudit = buildCodexAudit();
 const hostAudit = buildHostAudit(system, localAiControl);
-const administration = buildAdministration();
+const hostPlacement = buildServicePlacement();
 
 const snapshot = {
   generatedAt: new Date().toISOString(),
@@ -1698,6 +1678,7 @@ const snapshot = {
   },
   system,
   hostAudit,
+  hostPlacement,
   projects,
   tasks,
   recentCommits,
