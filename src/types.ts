@@ -110,6 +110,205 @@ export interface ProjectRecord {
   };
 }
 
+export interface AiCompanyDataState {
+  availability: "available" | "partial" | "unavailable";
+  freshness: "fresh" | "stale" | "unknown" | "unavailable";
+  verification: "verified" | "partially_verified" | "unverified" | "rejected" | "unknown";
+  dataClass: "real" | "fixture" | "unknown" | "unavailable";
+  reason?: string;
+}
+
+export interface AiCompanyAggregateMetric {
+  complete?: boolean;
+  known_count?: number;
+  unknown_count?: number;
+  known_value?: number | null;
+  value?: number | null;
+  aggregation?: string;
+}
+
+export interface AiCompanyDerivedMetric {
+  value?: number | null;
+  numerator?: number | null;
+  denominator?: number | null;
+  status?: string;
+}
+
+export interface AiCompanyEconomicsSummary {
+  [key: string]: unknown;
+  cost_id?: string;
+  data_state?: {
+    availability?: string;
+    freshness?: string;
+    verification?: string;
+  };
+  scope?: { mission_id?: string | null };
+  budget?: {
+    actual_cost?: number | null;
+    budget_limit?: number | null;
+    ratio?: number | null;
+    status?: string;
+    variance?: number | null;
+    warning_ratio?: number | null;
+    stop_loss_ratio?: number | null;
+    action_executed?: boolean;
+  };
+  derived?: {
+    cost_per_verified_task?: AiCompanyDerivedMetric;
+    cost_per_completed_mission?: AiCompanyDerivedMetric;
+    cost_per_achieved_outcome?: AiCompanyDerivedMetric;
+  };
+  totals?: {
+    entity_id?: string | null;
+    entry_count?: number;
+    metrics?: Record<string, AiCompanyAggregateMetric>;
+  };
+}
+
+export interface AiCompanyModelProductivity {
+  model: string;
+  record_count: number;
+  linked_task_count: number;
+  unlinked_record_count: number;
+  verified_task_count: number | null;
+  verification_status: "known" | "partial" | "unknown";
+  model_cost: AiCompanyAggregateMetric;
+  runtime_duration: AiCompanyAggregateMetric;
+  input_tokens: AiCompanyAggregateMetric;
+  cached_tokens: AiCompanyAggregateMetric;
+  output_tokens: AiCompanyAggregateMetric;
+  reasoning_tokens: AiCompanyAggregateMetric;
+  cost_per_verified_task: AiCompanyDerivedMetric;
+}
+
+export interface AiCompanyEntity {
+  [key: string]: unknown;
+  portfolio_id?: string;
+  mission_id?: string;
+  workstream_id?: string;
+  task_id?: string;
+  attempt_id?: string;
+  run_id?: string;
+  evidence_id?: string;
+  verification_id?: string;
+  approval_id?: string;
+  cost_id?: string;
+  incident_id?: string;
+  decision_id?: string;
+  outcome_id?: string;
+  assignment_id?: string;
+  agent_id?: string;
+  event_id?: string;
+  entity_id?: string;
+  entity_type?: string;
+  event_type?: string;
+  title?: string;
+  name?: string;
+  actor?: string;
+  status?: string;
+  data_class?: string;
+  score?: number | null;
+  rank?: number | null;
+  next_best?: boolean;
+  next_best_mission_id?: string | null;
+  priority_explanation?: string;
+  score_contributions?: Record<string, number | null>;
+  expected_value?: number | null;
+  actual_cost?: number | null;
+  model_cost?: number | null;
+  runtime_duration?: number | null;
+  objective?: string;
+  target_metric?: string;
+  target_value?: unknown;
+  deadline?: string;
+  budget_limit?: number | null;
+  work_status?: string;
+  implementation_status?: string;
+  deployment_status?: string;
+  outcome_status?: string;
+  confidence?: number | null;
+  contract_completion_blockers?: unknown[];
+  owner_decisions?: unknown[];
+  economics?: AiCompanyEconomicsSummary;
+  critical_path?: boolean;
+  owner_gate?: boolean;
+  depends_on_task_id?: string;
+  dependency_type?: string;
+  attempt_number?: number;
+  worker_id?: string | null;
+  executor?: string;
+  evidence_type?: string;
+  reference_basename?: string;
+  freshness?: string;
+  summary?: string;
+  independent?: boolean;
+  reason?: string;
+  approval_type?: string;
+  requested_action?: string;
+  risk?: string | number | null;
+  cost?: number | string | null;
+  evidence_ids?: unknown[];
+  alternatives?: unknown[];
+  reversibility?: string;
+  expires_at?: string;
+  revision?: number;
+  role?: string;
+  occurred_at?: string;
+  sequence?: number;
+  metric?: string;
+  observed?: unknown;
+  target?: unknown;
+  severity?: string;
+  impact?: string;
+  recovery?: string;
+  question?: string;
+  decision?: string;
+  decision_trusted?: boolean;
+  decision_trust_reason?: string;
+}
+
+export interface AiCompanyMissionControl {
+  schemaVersion: string;
+  generatedAt: string;
+  exportHash: string;
+  safeToExpose: boolean;
+  state: AiCompanyDataState;
+  sectionStates: Record<string, AiCompanyDataState>;
+  portfolios: AiCompanyEntity[];
+  missions: AiCompanyEntity[];
+  workstreams: AiCompanyEntity[];
+  tasks: AiCompanyEntity[];
+  dependencies: AiCompanyEntity[];
+  attempts: AiCompanyEntity[];
+  runs: AiCompanyEntity[];
+  evidence: AiCompanyEntity[];
+  verifications: AiCompanyEntity[];
+  approvals: AiCompanyEntity[];
+  economics: AiCompanyEntity[];
+  incidents: AiCompanyEntity[];
+  decisions: AiCompanyEntity[];
+  outcomes: AiCompanyEntity[];
+  agentAssignments: AiCompanyEntity[];
+  timeline: AiCompanyEntity[];
+  financialSummary: AiCompanyEconomicsSummary | null;
+  modelProductivity: AiCompanyModelProductivity[];
+  operations: {
+    offers: AiCompanyEntity[];
+    leads: AiCompanyEntity[];
+    opportunities: AiCompanyEntity[];
+    experiments: AiCompanyEntity[];
+    orders: AiCompanyEntity[];
+    deliveries: AiCompanyEntity[];
+    payments: AiCompanyEntity[];
+    customerFeedback: AiCompanyEntity[];
+    counters: Record<string, number | null>;
+    recordCounters?: Record<string, number | null>;
+    nonRealCounters?: Record<string, number | null>;
+    state: AiCompanyDataState;
+  };
+  source?: SourceMeta;
+}
+
 export interface Snapshot {
   generatedAt: string;
   focusProjectIds: string[];
@@ -153,9 +352,39 @@ export interface Snapshot {
   }>;
   localCodexLab: LocalCodexLab;
   localAiControl: LocalAiControl;
+  localAgentPlatform: LocalAgentPlatform;
+  aiCompany: AiCompanyMissionControl;
+  codexAudit: CodexAudit;
   aiTelemetry: AiTelemetryExport;
   commercialReadiness: CommercialReadiness;
   operationPolicy: OperationPolicy;
+  administration: AdministrationRegistry;
+}
+
+export interface AdministrationSurface {
+  id: string;
+  title: string;
+  classification: string;
+  ownership: string;
+  operatorRole: string;
+  nativeUi: string;
+  designReview: string;
+  styleAdapter: string;
+  atlasIntegration: string;
+  availability: string;
+  capabilities: string[];
+  launch: { mode: string; label: string; target: string };
+  runbookTarget: string;
+  sourcePaths: string[];
+}
+
+export interface AdministrationRegistry {
+  status: string;
+  schemaVersion: string;
+  sourceOfTruth: string[];
+  contract: { atlas_role?: string; ui_strategy?: string; product_boundary?: string; secret_policy?: string };
+  surfaces: AdministrationSurface[];
+  source: SourceMeta;
 }
 
 export interface SourceMeta {
@@ -163,6 +392,110 @@ export interface SourceMeta {
   generatedAt?: string;
   modifiedAt?: string;
   modifiedAtMs?: number;
+}
+
+export interface LocalAgentPlatformTask {
+  task_id?: string;
+  state?: string;
+  status?: string;
+  trace_id?: string;
+  repository_id?: string;
+}
+
+export interface LocalAgentPlatform {
+  status: string;
+  schemaVersion: string;
+  authority: string;
+  source?: string[];
+  generatedAt?: string;
+  observedAt?: string;
+  expiresAt?: string;
+  freshnessState: string;
+  verificationStatus: string;
+  missingFields: string[];
+  queueHealth: {
+    active_leases?: number;
+    authority?: string;
+    counts?: Record<string, number>;
+    dead_letter_depth?: number;
+    generated_at?: string;
+    queue_depth?: number;
+    stale_leases?: number;
+  };
+  latestRun: LocalAgentPlatformTask & {
+    executor?: string;
+    generated_at?: string;
+  };
+  gatewayHealth: {
+    backend?: string;
+    checked_at?: string;
+    gateway?: string;
+    loopback_only?: boolean;
+  };
+  runningTasks: LocalAgentPlatformTask[];
+  taskLifecycle: LocalAgentPlatformTask;
+  sandboxStatus: {
+    main_worktree_modified?: boolean;
+    sandbox?: string;
+    status?: string;
+  };
+  verificationResults: {
+    passed?: boolean;
+    status?: string;
+  };
+  benchmarkTrends: Array<{
+    pass_rate?: number;
+    passed?: number;
+    samples?: number;
+  }>;
+  agentSuccessRate: number;
+  staleEvidence: Array<{
+    count?: number;
+    id?: string;
+    state?: string;
+  }>;
+  blockedPromotions: string[];
+  roleChampions: Record<string, { evidence_class?: string; model?: string; status?: string }>;
+  challengers: Record<string, { evidence_class?: string; model?: string; status?: string }>;
+  analysisPack: {
+    freshness_state?: string;
+    generated_at?: string;
+    path?: string;
+  };
+  sourceArtifact: SourceMeta;
+  readOnly: boolean;
+  commandGateway: string;
+}
+
+export interface CodexAuditTask {
+  taskId: string;
+  status: string;
+  repository: string;
+  branch: string;
+  headSha: string;
+  diffUrl: string;
+  failedChecks: string[];
+  blockers: string[];
+  taskPath: string;
+  updatedAt: string;
+}
+
+export interface CodexAudit {
+  sourceStatus: "healthy" | "stale" | "degraded" | "unavailable";
+  freshness: "fresh" | "stale" | "unavailable";
+  syncStatus: string;
+  generatedAt: string;
+  ageHours: number | null;
+  taskCount: number;
+  statusCounts: Record<string, number>;
+  tasks: CodexAuditTask[];
+  exporter: {
+    status?: string;
+    counts?: Record<string, number>;
+    jobs?: Array<Record<string, unknown>>;
+  };
+  source: SourceMeta;
+  exporterSource: SourceMeta;
 }
 
 export interface LocalCodexGoalCapsule {
@@ -296,12 +629,15 @@ export interface CodexOrchestratorBridge {
     status: string;
     queue: string;
     recentRuns: string;
+    dispatch: string;
     enqueue: string;
   };
   scripts: {
-    enqueue: string;
-    reporter: string;
+    prepare: string;
+    dispatch: string;
   };
+  projectRegistry: string;
+  operationPolicy: string;
   runtimeRoot: string;
   reportRoot: string;
   queueCounts: {
@@ -451,6 +787,7 @@ export interface LocalGpuLiveBenchStatus {
 
 export interface AiLabPrepareResponse {
   task: string;
+  workItemId: string;
   proposedBudget: string;
   routeId: string;
   routeLabel: string;
@@ -477,9 +814,11 @@ export interface AiLabPrepareResponse {
   verificationCommands: string[];
   codexNecessary: boolean;
   codexReason: string;
-  recommendedWorkdir: string;
-  recommendedAddDirs: string[];
-  enqueueEndpoint: string;
+  projectId: string;
+  projectTitle: string;
+  projectPath: string;
+  dispatchEndpoint: string;
+  compatibilityEnqueueEndpoint: string;
   codexBridge: {
     status: string;
     available: boolean;
@@ -556,6 +895,17 @@ export interface LocalCodexLab {
   generatedAt: string;
   hostHealth: string;
   source: SourceMeta;
+  serviceStatus?: {
+    unit: string;
+    enabled: boolean | null;
+    activeState: string;
+    healthStatus: string;
+    reportedHealthStatus: string;
+    freshness: "fresh" | "stale" | "unavailable";
+    evidenceSource: string;
+    updatedAt: string;
+    healthUrl: string;
+  };
   modelRouting: {
     fast: string;
     balanced: string;
@@ -907,6 +1257,27 @@ export interface LocalAiControl {
       info: number;
     };
     findings: LocalAiSecurityFinding[];
+  };
+  terminalCompletion: {
+    contract: {
+      version?: string;
+      terminal_status?: string;
+      false_terminal_statuses?: string[];
+    };
+    latestRun: {
+      run_id?: string;
+      status?: string;
+      terminal?: boolean;
+      completion_status?: string;
+      current_stage?: string;
+    };
+    dormantComponents: {
+      status: string;
+      component_count: number;
+      decisions: { activate: number; retire: number; defer: number };
+      components: Array<{ id: string; decision: "activate" | "retire" | "defer" }>;
+    };
+    source: SourceMeta;
   };
   source: SourceMeta;
 }
@@ -1769,6 +2140,46 @@ export interface CommercialReadiness {
   }>;
   source: SourceMeta;
   productIntelSource: SourceMeta;
+  productOperatingStandard: Record<string, unknown> | null;
+  productOperatingStandardSource: SourceMeta;
+  commercialBilling: CommercialBillingProjection;
+  commercialLaunch: CommercialLaunchObservability;
+}
+
+export interface CommercialLaunchObservability {
+  policy: "aggregate_evidence_only";
+  stages: Array<{
+    id: "readiness" | "publication" | "lead" | "payment" | "receipt";
+    label: string;
+    status: "verified" | "observed" | "blocked" | "pending" | "not_observed" | "stale" | "unavailable";
+    detail: string;
+    observedCount: number | null;
+    pendingCount: number | null;
+  }>;
+}
+
+export interface CommercialBillingProjection {
+  status: "available" | "unavailable";
+  schemaVersion: string;
+  contractStatus: string;
+  readinessStatus: string;
+  sellerProfiles: Array<{
+    profileId: string;
+    status: string;
+  }>;
+  paymentProfiles: Array<{
+    profileId: string;
+    providerId: string;
+    status: string;
+    receiptStatus: string;
+    merchantReuseStatus: string;
+  }>;
+  productBindings: Array<{
+    productId: string;
+    sellerProfileId: string;
+    paymentProfileIds: string[];
+    status: string;
+  }>;
 }
 
 export interface FirstMoneySummary {
@@ -1804,6 +2215,7 @@ export interface FirstMoneySummary {
 
 export interface RevenueAutopilotStatus {
   status: "available" | "unavailable";
+  freshness?: "fresh" | "stale" | "unavailable";
   generated_at?: string | null;
   active_revenue_lane: string | null;
   active_experiment?: string | null;

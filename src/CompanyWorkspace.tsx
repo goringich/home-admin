@@ -1,0 +1,508 @@
+import { useEffect, useMemo, useState } from "react";
+import type {
+  AiCompanyAggregateMetric,
+  AiCompanyDataState,
+  AiCompanyDerivedMetric,
+  AiCompanyEntity,
+  AiCompanyMissionControl,
+  HealthTone,
+} from "./types";
+import { groupMissionTasks, missionTone, operationTone } from "./ai-company-view-policy.ts";
+
+
+const EMPTY_STATE: AiCompanyDataState = {
+  availability: "unavailable",
+  freshness: "unavailable",
+  verification: "unverified",
+  dataClass: "unavailable",
+  reason: "source_missing",
+};
+
+const APPROVAL_DECISION_ENDPOINT = "./api/company/approvals/decision";
+
+const EMPTY_COMPANY: AiCompanyMissionControl = {
+  schemaVersion: "unavailable",
+  generatedAt: "",
+  exportHash: "",
+  safeToExpose: false,
+  state: EMPTY_STATE,
+  sectionStates: {},
+  portfolios: [],
+  missions: [],
+  workstreams: [],
+  tasks: [],
+  dependencies: [],
+  attempts: [],
+  runs: [],
+  evidence: [],
+  verifications: [],
+  approvals: [],
+  economics: [],
+  incidents: [],
+  decisions: [],
+  outcomes: [],
+  agentAssignments: [],
+  timeline: [],
+  financialSummary: null,
+  modelProductivity: [],
+  operations: {
+    offers: [], leads: [], opportunities: [], experiments: [], orders: [], deliveries: [],
+    payments: [], customerFeedback: [],
+    counters: { offers: null, leads: null, opportunities: null, experiments: null, orders: null, deliveries: null, payments: null, feedback: null },
+    recordCounters: { offers: null, leads: null, opportunities: null, experiments: null, orders: null, deliveries: null, payments: null, feedback: null },
+    nonRealCounters: { offers: null, leads: null, opportunities: null, experiments: null, orders: null, deliveries: null, payments: null, feedback: null },
+    state: EMPTY_STATE,
+  },
+};
+
+
+function stateTone(value: string): HealthTone {
+  if (["rejected", "failed", "stale"].includes(value)) return "risk";
+  if (["unavailable", "unknown", "unverified", "partially_verified", "fixture"].includes(value)) return "attention";
+  if (["available", "fresh", "verified"].includes(value)) return "ok";
+  return "unknown";
+}
+
+
+function CompanyBadge(props: { label: string; tone: HealthTone }) {
+  return <span className={`status-badge tone-${props.tone}`}>{props.label}</span>;
+}
+
+
+function TrustStrip(props: { state: AiCompanyDataState }) {
+  return (
+    <div className="company-trust-strip" aria-label="Company data trust state">
+      <div><span>availability</span><CompanyBadge label={props.state.availability} tone={stateTone(props.state.availability)} /></div>
+      <div><span>freshness</span><CompanyBadge label={props.state.freshness} tone={stateTone(props.state.freshness)} /></div>
+      <div><span>verification</span><CompanyBadge label={props.state.verification} tone={stateTone(props.state.verification)} /></div>
+      <div><span>data class</span><CompanyBadge label={props.state.dataClass} tone={stateTone(props.state.dataClass)} /></div>
+    </div>
+  );
+}
+
+
+function exactCost(rows: AiCompanyEntity[]) {
+  if (!rows.length || rows.some((row) => typeof row.actual_cost !== "number")) return null;
+  return rows.reduce((total, row) => total + (row.actual_cost as number), 0);
+}
+
+
+function money(value: number | null | undefined) {
+  return typeof value === "number" ? `$${value.toFixed(4)}` : "unknown";
+}
+
+
+function displayValue(value: unknown) {
+  if (value === null || value === undefined) return "unknown";
+  if (["string", "number", "boolean"].includes(typeof value)) return String(value);
+  return JSON.stringify(value);
+}
+
+
+function listValue(value: unknown) {
+  if (!Array.isArray(value)) return "unavailable";
+  if (!value.length) return "none recorded";
+  return value.map(displayValue).join(" · ");
+}
+
+
+function contributionValue(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "unavailable";
+  const entries = Object.entries(value);
+  if (!entries.length) return "none recorded";
+  return entries.map(([key, contribution]) => `${key}: ${displayValue(contribution)}`).join(" · ");
+}
+
+
+function aggregateValue(metric: AiCompanyAggregateMetric | undefined, unit = "") {
+  if (!metric) return "unknown";
+  const suffix = unit ? ` ${unit}` : "";
+  if (typeof metric.value === "number") return `${metric.value}${suffix}`;
+  if (typeof metric.known_value === "number") {
+    return `${metric.known_value}${suffix} known · ${metric.unknown_count ?? "unknown"} unknown rows`;
+  }
+  return `unknown · ${metric.unknown_count ?? "unknown"} unknown rows`;
+}
+
+
+function aggregateMoney(metric: AiCompanyAggregateMetric | undefined) {
+  if (!metric) return "unknown";
+  if (typeof metric.value === "number") return money(metric.value);
+  if (typeof metric.known_value === "number") {
+    return `${money(metric.known_value)} known · ${metric.unknown_count ?? "unknown"} unknown rows`;
+  }
+  return `unknown · ${metric.unknown_count ?? "unknown"} unknown rows`;
+}
+
+
+function derivedMoney(metric: AiCompanyDerivedMetric | undefined) {
+  if (!metric) return "unknown";
+  return `${money(metric.value)} · ${metric.status ?? "unknown"}`;
+}
+
+
+function OperationsGrid(props: { data: AiCompanyMissionControl["operations"] }) {
+  const entries = [
+    ["offers", "Offers"], ["leads", "Leads"], ["opportunities", "Opportunities"],
+    ["experiments", "Experiments"], ["orders", "Orders"], ["deliveries", "Deliveries"],
+    ["payments", "Payments"], ["feedback", "Feedback"],
+  ] as const;
+  const trustTone = operationTone(props.data.state);
+  const recordCounters = props.data.recordCounters ?? {};
+  const nonRealCounters = props.data.nonRealCounters ?? {};
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div><div className="section-kicker">Company operations</div><h3>Minimal commercial core</h3></div>
+        <CompanyBadge
+          label={`${props.data.state.availability} · ${props.data.state.freshness} · ${props.data.state.verification}`}
+          tone={trustTone}
+        />
+      </div>
+      <div className="local-status-grid">
+        {entries.map(([key, label]) => (
+          <div className="metric-card" key={key}>
+            <span>{label}</span>
+            <strong>{props.data.counters[key] ?? "unknown"}</strong>
+            <p>
+              {typeof nonRealCounters[key] === "number" && nonRealCounters[key] > 0
+                ? `${nonRealCounters[key]} non-real records excluded`
+                : props.data.counters[key] === null && typeof recordCounters[key] === "number"
+                  ? `${recordCounters[key]} unverified records withheld`
+                  : `${props.data.state.dataClass} data`}
+            </p>
+          </div>
+        ))}
+      </div>
+      <p className="panel-note">Only fresh verified real records become production counters. Fixture, unknown, stale, and unverified rows remain excluded; no action is executed from this view.</p>
+    </section>
+  );
+}
+
+
+type CompanyWorkspaceProps = {
+  data?: AiCompanyMissionControl;
+  onRefresh: () => void;
+};
+
+
+export function CompanyWorkspace(props: CompanyWorkspaceProps) {
+  const data = props.data ?? EMPTY_COMPANY;
+  const [selectedMissionId, setSelectedMissionId] = useState(data.missions[0]?.mission_id ?? "");
+  const [actor, setActor] = useState("owner");
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [pendingApproval, setPendingApproval] = useState("");
+  const [approvalMessage, setApprovalMessage] = useState("");
+  const [localDecisions, setLocalDecisions] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!data.missions.some((mission) => mission.mission_id === selectedMissionId)) {
+      setSelectedMissionId(data.missions[0]?.mission_id ?? "");
+    }
+  }, [data.missions, selectedMissionId]);
+
+  const selectedMission = data.missions.find((mission) => mission.mission_id === selectedMissionId);
+  const connected = useMemo(() => {
+    const missionId = selectedMission?.mission_id;
+    const tasks = data.tasks.filter((item) => item.mission_id === missionId);
+    const taskIds = new Set(tasks.map((item) => item.task_id).filter(Boolean));
+    const attempts = data.attempts.filter((item) => item.task_id && taskIds.has(item.task_id));
+    const attemptIds = new Set(attempts.map((item) => item.attempt_id).filter(Boolean));
+    return {
+      workstreams: data.workstreams.filter((item) => item.mission_id === missionId),
+      tasks,
+      dependencies: data.dependencies.filter((item) => item.task_id && taskIds.has(item.task_id)),
+      attempts,
+      runs: data.runs.filter((item) => item.attempt_id && attemptIds.has(item.attempt_id)),
+      evidence: data.evidence.filter((item) => item.mission_id === missionId || (item.task_id && taskIds.has(item.task_id))),
+      verifications: data.verifications.filter((item) => item.mission_id === missionId || (item.task_id && taskIds.has(item.task_id))),
+      approvals: data.approvals.filter((item) => item.mission_id === missionId),
+      economics: data.economics.filter((item) => item.mission_id === missionId),
+      incidents: data.incidents.filter((item) => item.mission_id === missionId),
+      decisions: data.decisions.filter((item) => item.mission_id === missionId),
+      outcomes: data.outcomes.filter((item) => item.mission_id === missionId),
+      agentAssignments: (data.agentAssignments ?? []).filter((item) => item.mission_id === missionId || (item.task_id && taskIds.has(item.task_id))),
+      timeline: (data.timeline ?? []).filter((item) => item.mission_id === missionId),
+    };
+  }, [data, selectedMission]);
+
+  const completedTasks = connected.tasks.filter((task) => task.status === "completed").length;
+  const missionActualCost = exactCost(connected.economics);
+  const missionEconomics = selectedMission?.economics;
+  const financialMetrics = data.financialSummary?.totals?.metrics;
+  const taskGroups = groupMissionTasks(connected.workstreams, connected.tasks);
+  const missionSectionState = data.sectionStates.missions;
+
+  async function decideApproval(approval: AiCompanyEntity, decision: "approve" | "reject") {
+    const approvalId = approval.approval_id ?? "";
+    const reason = (reasons[approvalId] ?? "").trim();
+    if (!approvalId || !reason || !actor.trim()) {
+      setApprovalMessage("Actor and reason are required; no decision was sent.");
+      return;
+    }
+    if (
+      approval.status !== "pending"
+      || approval.decision_trusted !== true
+      || typeof approval.revision !== "number"
+    ) {
+      setApprovalMessage(`${approvalId}: decision disabled (${approval.decision_trust_reason ?? "approval_trust_unknown"}).`);
+      return;
+    }
+    setPendingApproval(approvalId);
+    setApprovalMessage("");
+    const revision = approval.revision;
+    try {
+      const response = await fetch(APPROVAL_DECISION_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approval_id: approvalId,
+          decision,
+          actor: actor.trim(),
+          reason,
+          expected_revision: revision,
+          idempotency_key: `atlas-${approvalId}-${revision}-${decision}`,
+        }),
+      });
+      const result = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || result.ok !== true) throw new Error(result.error || `http_${response.status}`);
+      setLocalDecisions((current) => ({ ...current, [approvalId]: decision === "approve" ? "approved" : "rejected" }));
+      setApprovalMessage(`${approvalId}: decision recorded; underlying action was not executed.`);
+      props.onRefresh();
+    } catch (error) {
+      setApprovalMessage(`${approvalId}: ${error instanceof Error ? error.message : "decision_failed"}`);
+    } finally {
+      setPendingApproval("");
+    }
+  }
+
+  return (
+    <div className="workspace-stack">
+      <section className="workspace-header">
+        <div><div className="section-kicker">Atlas / Company</div><h1>AI Company Mission Control</h1><p>Portfolio intent, bounded execution, evidence, owner decisions, economics, and outcome state in one workspace.</p></div>
+        <CompanyBadge label={data.state.availability} tone={stateTone(data.state.availability)} />
+      </section>
+      <TrustStrip state={data.state} />
+
+      {data.state.availability === "unavailable" ? (
+        <section className="panel"><div className="empty-inline">Mission Ledger projection unavailable: {data.state.reason ?? "unknown"}. No success state is inferred.</div></section>
+      ) : null}
+
+      <section className="panel">
+        <div className="panel-head"><div><div className="section-kicker">Portfolio</div><h3>Priority and expected value</h3></div><CompanyBadge label={data.sectionStates.portfolios?.verification ?? "unknown"} tone={stateTone(data.sectionStates.portfolios?.verification ?? "unknown")} /></div>
+        <div className="detail-grid compact-grid">
+          {data.portfolios.map((portfolio) => (
+            <article className="detail-card" key={portfolio.portfolio_id}>
+              <div className="detail-card-title">{portfolio.title ?? portfolio.portfolio_id}</div>
+              <div className="class-grid">
+                <div className="class-row"><span>score</span><strong>{portfolio.score ?? "unknown"}</strong></div>
+                <div className="class-row"><span>expected value</span><strong>{portfolio.expected_value ?? "unknown"}</strong></div>
+                <div className="class-row"><span>actual cost</span><strong>{money(portfolio.actual_cost)}</strong></div>
+                <div className="class-row"><span>risk</span><strong>{portfolio.risk ?? "unknown"}</strong></div>
+                <div className="class-row"><span>next best mission</span><strong>{portfolio.next_best_mission_id ?? "unavailable"}</strong></div>
+                <div className="class-row"><span>status</span><strong>{portfolio.status ?? "unknown"}</strong></div>
+              </div>
+              <p>priority explanation: {portfolio.priority_explanation ?? "unavailable"}</p>
+              <p>score contributions: {contributionValue(portfolio.score_contributions)}</p>
+            </article>
+          ))}
+          {!data.portfolios.length ? <div className="empty-inline">Portfolio data unavailable.</div> : null}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div><div className="section-kicker">Economics</div><h3>Financial summary</h3></div>
+          <CompanyBadge
+            label={data.financialSummary?.data_state?.availability ?? "unavailable"}
+            tone={stateTone(data.financialSummary?.data_state?.availability ?? "unavailable")}
+          />
+        </div>
+        <div className="local-status-grid">
+          <div className="metric-card"><span>actual cost</span><strong>{aggregateMoney(financialMetrics?.actual_cost)}</strong><p>{data.financialSummary?.totals?.entry_count ?? "unavailable"} cost records</p></div>
+          <div className="metric-card"><span>budget status</span><strong>{data.financialSummary?.budget?.status ?? "unknown"}</strong><p>limit {money(data.financialSummary?.budget?.budget_limit)}</p></div>
+          <div className="metric-card"><span>cost per verified task</span><strong>{derivedMoney(data.financialSummary?.derived?.cost_per_verified_task)}</strong><p>verified work only</p></div>
+          <div className="metric-card"><span>cost per completed mission</span><strong>{derivedMoney(data.financialSummary?.derived?.cost_per_completed_mission)}</strong><p>completed mission gate</p></div>
+          <div className="metric-card"><span>cost per achieved outcome</span><strong>{derivedMoney(data.financialSummary?.derived?.cost_per_achieved_outcome)}</strong><p>observed outcomes only</p></div>
+          <div className="metric-card"><span>scope</span><strong>{data.financialSummary?.scope?.mission_id ?? "all missions"}</strong><p>canonical ledger aggregate</p></div>
+        </div>
+        <p className="panel-note">Incomplete financial metrics remain unknown; unknown values are not treated as zero.</p>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><div><div className="section-kicker">Economics</div><h3>Model productivity</h3></div><CompanyBadge label={`${data.modelProductivity.length || "unavailable"} models`} tone={data.modelProductivity.length ? "attention" : "unknown"} /></div>
+        <div className="detail-grid compact-grid">
+          {data.modelProductivity.map((model) => (
+            <article className="detail-card" key={model.model}>
+              <div className="detail-card-title">{model.model}</div>
+              <div className="class-grid">
+                <div className="class-row"><span>records</span><strong>{model.record_count}</strong></div>
+                <div className="class-row"><span>model cost</span><strong>{aggregateMoney(model.model_cost)}</strong></div>
+                <div className="class-row"><span>runtime duration</span><strong>{aggregateValue(model.runtime_duration, "s")}</strong></div>
+                <div className="class-row"><span>input tokens</span><strong>{aggregateValue(model.input_tokens)}</strong></div>
+                <div className="class-row"><span>output tokens</span><strong>{aggregateValue(model.output_tokens)}</strong></div>
+                <div className="class-row"><span>verified tasks</span><strong>{model.verified_task_count ?? "unknown"}</strong></div>
+                <div className="class-row"><span>verification linkage</span><strong>{model.verification_status}</strong></div>
+                <div className="class-row"><span>cost / verified task</span><strong>{derivedMoney(model.cost_per_verified_task)}</strong></div>
+              </div>
+            </article>
+          ))}
+          {!data.modelProductivity.length ? <div className="empty-inline">Model-linked economics unavailable.</div> : null}
+        </div>
+        <p className="panel-note">Only canonical cost rows with a model are aggregated; missing cost, latency, tokens, or task linkage remains unknown.</p>
+      </section>
+
+      <section className="company-mission-layout">
+        <aside className="project-list" aria-label="Missions">
+          {data.missions.map((mission) => (
+            <button key={mission.mission_id} className={`project-list-item ${mission.mission_id === selectedMissionId ? "project-list-item-active" : ""}`} type="button" onClick={() => setSelectedMissionId(mission.mission_id ?? "")}>
+              <span className={`project-health-dot tone-${missionTone(mission, data.state, missionSectionState)}`} />
+              <span><strong>{mission.title ?? mission.mission_id}</strong><small>{mission.status ?? "unknown"} · {mission.outcome_status ?? "not_measured"} · data {mission.data_class ?? "unknown"} · score {mission.score ?? "unknown"} · rank {mission.rank ?? "unknown"}{mission.next_best ? " · next best" : ""}</small></span>
+            </button>
+          ))}
+          {!data.missions.length ? <div className="empty-inline">Missions unavailable.</div> : null}
+        </aside>
+
+        <div className="workspace-stack">
+          <section className="panel">
+            <div className="panel-head"><div><div className="section-kicker">Mission detail</div><h3>{selectedMission?.title ?? "No mission selected"}</h3></div>{selectedMission ? <CompanyBadge label={String(selectedMission.status ?? "unknown")} tone={missionTone(selectedMission, data.state, missionSectionState)} /> : null}</div>
+            <p>{selectedMission?.objective ?? "Outcome objective unavailable."}</p>
+            <div className="local-status-grid">
+              <div className="metric-card"><span>work progress</span><strong>{connected.tasks.length ? `${completedTasks}/${connected.tasks.length}` : "unknown"}</strong><p>completed bounded tasks</p></div>
+              <div className="metric-card"><span>implementation</span><strong>{selectedMission?.implementation_status ?? "unknown"}</strong><p>not inferred from commits</p></div>
+              <div className="metric-card"><span>outcome</span><strong>{selectedMission?.outcome_status ?? "not_measured"}</strong><p>{selectedMission?.target_metric ?? "target unavailable"}</p></div>
+              <div className="metric-card"><span>actual cost</span><strong>{money(missionActualCost)}</strong><p>{connected.economics.length} cost records</p></div>
+              <div className="metric-card"><span>score / rank</span><strong>{selectedMission?.score ?? "unknown"} / {selectedMission?.rank ?? "unknown"}</strong><p>{selectedMission?.next_best ? "next best mission" : "not selected as next best"}</p></div>
+              <div className="metric-card"><span>confidence</span><strong>{selectedMission?.confidence ?? "unknown"}</strong><p>unknown remains unknown</p></div>
+              <div className="metric-card"><span>data class</span><strong>{selectedMission?.data_class ?? "unknown"}</strong><p>fixture and unknown missions are never green</p></div>
+            </div>
+            <div className="doc-list">
+              <div className="class-row"><span>priority explanation</span><strong>{selectedMission?.priority_explanation ?? "unavailable"}</strong></div>
+              <div className="class-row"><span>score contributions</span><strong>{contributionValue(selectedMission?.score_contributions)}</strong></div>
+              <div className="class-row"><span>completion blockers</span><strong>{listValue(selectedMission?.contract_completion_blockers)}</strong></div>
+              <div className="class-row"><span>owner decisions</span><strong>{listValue(selectedMission?.owner_decisions)}</strong></div>
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-head"><div><div className="section-kicker">Mission DAG</div><h3>Tasks, dependencies, attempts, and runs</h3></div><CompanyBadge label={`${connected.tasks.length} tasks`} tone={connected.tasks.length ? "attention" : "unknown"} /></div>
+            <div className="workspace-stack">
+              {taskGroups.map((group, groupIndex) => (
+                <section className="detail-card" key={group.workstream?.workstream_id ?? `unresolved-workstream-${groupIndex}`}>
+                  <div className="detail-card-title">Workstream: {group.workstream?.name ?? "name unavailable"}</div>
+                  <p>workstream ID: {group.workstream?.workstream_id ?? "unresolved from task linkage"}</p>
+                  <div className="mission-dag">
+                    {group.tasks.map((task) => {
+                      const dependencies = connected.dependencies.filter((item) => item.task_id === task.task_id);
+                      const attempts = connected.attempts.filter((item) => item.task_id === task.task_id);
+                      const attemptIds = new Set(attempts.map((item) => item.attempt_id));
+                      const runs = connected.runs.filter((item) => attemptIds.has(item.attempt_id));
+                      const assignments = connected.agentAssignments.filter((item) => item.task_id === task.task_id);
+                      return (
+                        <article className="detail-card" key={task.task_id}>
+                          <div className="detail-card-title">{task.title ?? task.task_id}</div>
+                          <div className="status-cluster"><CompanyBadge label={String(task.status ?? "unknown")} tone={task.status === "failed" ? "risk" : "attention"} />{task.critical_path ? <CompanyBadge label="critical path" tone="attention" /> : null}</div>
+                          <p>workstream: {group.workstream?.name ?? "name unavailable"} · {task.workstream_id ?? "ID unavailable"}</p>
+                          <p>{dependencies.length ? `depends on ${dependencies.map((item) => item.depends_on_task_id).join(", ")}` : "parallel-ready / no blocking dependency recorded"}</p>
+                          <div className="section-kicker">Agent assignments</div>
+                          {assignments.map((assignment) => <p key={assignment.assignment_id}>{assignment.agent_id ?? "unknown agent"} · {assignment.role ?? "unknown role"} · {assignment.status ?? "unknown"}</p>)}
+                          {!assignments.length ? <p>Agent assignment unavailable.</p> : null}
+                          {attempts.map((attempt) => <p key={attempt.attempt_id}>attempt {attempt.attempt_id} · {attempt.status ?? "unknown"}</p>)}
+                          {runs.map((run) => <p key={run.run_id}>run {run.run_id} · {run.status ?? "unknown"}</p>)}
+                          {!attempts.length ? <p>Attempt IDs unavailable.</p> : null}
+                        </article>
+                      );
+                    })}
+                    {!group.tasks.length ? <div className="empty-inline">No tasks recorded for this workstream.</div> : null}
+                  </div>
+                </section>
+              ))}
+              {!connected.workstreams.length && !connected.tasks.length ? <div className="empty-inline">Task DAG unavailable.</div> : null}
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section className="detail-grid">
+        <article className="panel">
+          <div className="panel-head"><div><div className="section-kicker">Evidence & verification</div><h3>Independent proof</h3></div><CompanyBadge label={data.sectionStates.verifications?.verification ?? "unknown"} tone={stateTone(data.sectionStates.verifications?.verification ?? "unknown")} /></div>
+          <div className="doc-list">
+            {connected.evidence.map((item) => <div className="class-row" key={item.evidence_id}><span>{item.evidence_type ?? "evidence"}</span><strong>{item.freshness ?? "unknown"} · {item.summary ?? item.evidence_id} · {item.reference_basename ?? item.evidence_id}</strong></div>)}
+            {connected.verifications.map((item) => <div className="class-row" key={item.verification_id}><span>{item.independent ? "independent" : "author"}</span><strong>{item.status ?? "unverified"} · {item.reason ?? "no reason"}</strong></div>)}
+            {!connected.evidence.length && !connected.verifications.length ? <div className="empty-inline">Evidence unavailable; mission is not verified.</div> : null}
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-head"><div><div className="section-kicker">Economics</div><h3>Known spend and uncertainty</h3></div><CompanyBadge label={missionActualCost === null ? "partial / unknown" : "known"} tone={missionActualCost === null ? "attention" : "ok"} /></div>
+          <div className="class-grid">
+            <div className="class-row"><span>actual cost</span><strong>{money(missionActualCost)}</strong></div>
+            <div className="class-row"><span>budget</span><strong>{money(selectedMission?.budget_limit)}</strong></div>
+            <div className="class-row"><span>budget gate</span><strong>{missionEconomics?.budget?.status ?? "unknown"}</strong></div>
+            <div className="class-row"><span>cost per verified task</span><strong>{derivedMoney(missionEconomics?.derived?.cost_per_verified_task)}</strong></div>
+            <div className="class-row"><span>cost per completed mission</span><strong>{derivedMoney(missionEconomics?.derived?.cost_per_completed_mission)}</strong></div>
+            <div className="class-row"><span>cost records</span><strong>{connected.economics.length || "unavailable"}</strong></div>
+            <div className="class-row"><span>outcomes</span><strong>{connected.outcomes.length || "not measured"}</strong></div>
+          </div>
+          <p>Missing cost components remain unknown; they are never coerced to zero.</p>
+        </article>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><div><div className="section-kicker">Approvals</div><h3>Owner decisions only</h3></div><CompanyBadge label={`${connected.approvals.filter((item) => (localDecisions[item.approval_id ?? ""] ?? item.status) === "pending").length} pending`} tone="attention" /></div>
+        <label className="company-owner-field"><span>Decision actor</span><input value={actor} onChange={(event) => setActor(event.target.value)} maxLength={120} /></label>
+        <div className="doc-list">
+          {connected.approvals.map((approval) => {
+            const approvalId = approval.approval_id ?? "";
+            const status = localDecisions[approvalId] ?? approval.status ?? "unknown";
+            const decisionEnabled = status === "pending"
+              && approval.status === "pending"
+              && approval.decision_trusted === true
+              && typeof approval.revision === "number";
+            return (
+              <article className="detail-card" key={approvalId}>
+                <div className="detail-card-title">{approval.approval_type ?? approvalId}</div>
+                <p>{approval.requested_action ?? "Requested action unavailable"}</p>
+                <p>risk: {approval.risk ?? "unknown"} · reversibility: {approval.reversibility ?? "unknown"}</p>
+                <p>cost: {typeof approval.cost === "number" ? money(approval.cost) : displayValue(approval.cost)}</p>
+                <p>evidence IDs: {listValue(approval.evidence_ids)}</p>
+                <p>alternatives: {listValue(approval.alternatives)}</p>
+                <p>decision trust: {approval.decision_trusted === true ? "trusted real approval" : approval.decision_trust_reason ?? "unknown"}</p>
+                <CompanyBadge label={status} tone={status === "rejected" ? "risk" : status === "approved" ? "ok" : "attention"} />
+                {status === "pending" ? <>
+                  <label className="company-owner-field"><span>Decision reason</span><input value={reasons[approvalId] ?? ""} onChange={(event) => setReasons((current) => ({ ...current, [approvalId]: event.target.value }))} maxLength={2000} /></label>
+                  <div className="approval-actions"><button type="button" disabled={!decisionEnabled || pendingApproval === approvalId} onClick={() => decideApproval(approval, "approve")}>Approve decision</button><button type="button" disabled={!decisionEnabled || pendingApproval === approvalId} onClick={() => decideApproval(approval, "reject")}>Reject decision</button></div>
+                  {!decisionEnabled ? <p>Decision disabled: {approval.decision_trust_reason ?? "fresh canonical real pending approval required"}. Fixture, unknown, stale, unavailable, and unsafe approval data never enable typed decisions.</p> : null}
+                </> : null}
+              </article>
+            );
+          })}
+          {!connected.approvals.length ? <div className="empty-inline">No approval records available.</div> : null}
+        </div>
+        <p className="panel-note">An approval decision never auto-executes deployment, payment, publication, contact, deletion, or another risky action.</p>
+        {approvalMessage ? <div className="notice" role="status">{approvalMessage}</div> : null}
+      </section>
+
+      <OperationsGrid data={data.operations} />
+
+      <section className="panel">
+        <div className="panel-head"><div><div className="section-kicker">Organizational record</div><h3>Incidents, decisions & outcomes</h3></div></div>
+        <div className="doc-list">
+          {connected.incidents.map((incident) => <div className="class-row" key={incident.incident_id}><span>incident · {incident.severity ?? "unknown"}</span><strong>{incident.incident_id} · {incident.summary ?? "summary unavailable"} · {incident.status ?? "unknown"}</strong></div>)}
+          {connected.decisions.map((decision) => <div className="class-row" key={decision.decision_id}><span>decision</span><strong>{decision.decision_id} · {decision.question ?? "question unavailable"} · {decision.decision ?? "undecided"}</strong></div>)}
+          {connected.outcomes.map((outcome) => <div className="class-row" key={outcome.outcome_id}><span>outcome · {outcome.metric ?? "metric unavailable"}</span><strong>{outcome.outcome_id} · {outcome.status ?? "unknown"} · observed {displayValue(outcome.observed)} / target {displayValue(outcome.target)}</strong></div>)}
+          {!connected.incidents.length && !connected.decisions.length && !connected.outcomes.length ? <div className="empty-inline">No incident, decision, or measured outcome records available.</div> : null}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><div><div className="section-kicker">Audit trail</div><h3>Event timeline</h3></div><CompanyBadge label={`${connected.timeline.length} events`} tone={connected.timeline.length ? "attention" : "unknown"} /></div>
+        <div className="doc-list">
+          {connected.timeline.slice(-50).reverse().map((event) => <div className="class-row" key={event.event_id}><span>{event.occurred_at ?? "time unknown"}</span><strong>{event.event_type ?? "event unknown"} · {event.entity_type ?? "entity"}:{event.entity_id ?? "unknown"} · {event.actor ?? "actor unknown"}</strong></div>)}
+          {!connected.timeline.length ? <div className="empty-inline">Timeline unavailable; no synthetic activity count is inferred.</div> : null}
+        </div>
+        {connected.timeline.length > 50 ? <p className="panel-note">Showing the newest 50 of {connected.timeline.length} real ledger events.</p> : null}
+      </section>
+    </div>
+  );
+}

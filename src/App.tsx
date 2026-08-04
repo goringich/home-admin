@@ -1,14 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { CompanyWorkspace } from "./CompanyWorkspace";
+import {
+  revenueProjectionLabel,
+  revenueProjectionTrusted,
+} from "./ai-company-view-policy";
 import type {
   AiLabPrepareResponse,
+  AdministrationRegistry,
   AiTelemetryExport,
+  CommercialBillingProjection,
+  CommercialLaunchObservability,
   CommercialReadiness,
+  CodexAudit,
   DetailTab,
   FirstMoneySummary,
   HealthTone,
   HostAudit,
   LocalAiControl,
+  LocalAgentPlatform,
   LocalCodexGoalCapsule,
   LocalCodexLab,
   LocalCodexRunSummary,
@@ -21,7 +31,7 @@ import type {
   TaskStatus,
 } from "./types";
 
-type WorkspaceId = "overview" | "revenue" | "ai-control" | "work" | "runs" | "remote";
+type WorkspaceId = "overview" | "company" | "revenue" | "ai-control" | "work" | "runs" | "admin" | "remote";
 type AiControlSection = "runtime" | "context" | "efficiency" | "trust" | "advanced";
 
 const WORKSPACES: Array<{
@@ -32,11 +42,13 @@ const WORKSPACES: Array<{
   glyph: string;
 }> = [
   { id: "overview", label: "Обзор", shortLabel: "Today", description: "Что важно прямо сейчас", glyph: "01" },
-  { id: "revenue", label: "Revenue", shortLabel: "Money", description: "Воронка, эксперименты и gates", glyph: "02" },
-  { id: "ai-control", label: "AI Control", shortLabel: "System", description: "Runtime, context и trust", glyph: "03" },
-  { id: "work", label: "Проекты", shortLabel: "Work", description: "Репозитории, задачи и релизы", glyph: "04" },
-  { id: "runs", label: "Запуски", shortLabel: "Runs", description: "Codex, traces и проверки", glyph: "05" },
-  { id: "remote", label: "Remote", shortLabel: "Ops", description: "Удалённый доступ и сервисы", glyph: "06" },
+  { id: "company", label: "Company", shortLabel: "Mission", description: "Portfolio, missions и owner gates", glyph: "02" },
+  { id: "revenue", label: "Revenue", shortLabel: "Money", description: "Воронка, эксперименты и gates", glyph: "03" },
+  { id: "ai-control", label: "AI Control", shortLabel: "System", description: "Runtime, context и trust", glyph: "04" },
+  { id: "work", label: "Проекты", shortLabel: "Work", description: "Репозитории, задачи и релизы", glyph: "05" },
+  { id: "runs", label: "Запуски", shortLabel: "Runs", description: "Codex, traces и проверки", glyph: "06" },
+  { id: "admin", label: "Админки", shortLabel: "Control", description: "Каталог и безопасные входы", glyph: "07" },
+  { id: "remote", label: "Remote", shortLabel: "Ops", description: "Удалённый доступ и сервисы", glyph: "08" },
 ];
 
 const AI_CONTROL_SECTIONS: Array<{ id: AiControlSection; label: string; description: string }> = [
@@ -397,6 +409,15 @@ function commercialTone(status: string): HealthTone {
   return "risk";
 }
 
+function revenueAutopilotTone(revenue: RevenueAutopilotStatus): HealthTone {
+  if (!revenueProjectionTrusted(revenue)) return "attention";
+  return commercialTone(revenue.product_readiness ?? "");
+}
+
+function revenueAutopilotLabel(revenue: RevenueAutopilotStatus) {
+  return revenueProjectionLabel(revenue);
+}
+
 function topReliabilityClass(classifications: Record<string, number>) {
   return Object.entries(classifications)
     .filter(([name, count]) => count > 0 && name !== "completed" && name !== "partial")
@@ -579,27 +600,33 @@ async function prepareAiLabTask(task: string): Promise<AiLabPrepareResponse> {
   return payload.data;
 }
 
-type CodexEnqueueResponse = {
+type AgentDispatchResponse = {
   mode: string;
+  projectId: string;
+  projectTitle: string;
+  projectPath: string;
   runId: string;
-  title: string;
-  workdir: string;
-  taskPath: string;
+  reportId: string;
+  queueTaskId: string;
+  runStatus: string;
+  dispatchStatus: string;
   reportPath: string;
-  stdout: string;
+  queueTaskPath: string;
+  contextPackPath: string;
+  checksPath: string;
+  diffPath: string;
 };
 
-async function enqueuePreparedCodexTask(prepared: AiLabPrepareResponse): Promise<CodexEnqueueResponse> {
-  const response = await fetch("./api/codex-orchestrator/enqueue", {
+async function dispatchPreparedAgentTask(prepared: AiLabPrepareResponse): Promise<AgentDispatchResponse> {
+  const response = await fetch(prepared.dispatchEndpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      title: `atlas-${prepared.routeId || "prepared-task"}`,
+      projectId: prepared.projectId,
       task: prepared.task,
-      workdir: prepared.recommendedWorkdir,
-      addDirs: prepared.recommendedAddDirs,
+      workItemId: prepared.workItemId,
       verificationCommands: prepared.verificationCommands,
       focusFiles: prepared.focusFiles,
     }),
@@ -609,7 +636,7 @@ async function enqueuePreparedCodexTask(prepared: AiLabPrepareResponse): Promise
     throw new Error(await response.text());
   }
 
-  const payload = (await response.json()) as { data: CodexEnqueueResponse };
+  const payload = (await response.json()) as { data: AgentDispatchResponse };
   return payload.data;
 }
 
@@ -831,6 +858,57 @@ function RemoteOpsPanel(props: {
         </aside>
       </div>
     </section>
+  );
+}
+
+function AdministrationWorkspace(props: {
+  registry: AdministrationRegistry;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const { registry } = props;
+  return (
+    <div className="workspace-stack">
+      <WorkspaceHeader
+        eyebrow="Atlas / Administration"
+        title="Админки и control planes"
+        description="Единый каталог, статус границ и безопасные точки входа. Каждая админка сохраняет собственный UI и авторизацию."
+        status={{ label: `${registry.surfaces.length} registered`, tone: registry.status === "registered" ? "ok" : "attention" }}
+      />
+      <section className="administration-contract panel">
+        <div className="panel-head"><div><div className="section-kicker">Operating contract</div><h3>Общий стиль без слияния систем</h3></div></div>
+        <div className="administration-contract-grid">
+          <p>{registry.contract.atlas_role || "Registry unavailable."}</p>
+          <p>{registry.contract.ui_strategy || ""}</p>
+          <p>{registry.contract.product_boundary || ""}</p>
+          <p>{registry.contract.secret_policy || ""}</p>
+        </div>
+      </section>
+      <section className="administration-grid" aria-label="Administration surface catalog">
+        {registry.surfaces.map((surface) => {
+          const availabilityTone = surface.availability.startsWith("attention") ? "attention" : "ok";
+          return (
+            <article key={surface.id} className="administration-card">
+              <div className="administration-card-head">
+                <div><div className="section-kicker">{surface.classification} · {surface.ownership}</div><h3>{surface.title}</h3></div>
+                <StatusBadge label={surface.availability.startsWith("attention") ? "attention" : "registered"} tone={availabilityTone} />
+              </div>
+              <p>{surface.operatorRole}</p>
+              <div className="administration-meta"><span>Native UI</span><strong>{surface.nativeUi}</strong></div>
+              <div className="administration-meta"><span>Atlas</span><strong>{surface.atlasIntegration}</strong></div>
+              <div className="administration-meta"><span>Style path</span><strong>{surface.styleAdapter}</strong></div>
+              <p className="administration-review">{surface.designReview}</p>
+              <div className="chip-list">{surface.capabilities.map((capability) => <span key={capability} className="chip">{capability}</span>)}</div>
+              <div className="administration-actions">
+                {surface.launch.target ? <button className="primary-button" type="button" onClick={() => props.onOpen(surface.launch.label, surface.launch.target)}>{surface.launch.label}</button> : null}
+                {surface.runbookTarget && surface.runbookTarget !== surface.launch.target ? <button className="ghost-button" type="button" onClick={() => props.onOpen(`${surface.title}: runbook`, surface.runbookTarget)}>Runbook</button> : null}
+              </div>
+            </article>
+          );
+        })}
+      </section>
+      <SourceFootnote source={registry.source} label="Administration Surface Registry" onOpen={props.onOpen} onCopy={props.onCopy} />
+    </div>
   );
 }
 
@@ -1120,11 +1198,12 @@ function LocalCodexLabPanel(props: {
   const [prepareBusy, setPrepareBusy] = useState(false);
   const [prepareResult, setPrepareResult] = useState<AiLabPrepareResponse | null>(null);
   const [prepareError, setPrepareError] = useState("");
-  const [enqueueBusy, setEnqueueBusy] = useState(false);
-  const [enqueueResult, setEnqueueResult] = useState<CodexEnqueueResponse | null>(null);
-  const [enqueueError, setEnqueueError] = useState("");
+  const [dispatchBusy, setDispatchBusy] = useState(false);
+  const [dispatchResult, setDispatchResult] = useState<AgentDispatchResponse | null>(null);
+  const [dispatchError, setDispatchError] = useState("");
   const aiLabRuns = props.lab.aiLab.control.activeRuns.length > 0 ? props.lab.aiLab.control.activeRuns : props.lab.activeRuns;
   const latestRunReports = props.lab.aiLab.control.latestRunReports.length > 0 ? props.lab.aiLab.control.latestRunReports : props.lab.latestRunReports;
+  const serviceStatus = props.lab.serviceStatus ?? { healthStatus: "unknown", freshness: "unavailable" };
   const launcherLookup = new Map(props.lab.aiLab.scientificTools.launchers.map((launcher) => [launcher.id, launcher]));
   const allowlistedLaunchers = props.lab.aiLab.prepareFlow.launcherIds.map((launcherId) => {
     const launcher = launcherLookup.get(launcherId);
@@ -1155,6 +1234,9 @@ function LocalCodexLabPanel(props: {
         <div className="ai-lab-hero-main">
           <div className="ai-lab-status-strip">
             <span className={`health-pill ${toneClass(props.lab.hostHealth === "ok" ? "ok" : "attention")}`}>Host {props.lab.hostHealth}</span>
+            <span className={`health-pill ${toneClass(serviceStatus.healthStatus === "ok" && serviceStatus.freshness === "fresh" ? "ok" : "attention")}`}>
+              Atlas service {serviceStatus.healthStatus} · {serviceStatus.freshness}
+            </span>
             <span className={`health-pill ${toneClass(aiLabStatusTone(props.lab.aiLab.status))}`}>Lab {props.lab.aiLab.status}</span>
             <span className={`health-pill ${toneClass(props.lab.localGpuLiveBenchStatus.status === "ok" ? "ok" : "attention")}`}>GPU {props.lab.localGpuLiveBenchStatus.status}</span>
             <span className={`health-pill ${toneClass(aiLabRuns.length > 0 ? "attention" : "unknown")}`}>Runs {aiLabRuns.length}</span>
@@ -1247,8 +1329,8 @@ function LocalCodexLabPanel(props: {
                     try {
                       const result = await prepareAiLabTask(prepareTask.trim());
                       setPrepareResult(result);
-                      setEnqueueResult(null);
-                      setEnqueueError("");
+                      setDispatchResult(null);
+                      setDispatchError("");
                     } catch (error) {
                       setPrepareError(error instanceof Error ? error.message : String(error));
                     } finally {
@@ -1281,7 +1363,9 @@ function LocalCodexLabPanel(props: {
                     <div className="class-row"><span>tier</span><strong>{prepareResult.sandboxStatus.permissionTier}</strong></div>
                     <div className="class-row"><span>codex</span><strong>{prepareResult.codexNecessary ? "needed" : "not needed"}</strong></div>
                     <div className="class-row"><span>bridge</span><strong>{prepareResult.codexBridge.status}</strong></div>
-                    <div className="class-row"><span>workdir</span><strong>{compactPath(prepareResult.recommendedWorkdir)}</strong></div>
+                    <div className="class-row"><span>project</span><strong>{prepareResult.projectTitle}</strong></div>
+                    <div className="class-row"><span>registry id</span><strong>{prepareResult.projectId}</strong></div>
+                    <div className="class-row"><span>root</span><strong>{compactPath(prepareResult.projectPath)}</strong></div>
                   </div>
                   <p>{prepareResult.codexReason}</p>
                   {!prepareResult.codexBridge.available ? (
@@ -1328,10 +1412,10 @@ function LocalCodexLabPanel(props: {
                   </ul>
                 </article>
                 <article className="detail-card">
-                  <div className="detail-card-title">Codex queue bridge</div>
+                  <div className="detail-card-title">Governed local-agent dispatch</div>
                   <div className="class-grid">
-                    <div className="class-row"><span>endpoint</span><strong>{prepareResult.enqueueEndpoint}</strong></div>
-                    <div className="class-row"><span>add dirs</span><strong>{prepareResult.recommendedAddDirs.length}</strong></div>
+                    <div className="class-row"><span>endpoint</span><strong>{prepareResult.dispatchEndpoint}</strong></div>
+                    <div className="class-row"><span>compatibility</span><strong>{prepareResult.compatibilityEnqueueEndpoint}</strong></div>
                     <div className="class-row"><span>queue</span><strong>{props.lab.codexOrchestratorBridge.queueCounts.queued}</strong></div>
                     <div className="class-row"><span>running</span><strong>{props.lab.codexOrchestratorBridge.queueCounts.running}</strong></div>
                   </div>
@@ -1339,37 +1423,42 @@ function LocalCodexLabPanel(props: {
                     <button
                       className="ghost-action"
                       type="button"
-                      disabled={enqueueBusy || !prepareResult.codexBridge.available || !prepareResult.codexNecessary}
+                      disabled={dispatchBusy || !prepareResult.codexBridge.available || !prepareResult.codexNecessary}
                       onClick={async () => {
-                        setEnqueueBusy(true);
-                        setEnqueueError("");
+                        setDispatchBusy(true);
+                        setDispatchError("");
                         try {
-                          const result = await enqueuePreparedCodexTask(prepareResult);
-                          setEnqueueResult(result);
+                          const result = await dispatchPreparedAgentTask(prepareResult);
+                          setDispatchResult(result);
                         } catch (error) {
-                          setEnqueueError(error instanceof Error ? error.message : String(error));
+                          setDispatchError(error instanceof Error ? error.message : String(error));
                         } finally {
-                          setEnqueueBusy(false);
+                          setDispatchBusy(false);
                         }
                       }}
                     >
-                      {enqueueBusy ? "queueing..." : "queue in Codex"}
+                      {dispatchBusy ? "dispatching..." : "prepare and queue Codex"}
                     </button>
                   </div>
-                  {enqueueError ? <div className="empty-inline">{enqueueError}</div> : null}
-                  {enqueueResult ? (
+                  {dispatchError ? <div className="empty-inline">{dispatchError}</div> : null}
+                  {dispatchResult ? (
                     <div className="doc-list">
+                      <div className="class-grid">
+                        <div className="class-row"><span>run</span><strong>{dispatchResult.runId}</strong></div>
+                        <div className="class-row"><span>queue id</span><strong>{dispatchResult.queueTaskId}</strong></div>
+                        <div className="class-row"><span>status</span><strong>{dispatchResult.dispatchStatus}</strong></div>
+                      </div>
                       <QuickActionRow
-                        label="queued task"
-                        value={compactPath(enqueueResult.taskPath)}
-                        onOpen={() => props.onOpen("queued task", enqueueResult.taskPath)}
-                        onCopy={() => props.onCopy("queued task", enqueueResult.taskPath)}
+                        label="queued handoff"
+                        value={compactPath(dispatchResult.queueTaskPath)}
+                        onOpen={() => props.onOpen("queued handoff", dispatchResult.queueTaskPath)}
+                        onCopy={() => props.onCopy("queued handoff", dispatchResult.queueTaskPath)}
                       />
                       <QuickActionRow
                         label="run report"
-                        value={compactPath(enqueueResult.reportPath)}
-                        onOpen={() => props.onOpen("run report", enqueueResult.reportPath)}
-                        onCopy={() => props.onCopy("run report", enqueueResult.reportPath)}
+                        value={compactPath(dispatchResult.reportPath)}
+                        onOpen={() => props.onOpen("run report", dispatchResult.reportPath)}
+                        onCopy={() => props.onCopy("run report", dispatchResult.reportPath)}
                       />
                     </div>
                   ) : null}
@@ -1830,7 +1919,7 @@ function LocalCodexLabPanel(props: {
             <div className="goal-capsule-head">
               <div>
                 <div className="detail-card-title">Codex orchestrator bridge</div>
-                <strong>{props.lab.codexOrchestratorBridge.available ? "queue bridge available" : "bridge unavailable"}</strong>
+                <strong>{props.lab.codexOrchestratorBridge.available ? "governed dispatch available" : "bridge unavailable"}</strong>
               </div>
               <StatusBadge label={props.lab.codexOrchestratorBridge.status} tone={props.lab.codexOrchestratorBridge.available ? "ok" : "risk"} />
             </div>
@@ -1931,9 +2020,169 @@ function firstMoneyValue(value: number | string | null | undefined) {
   return "Нет проверенных данных";
 }
 
+const COMMERCIAL_STAGE_LABELS: Record<CommercialLaunchObservability["stages"][number]["id"], string> = {
+  readiness: "Готовность",
+  publication: "Публикация",
+  lead: "Лид",
+  payment: "Оплата",
+  receipt: "Чек",
+};
+
+const COMMERCIAL_STAGE_STATUS_LABELS: Record<CommercialLaunchObservability["stages"][number]["status"], string> = {
+  verified: "проверено",
+  observed: "наблюдается",
+  blocked: "блокировано",
+  pending: "ожидает проверки",
+  not_observed: "не наблюдается",
+  stale: "устарело",
+  unavailable: "нет данных",
+};
+
+function commercialLaunchTone(status: CommercialLaunchObservability["stages"][number]["status"]): HealthTone {
+  if (status === "verified" || status === "observed") return "ok";
+  if (status === "blocked") return "risk";
+  if (status === "pending" || status === "stale") return "attention";
+  return "unknown";
+}
+
+function CommercialLaunchEvidencePanel(props: {
+  launch: CommercialLaunchObservability;
+  commercialSource: SourceMeta;
+  revenueSource: SourceMeta;
+  billingSource: SourceMeta;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const blockingStage = props.launch.stages.find((stage) => stage.status === "blocked");
+  const staleStage = props.launch.stages.find((stage) => stage.status === "stale");
+  const unavailableStage = props.launch.stages.find((stage) => stage.status === "unavailable");
+  const pendingStage = props.launch.stages.find((stage) => stage.status === "pending");
+  const notObservedStage = props.launch.stages.find((stage) => stage.status === "not_observed");
+  const headline = blockingStage
+    ? `blocked at ${COMMERCIAL_STAGE_LABELS[blockingStage.id]}`
+    : staleStage
+      ? `stale at ${COMMERCIAL_STAGE_LABELS[staleStage.id]}`
+      : unavailableStage
+        ? `evidence missing at ${COMMERCIAL_STAGE_LABELS[unavailableStage.id]}`
+        : pendingStage
+          ? `pending at ${COMMERCIAL_STAGE_LABELS[pendingStage.id]}`
+          : notObservedStage
+            ? `not observed at ${COMMERCIAL_STAGE_LABELS[notObservedStage.id]}`
+            : "evidence chain current";
+  const headlineTone: HealthTone = blockingStage
+    ? "risk"
+    : staleStage || pendingStage
+      ? "attention"
+      : unavailableStage || notObservedStage
+        ? "unknown"
+        : "ok";
+
+  return (
+    <section className="panel commercial-launch-panel" aria-labelledby="commercial-launch-title">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Launch Evidence</div>
+          <h3 id="commercial-launch-title">От готовности до чека — без догадок</h3>
+          <p>Каждый этап опирается только на разрешённые статусы и агрегаты. Готовность счетов не считается оплатой, а политика чеков — фактом выдачи.</p>
+        </div>
+        <StatusBadge label={headline} tone={headlineTone} />
+      </div>
+
+      <div className="commercial-launch-flow" aria-label="Commercial launch evidence stages">
+        {props.launch.stages.map((stage, index) => (
+          <article className={`commercial-launch-stage commercial-launch-${stage.status}`} key={stage.id}>
+            <div className="commercial-launch-stage-head">
+              <span className="commercial-launch-index">{String(index + 1).padStart(2, "0")}</span>
+              <StatusBadge label={COMMERCIAL_STAGE_STATUS_LABELS[stage.status]} tone={commercialLaunchTone(stage.status)} />
+            </div>
+            <strong>{COMMERCIAL_STAGE_LABELS[stage.id]}</strong>
+            <p>{stage.detail}</p>
+            {stage.id === "lead" || stage.id === "payment" ? (
+              <div className="commercial-launch-counts">
+                <span>observed <b>{stage.observedCount ?? "—"}</b></span>
+                {stage.id === "payment" ? <span>pending <b>{stage.pendingCount ?? "—"}</b></span> : null}
+              </div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      <div className="commercial-launch-policy">
+        <strong>Evidence boundary</strong>
+        <span>Только aggregate metadata. Нет идентичностей, реквизитов, сумм, документов чеков или заявлений о фактически полученных деньгах.</span>
+        <code>{props.launch.policy}</code>
+      </div>
+      <div className="commercial-launch-sources">
+        <SourceFootnote source={props.commercialSource} label="authoritative commercial aggregate" onOpen={props.onOpen} onCopy={props.onCopy} />
+        <SourceFootnote source={props.revenueSource} label="sanitized Revenue Autopilot export" onOpen={props.onOpen} onCopy={props.onCopy} />
+        <SourceFootnote source={props.billingSource} label="sanitized billing readiness projection" onOpen={props.onOpen} onCopy={props.onCopy} />
+      </div>
+    </section>
+  );
+}
+
+function CommercialBillingPanel(props: {
+  billing: CommercialBillingProjection;
+  source: SourceMeta;
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const unavailable = props.billing.status !== "available" || props.billing.contractStatus !== "valid";
+  const boundProducts = props.billing.productBindings.filter((item) => item.status === "verified").length;
+  const verifiedPayments = props.billing.paymentProfiles.filter((item) => item.status === "verified").length;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Commercial Billing</div>
+          <h3>Единая готовность счетов без реквизитов в Atlas</h3>
+          <p>Только profile IDs и статусы. Реальные данные продавца, платёжные значения и документы остаются в private runtime binding.</p>
+        </div>
+        <StatusBadge
+          label={unavailable ? "contract unavailable" : props.billing.readinessStatus}
+          tone={unavailable ? "risk" : props.billing.readinessStatus === "verified" ? "ok" : "attention"}
+        />
+      </div>
+
+      <div className="local-status-grid">
+        <MetricCard label="Products" value={props.billing.productBindings.length} detail={`${boundProducts} verified bindings`} />
+        <MetricCard label="Seller profiles" value={props.billing.sellerProfiles.length} detail="metadata only" />
+        <MetricCard label="Payment profiles" value={props.billing.paymentProfiles.length} detail={`${verifiedPayments} verified`} />
+        <MetricCard label="Revenue proof" value="unknown" detail="binding readiness is not payment evidence" />
+      </div>
+
+      {unavailable ? <div className="empty-inline">Billing projection отсутствует или не прошла строгий upstream contract.</div> : (
+        <div className="detail-grid compact-grid">
+          {props.billing.productBindings.map((binding) => (
+            <article className="detail-card" key={binding.productId}>
+              <div className="detail-card-title">{binding.productId}</div>
+              <div className="class-grid">
+                <div className="class-row"><span>status</span><strong>{binding.status}</strong></div>
+                <div className="class-row"><span>seller profile</span><strong>{binding.sellerProfileId || "unknown"}</strong></div>
+                <div className="class-row"><span>payment profiles</span><strong>{binding.paymentProfileIds.join(" · ") || "unknown"}</strong></div>
+              </div>
+            </article>
+          ))}
+          <article className="detail-card">
+            <div className="detail-card-title">Receipt & merchant policy</div>
+            <ul className="note-list compact-note-list">
+              {props.billing.paymentProfiles.map((profile) => (
+                <li key={profile.profileId}>{profile.profileId} · receipt {profile.receiptStatus} · reuse {profile.merchantReuseStatus}</li>
+              ))}
+            </ul>
+          </article>
+        </div>
+      )}
+      <SourceFootnote source={props.source} label="sanitized billing readiness projection" onOpen={props.onOpen} onCopy={props.onCopy} />
+    </section>
+  );
+}
+
 function FirstMoneyPanel(props: { summary: FirstMoneySummary | null; revenue: RevenueAutopilotStatus }) {
   const summary = props.summary;
-  const sourceUnavailable = !summary || summary.source_status === "unavailable";
+  const sourceUnavailable = !summary
+    || summary.source_status === "unavailable"
+    || summary.freshness === "unavailable";
   const stale = summary?.freshness === "stale";
   const funnel = summary?.funnel;
   const offer = summary?.primary_offer;
@@ -1995,8 +2244,9 @@ function FirstMoneyPanel(props: { summary: FirstMoneySummary | null; revenue: Re
             <div className="class-row"><span>Активная линия</span><strong>{firstMoneyValue(props.revenue.active_revenue_lane)}</strong></div>
             <div className="class-row"><span>Эксперимент</span><strong>{firstMoneyValue(props.revenue.active_experiment)}</strong></div>
             <div className="class-row"><span>Лимит</span><strong>{typeof props.revenue.current_spend_cap_rub === "number" ? `${props.revenue.current_spend_cap_rub} ₽` : "Нет проверенных данных"}</strong></div>
-            <div className="class-row"><span>Готовность продукта</span><strong>{firstMoneyValue(props.revenue.product_readiness)}</strong></div>
-            <div className="class-row"><span>Готовность кампании</span><strong>{firstMoneyValue(props.revenue.campaign_readiness)}</strong></div>
+            <div className="class-row"><span>Готовность продукта</span><strong>{revenueProjectionLabel(props.revenue)}</strong></div>
+            <div className="class-row"><span>Готовность кампании</span><strong>{revenueProjectionTrusted(props.revenue) ? firstMoneyValue(props.revenue.campaign_readiness) : revenueProjectionLabel(props.revenue)}</strong></div>
+            <div className="class-row"><span>Свежесть проекции</span><strong>{firstMoneyValue(props.revenue.freshness)}</strong></div>
             <div className="class-row"><span>Аналитика</span><strong>{firstMoneyValue(props.revenue.analytics_status)}</strong></div>
             <div className="class-row"><span>Решение цикла</span><strong>{firstMoneyValue(props.revenue.experiment_action)}</strong></div>
             <div className="class-row"><span>Safe mode</span><strong>{props.revenue.host_safe_mode ? "ON" : "OFF"}</strong></div>
@@ -2018,9 +2268,16 @@ function RevenueOrbitPanel(props: {
   onOpen: (label: string, target: string) => void;
   onCopy: (label: string, value: string) => void;
 }) {
-  const factory = props.revenue.creative_factory;
+  const trustedProjection = revenueProjectionTrusted(props.revenue);
+  const factory = trustedProjection ? props.revenue.creative_factory : null;
   const status = factory?.status ?? "unavailable";
-  const statusLabel = status.includes("blocked") ? "asset gate blocked" : status === "unavailable" ? "status unavailable" : "ready for review";
+  const statusLabel = !trustedProjection
+    ? revenueProjectionLabel(props.revenue)
+    : status.includes("blocked")
+      ? "asset gate blocked"
+      : status === "unavailable"
+        ? "status unavailable"
+        : "ready for review";
   const assetLabel = factory?.asset_status?.includes("blocked") ? "waiting for approved media" : factory?.asset_status ?? "unavailable";
   const approvalLabel = factory?.publish_policy === "owner_approval_required" ? "owner gate" : factory?.publish_policy ?? "unavailable";
   return (
@@ -2032,14 +2289,14 @@ function RevenueOrbitPanel(props: {
           <h3>Креативы — только после доказуемого asset gate</h3>
           <p>Atlas показывает безопасный operational status, а не сырой контент, лиды или выдуманную эффективность.</p>
         </div>
-        <StatusBadge label={statusLabel} tone={status.includes("blocked") || status === "unavailable" ? "attention" : "ok"} />
+        <StatusBadge label={statusLabel} tone={!trustedProjection || status.includes("blocked") || status === "unavailable" ? "attention" : "ok"} />
       </div>
 
       <div className="revenue-orbit-layout">
         <article className="revenue-hero-card">
           <div className="revenue-hero-topline">
             <span className="orbit-eyebrow">ACTIVE REVENUE LANE</span>
-            <StatusBadge label={props.revenue.product_readiness ?? "unavailable"} tone={commercialTone(props.revenue.product_readiness ?? "")} />
+            <StatusBadge label={revenueAutopilotLabel(props.revenue)} tone={revenueAutopilotTone(props.revenue)} />
           </div>
           <div className="revenue-hero-title">{props.revenue.active_revenue_lane ?? "unavailable"}</div>
           <p>{props.revenue.next_exact_money_action ?? "Нет безопасно сформированного следующего действия."}</p>
@@ -2158,6 +2415,16 @@ function RuntimeRegistryPanel(props: {
       </div>
 
       <div className="detail-grid compact-grid">
+        <article className="detail-card">
+          <div className="detail-card-title">Terminal completion</div>
+          <div className="class-grid">
+            <div className="class-row"><span>contract</span><strong>{props.control.terminalCompletion.contract.version || "missing"}</strong></div>
+            <div className="class-row"><span>latest stage</span><strong>{props.control.terminalCompletion.latestRun.current_stage || "discovered"}</strong></div>
+            <div className="class-row"><span>terminal</span><strong>{props.control.terminalCompletion.latestRun.terminal === true ? "done" : "no"}</strong></div>
+            <div className="class-row"><span>activate / retire / defer</span><strong>{`${props.control.terminalCompletion.dormantComponents.decisions.activate} / ${props.control.terminalCompletion.dormantComponents.decisions.retire} / ${props.control.terminalCompletion.dormantComponents.decisions.defer}`}</strong></div>
+          </div>
+          <SourceFootnote source={props.control.terminalCompletion.source} label="terminal completion" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
         <article className="detail-card detail-card-wide">
           <div className="detail-card-title">Live runtimes</div>
           <div className="repo-intel-list">
@@ -2289,6 +2556,169 @@ function AgentBoardPanel(props: {
             ))}
           </ul>
           <SourceFootnote source={props.control.source} label="agent board" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function agentPlatformTone(platform: LocalAgentPlatform): HealthTone {
+  if (platform.status === "malformed" || platform.verificationStatus === "rejected") return "risk";
+  if (platform.status === "stale" || platform.freshnessState === "stale") return "attention";
+  if (platform.status === "available" && platform.freshnessState === "fresh") return "ok";
+  return "unknown";
+}
+
+function AgentOperationsPanel(props: {
+  platform: LocalAgentPlatform;
+  audit: CodexAudit;
+  runSummaries: LocalCodexRunSummary[];
+  onOpen: (label: string, target: string) => void;
+  onCopy: (label: string, value: string) => void;
+}) {
+  const { platform } = props;
+  const auditTone: HealthTone = props.audit.sourceStatus === "healthy"
+    ? "ok"
+    : props.audit.sourceStatus === "unavailable"
+      ? "unknown"
+      : props.audit.sourceStatus === "stale"
+        ? "attention"
+        : "risk";
+  const counts = platform.queueHealth.counts ?? {};
+  const activeTask = platform.runningTasks[0] ?? (platform.taskLifecycle.task_id ? platform.taskLifecycle : null);
+  const stale = platform.status === "stale" || platform.freshnessState === "stale";
+  const malformed = platform.status === "malformed" || platform.missingFields.length > 0;
+  const successRate = !malformed && Number.isFinite(platform.agentSuccessRate)
+    ? `${Math.round(platform.agentSuccessRate * 100)}%`
+    : "missing";
+  const verificationDetail = platform.verificationResults.passed === true
+    ? "passed"
+    : platform.verificationResults.passed === false
+      ? "not passed"
+      : "no verdict";
+  const evidenceBlockers = [
+    ...platform.blockedPromotions.map((item) => `promotion · ${item}`),
+    ...platform.staleEvidence.map((item) => `${item.id || "evidence"} · ${item.state || "unknown"}`),
+    ...platform.missingFields.map((item) => `missing field · ${item}`),
+  ];
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="section-kicker">Agent Operations</div>
+          <h3>Очередь, lifecycle и проверяемый результат</h3>
+          <p>Единая read-only проекция существующего agent ledger; без второй очереди и без raw traces.</p>
+        </div>
+        <div className="status-cluster">
+          <StatusBadge label={platform.status} tone={agentPlatformTone(platform)} />
+          <StatusBadge label={platform.freshnessState || "unknown freshness"} tone={agentPlatformTone(platform)} />
+          <StatusBadge label={`audit ${props.audit.sourceStatus}`} tone={auditTone} />
+        </div>
+      </div>
+
+      {stale ? (
+        <div className="empty-inline">Данные устарели · истекли {platform.expiresAt ? fmtRelative(new Date(platform.expiresAt).getTime()) : "без timestamp"}</div>
+      ) : null}
+      {malformed ? (
+        <div className="empty-inline">Projection неполна: {platform.missingFields.join(", ") || "schema rejected"}</div>
+      ) : null}
+      {props.audit.sourceStatus !== "healthy" ? (
+        <div className="empty-inline">
+          Audit source: {props.audit.sourceStatus} · sync {props.audit.syncStatus} · exporter {props.audit.exporter.status || "unavailable"}
+        </div>
+      ) : null}
+
+      <div className="local-status-grid">
+        <MetricCard label="Queue depth" value={malformed ? "missing" : platform.queueHealth.queue_depth ?? 0} detail={`${platform.queueHealth.dead_letter_depth ?? 0} dead-letter`} />
+        <MetricCard label="Running" value={malformed ? "missing" : platform.runningTasks.length} detail={`${platform.queueHealth.active_leases ?? 0} active leases`} />
+        <MetricCard label="Success rate" value={successRate} detail="locally measured agent runs" />
+        <MetricCard label="Verification" value={platform.verificationResults.status || platform.verificationStatus || "missing"} detail={verificationDetail} />
+      </div>
+
+      <div className="detail-grid compact-grid">
+        <article className="detail-card detail-card-wide">
+          <div className="detail-card-title">Codex audit ledger</div>
+          <div className="class-grid">
+            <div className="class-row"><span>freshness</span><strong>{props.audit.freshness}</strong></div>
+            <div className="class-row"><span>sync</span><strong>{props.audit.syncStatus}</strong></div>
+            <div className="class-row"><span>tasks</span><strong>{props.audit.taskCount}</strong></div>
+            <div className="class-row"><span>generated</span><strong>{props.audit.generatedAt ? fmtRelative(new Date(props.audit.generatedAt).getTime()) : "unavailable"}</strong></div>
+          </div>
+          <div className="repo-intel-list">
+            {props.audit.tasks.length > 0 ? props.audit.tasks.slice(0, 6).map((task) => (
+              <div key={task.taskId} className="repo-intel-row">
+                <div>
+                  <strong>{task.taskId}</strong>
+                  <p>{task.repository} · {task.branch || "no branch"}</p>
+                </div>
+                <div className="repo-intel-meta">
+                  <span>{task.status}</span>
+                  <span>{task.headSha ? compactHash(task.headSha, 12) : "no Git SHA"}</span>
+                  <span>{task.failedChecks.length} failed checks · {task.blockers.length} blockers</span>
+                </div>
+              </div>
+            )) : <div className="empty-inline">Audit source не содержит задач.</div>}
+          </div>
+          <SourceFootnote source={props.audit.source} label="Codex audit latest" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Lifecycle counts</div>
+          <div className="class-grid">
+            <div className="class-row"><span>blocked</span><strong>{malformed ? "—" : counts.blocked ?? 0}</strong></div>
+            <div className="class-row"><span>retryable</span><strong>{malformed ? "—" : counts.failed_retryable ?? 0}</strong></div>
+            <div className="class-row"><span>terminal</span><strong>{malformed ? "—" : counts.failed_terminal ?? 0}</strong></div>
+            <div className="class-row"><span>promotion pending</span><strong>{malformed ? "—" : counts.promotion_pending ?? 0}</strong></div>
+          </div>
+          {activeTask ? (
+            <div className="class-grid">
+              <div className="class-row"><span>state</span><strong>{activeTask.state || activeTask.status || "unknown"}</strong></div>
+              <div className="class-row"><span>task</span><strong>{compactHash(activeTask.task_id || "unknown", 24)}</strong></div>
+              <div className="class-row"><span>trace</span><strong>{compactHash(activeTask.trace_id || "none", 18)}</strong></div>
+            </div>
+          ) : (
+            <div className="empty-inline">Активных задач нет; очередь пуста.</div>
+          )}
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Freshness & authority</div>
+          <div className="class-grid">
+            <div className="class-row"><span>authority</span><strong>{platform.authority || "unavailable"}</strong></div>
+            <div className="class-row"><span>generated</span><strong>{platform.generatedAt ? fmtRelative(new Date(platform.generatedAt).getTime()) : "missing"}</strong></div>
+            <div className="class-row"><span>observed</span><strong>{platform.observedAt ? fmtRelative(new Date(platform.observedAt).getTime()) : "missing"}</strong></div>
+            <div className="class-row"><span>gateway</span><strong>{platform.commandGateway || "read-only"}</strong></div>
+          </div>
+          <SourceFootnote source={platform.sourceArtifact} label="agent operations export" onOpen={props.onOpen} onCopy={props.onCopy} />
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Blockers & stale evidence</div>
+          {evidenceBlockers.length > 0 ? (
+            <ul className="note-list compact-note-list">
+              {evidenceBlockers.slice(0, 8).map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          ) : (
+            <div className="empty-inline">Блокирующих evidence-сигналов нет.</div>
+          )}
+        </article>
+
+        <article className="detail-card">
+          <div className="detail-card-title">Последние safe run summaries</div>
+          <div className="doc-list">
+            {props.runSummaries.length > 0 ? props.runSummaries.slice(0, 4).map((run) => (
+              <QuickActionRow
+                key={run.runId}
+                label={run.task || run.runId}
+                value={`${run.verification.length} checks · ${run.commits.length} commits · ${run.finishedAt ? fmtRelative(new Date(run.finishedAt).getTime()) : "no timestamp"}`}
+                onOpen={() => props.onOpen(run.runId, run.source.path)}
+                onCopy={() => props.onCopy(run.runId, run.nextAction || run.task)}
+              />
+            )) : (
+              <div className="empty-inline">Безопасных run summaries пока нет.</div>
+            )}
+          </div>
         </article>
       </div>
     </section>
@@ -3435,7 +3865,7 @@ function OverviewWorkspace(props: {
 
       <section className="pulse-grid" aria-label="Key signals">
         <button className="pulse-card" type="button" onClick={() => props.onNavigate("revenue")}>
-          <span>Revenue lane</span><strong>{revenue.active_revenue_lane ?? "unavailable"}</strong><p>{revenue.product_readiness ?? "no readiness"}</p>
+          <span>Revenue lane</span><strong>{revenue.active_revenue_lane ?? "unavailable"}</strong><p>{revenueProjectionLabel(revenue)}</p>
         </button>
         <button className="pulse-card" type="button" onClick={() => props.onNavigate("ai-control")}>
           <span>Host</span><strong>{snapshot.system.systemStatus}</strong><p>{snapshot.system.hyprlandOnline ? "Hyprland online" : "Hyprland unconfirmed"}</p>
@@ -3570,9 +4000,11 @@ function RunsWorkspace(props: {
   onOpen: (label: string, target: string) => void;
   onCopy: (label: string, value: string) => void;
 }) {
+  const platform = props.snapshot.localAgentPlatform;
   return (
     <div className="workspace-stack">
-      <WorkspaceHeader eyebrow="Atlas / Runs" title="Запуски и проверяемый результат" description="История исполнения, traces, usage и отчёты находятся отдельно от runtime-конфигурации." status={{ label: `${props.snapshot.localCodexLab.runSummaries.length} recent`, tone: props.snapshot.localCodexLab.runSummaries.length ? "ok" : "unknown" }} />
+      <WorkspaceHeader eyebrow="Atlas / Runs" title="Запуски и проверяемый результат" description="История исполнения, traces, usage и отчёты находятся отдельно от runtime-конфигурации." status={{ label: `${platform.status} · ${props.snapshot.localCodexLab.runSummaries.length} summaries`, tone: agentPlatformTone(platform) }} />
+      <AgentOperationsPanel platform={platform} audit={props.snapshot.codexAudit} runSummaries={props.snapshot.localCodexLab.runSummaries} onOpen={props.onOpen} onCopy={props.onCopy} />
       <AgentBoardPanel control={props.snapshot.localAiControl} onOpen={props.onOpen} onCopy={props.onCopy} />
       <AgentTracePanel telemetry={props.snapshot.aiTelemetry} onOpen={props.onOpen} onCopy={props.onCopy} />
       <AiActivityExplorerPanel telemetry={props.snapshot.aiTelemetry} onOpen={props.onOpen} onCopy={props.onCopy} />
@@ -3753,7 +4185,7 @@ export function App() {
     return <main className="boot-state">Ошибка загрузки snapshot: {error}</main>;
   }
 
-  if (!snapshot || !selectedProject) {
+  if (!snapshot) {
     return <main className="boot-state">Собираю Project Atlas…</main>;
   }
 
@@ -3806,7 +4238,7 @@ export function App() {
 
         <section className="sidebar-status" aria-label="Current status">
           <div><span className={`sync-dot ${snapshot.system.safeMode ? "sync-dot-warn" : ""}`} /><span>Host</span><strong>{snapshot.system.systemStatus}</strong></div>
-          <div><span className={`sync-dot ${snapshot.commercialReadiness.revenueAutopilot.product_readiness === "blocked" ? "sync-dot-warn" : ""}`} /><span>Revenue</span><strong>{snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "unknown"}</strong></div>
+          <div><span className={`sync-dot ${revenueAutopilotTone(snapshot.commercialReadiness.revenueAutopilot) !== "ok" ? "sync-dot-warn" : ""}`} /><span>Revenue</span><strong>{revenueAutopilotLabel(snapshot.commercialReadiness.revenueAutopilot)}</strong></div>
         </section>
 
         <footer className="sidebar-footer">
@@ -3839,15 +4271,21 @@ export function App() {
         {notice ? <div className="notice" role="status">{notice}</div> : null}
 
         <main className="workspace-main">
-          {activeWorkspace === "overview" && mission ? <OverviewWorkspace snapshot={snapshot} mission={mission} selectedProject={selectedProject} onNavigate={setActiveWorkspace} onOpen={open} /> : null}
+          {activeWorkspace === "overview" && mission && selectedProject ? <OverviewWorkspace snapshot={snapshot} mission={mission} selectedProject={selectedProject} onNavigate={setActiveWorkspace} onOpen={open} /> : null}
+          {activeWorkspace === "overview" && !selectedProject ? <section className="panel"><div className="empty-inline">Project inventory unavailable. Company and system workspaces remain available.</div></section> : null}
+          {activeWorkspace === "company" ? <CompanyWorkspace data={snapshot.aiCompany} onRefresh={() => refreshSnapshot(true)} /> : null}
           {activeWorkspace === "revenue" ? <div className="workspace-stack">
-            <WorkspaceHeader eyebrow="Atlas / Revenue" title="От сигнала к деньгам" description="Воронка, creative factory и owner gates собраны в одном коммерческом контексте." status={{ label: snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "unknown", tone: commercialTone(snapshot.commercialReadiness.revenueAutopilot.product_readiness ?? "") }} />
+            <WorkspaceHeader eyebrow="Atlas / Revenue" title="От сигнала к деньгам" description="Воронка, creative factory и owner gates собраны в одном коммерческом контексте." status={{ label: revenueAutopilotLabel(snapshot.commercialReadiness.revenueAutopilot), tone: revenueAutopilotTone(snapshot.commercialReadiness.revenueAutopilot) }} />
+            <CommercialLaunchEvidencePanel launch={snapshot.commercialReadiness.commercialLaunch} commercialSource={snapshot.commercialReadiness.source} revenueSource={snapshot.commercialReadiness.revenueAutopilotSource} billingSource={snapshot.commercialReadiness.productOperatingStandardSource} onOpen={open} onCopy={copy} />
             <RevenueOrbitPanel revenue={snapshot.commercialReadiness.revenueAutopilot} source={snapshot.commercialReadiness.revenueAutopilotSource} onOpen={open} onCopy={copy} />
+            <CommercialBillingPanel billing={snapshot.commercialReadiness.commercialBilling} source={snapshot.commercialReadiness.productOperatingStandardSource} onOpen={open} onCopy={copy} />
             <FirstMoneyPanel summary={firstMoneySummary ?? snapshot.commercialReadiness.firstMoneySummary ?? null} revenue={snapshot.commercialReadiness.revenueAutopilot} />
           </div> : null}
           {activeWorkspace === "ai-control" && mission ? <AiControlWorkspace snapshot={snapshot} mission={mission} section={aiControlSection} onSectionChange={setAiControlSection} onOpen={open} onCopy={copy} /> : null}
-          {activeWorkspace === "work" ? <WorkWorkspace snapshot={snapshot} projects={filteredProjects} selectedProject={selectedProject} query={query} domainFilter={domainFilter} detailTab={detailTab} onQueryChange={setQuery} onDomainChange={setDomainFilter} onSelect={(id) => { setSelectedId(id); setDetailTab("overview"); }} onTabChange={setDetailTab} onCopy={copy} onOpen={open} /> : null}
+          {activeWorkspace === "work" && selectedProject ? <WorkWorkspace snapshot={snapshot} projects={filteredProjects} selectedProject={selectedProject} query={query} domainFilter={domainFilter} detailTab={detailTab} onQueryChange={setQuery} onDomainChange={setDomainFilter} onSelect={(id) => { setSelectedId(id); setDetailTab("overview"); }} onTabChange={setDetailTab} onCopy={copy} onOpen={open} /> : null}
+          {activeWorkspace === "work" && !selectedProject ? <section className="panel"><div className="empty-inline">Project inventory unavailable.</div></section> : null}
           {activeWorkspace === "runs" ? <RunsWorkspace snapshot={snapshot} onOpen={open} onCopy={copy} /> : null}
+          {activeWorkspace === "admin" ? <AdministrationWorkspace registry={snapshot.administration} onOpen={open} onCopy={copy} /> : null}
           {activeWorkspace === "remote" ? <div className="workspace-stack">
             <WorkspaceHeader eyebrow="Atlas / Remote" title="Удалённое управление" description="Состояние доступа и сервисов отделено от product и AI telemetry." status={{ label: remoteState?.services.atlas ?? "loading", tone: remoteState?.services.atlas === "active" ? "ok" : "attention" }} />
             <RemoteOpsPanel state={remoteState} busy={remoteBusy} onAction={runRemoteAction} onCopy={copy} onRefresh={() => refreshRemoteState(true)} />

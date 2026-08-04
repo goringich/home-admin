@@ -17,6 +17,7 @@ test("normalizes a successful authoritative zero summary", () => {
   const result = normalizeCommercialSummary(valid, NOW);
   assert.equal(result.source_status, "available");
   assert.equal(result.freshness, "fresh");
+  assert.equal(result.generated_at, valid.generated_at);
   assert.equal(result.funnel.leads, 0);
   assert.equal(result.funnel.payments_verified, 0);
   assert.equal(result.funnel.payments_pending, 2);
@@ -37,12 +38,45 @@ test("marks old generated aggregate data as stale", () => {
   assert.equal(result.freshness, "stale");
 });
 
+test("expiry and observation age override embedded fresh commercial state", () => {
+  const expired = normalizeCommercialSummary({
+    ...valid,
+    generated_at: "2026-07-13T11:19:30.000Z",
+    observed_at: "2026-07-13T11:19:30.000Z",
+    expires_at: "2026-07-13T11:19:59.000Z",
+  }, NOW);
+  assert.equal(expired.source_status, "available");
+  assert.equal(expired.freshness, "stale");
+
+  const oldObservation = normalizeCommercialSummary({
+    ...valid,
+    generated_at: "2026-07-13T11:19:30.000Z",
+    observed_at: "2026-07-13T10:00:00.000Z",
+    expires_at: "2026-07-13T12:00:00.000Z",
+  }, NOW);
+  assert.equal(oldObservation.freshness, "stale");
+
+  const futureObservation = normalizeCommercialSummary({
+    ...valid,
+    generated_at: "2026-07-13T11:19:30.000Z",
+    observed_at: "2026-07-13T11:26:00.000Z",
+    expires_at: "2026-07-13T12:00:00.000Z",
+  }, NOW);
+  assert.equal(futureObservation.source_status, "unavailable");
+  assert.equal(futureObservation.freshness, "unavailable");
+});
+
 test("First Money UI keeps unknown, zero, stale and pending-payment wording safe", () => {
   const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const policy = readFileSync(new URL("../src/ai-company-view-policy.ts", import.meta.url), "utf8");
   assert.match(source, /Нет проверенных данных/);
   assert.match(source, /Данные устарели/);
   assert.match(source, /Ожидающие проверки оплаты/);
   assert.match(source, /Подтверждённые оплаты/);
+  assert.match(source, /revenueAutopilotTone/);
+  assert.match(source, /revenueProjectionTrusted/);
+  assert.match(source, /revenueProjectionLabel/);
+  assert.match(policy, /revenue\.freshness !== "fresh"/);
   assert.doesNotMatch(source, /выручк/i);
 });
 
@@ -76,8 +110,9 @@ test("normalizes Revenue Autopilot as a read-only commercial projection", () => 
       publish_policy: "owner_approval_required",
     },
     host_safe_mode: true,
-  });
+  }, NOW);
   assert.equal(result.status, "available");
+  assert.equal(result.freshness, "fresh");
   assert.equal(result.active_revenue_lane, "elizabet");
   assert.equal(result.current_spend_cap_rub, 0);
   assert.equal(result.funnel_counters.attributed_sessions, null);
@@ -86,18 +121,45 @@ test("normalizes Revenue Autopilot as a read-only commercial projection", () => 
   assert.equal(result.creative_factory?.rendered_video_count, 0);
 });
 
+test("stale Revenue Autopilot readiness remains explicit and cannot render as fresh", () => {
+  const result = normalizeRevenueAutopilot({
+    generated_at: "2026-07-13T00:00:00.000Z",
+    safe_to_expose: true,
+    active_revenue_lane: "elizabet",
+    product_readiness: "ready",
+    campaign_readiness: "allow",
+    funnel_counters: {},
+  }, NOW);
+
+  assert.equal(result.status, "available");
+  assert.equal(result.freshness, "stale");
+  assert.equal(result.product_readiness, "ready");
+
+  const future = normalizeRevenueAutopilot({
+    generated_at: "2026-07-13T11:26:00.000Z",
+    safe_to_expose: true,
+    active_revenue_lane: "elizabet",
+    product_readiness: "ready",
+    campaign_readiness: "allow",
+    funnel_counters: {},
+  }, NOW);
+  assert.equal(future.status, "unavailable");
+  assert.equal(future.freshness, "unavailable");
+});
+
 test("withholds unsafe or malformed Revenue Autopilot exports", () => {
   assert.equal(normalizeRevenueAutopilot(null).status, "unavailable");
   assert.equal(normalizeRevenueAutopilot({ safe_to_expose: false }).status, "unavailable");
   assert.equal(normalizeRevenueAutopilot({ safe_to_expose: true, active_revenue_lane: 42 }).status, "unavailable");
   const unsafeCreative = normalizeRevenueAutopilot({
+    generated_at: "2026-07-13T11:19:00.000Z",
     safe_to_expose: true,
     active_revenue_lane: "elizabet",
     product_readiness: "blocked",
     campaign_readiness: "blocked",
     funnel_counters: {},
     creative_factory: { status: "plan", asset_status: "blocked", approved_asset_count: -1 },
-  });
+  }, NOW);
   assert.equal(unsafeCreative.status, "available");
   assert.equal(unsafeCreative.creative_factory, null);
 });

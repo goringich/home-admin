@@ -2,12 +2,26 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
-import { normalizeRevenueAutopilot } from "./commercial-summary.mjs";
+import { fileURLToPath } from "node:url";
+import { normalizeCommercialBilling } from "./commercial-billing.mjs";
+import { normalizeCommercialLaunchObservability } from "./commercial-launch-observability.mjs";
+import { normalizeCommercialSummary, normalizeRevenueAutopilot } from "./commercial-summary.mjs";
+import { normalizeLocalAgentPlatform } from "./local-agent-platform.mjs";
+import {
+  normalizeAtlasServiceStatus,
+  selectLocalCodexLabRecord,
+} from "./snapshot-source-selection.mjs";
+import { normalizeCodexAudit } from "./codex-audit.mjs";
+import {
+  normalizeAiCompanyMissionControl,
+  unavailableAiCompanyMissionControl,
+} from "./ai-company-mission-control.mjs";
 
 const home = os.homedir();
-const rootDir = path.join(home, "Desktop", "project-atlas");
+const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const inventoryPath = path.join(home, "system-bootstrap", "docs", "repo-inventory.md");
 const overridesPath = path.join(rootDir, "data", "project-overrides.json");
+const administrationRegistryPath = path.join(home, "__home_organized", "local-codex-stack", "configs", "admin-surface-registry.json");
 const outputPath = path.join(rootDir, "public", "snapshot.json");
 const canonicalLocalCodexRuntime = path.join(home, "__home_organized", "runtime", "local-codex-stack");
 const legacyLocalCodexRuntime = path.join(home, "__home_organized", "local-codex-stack", "runtime", "local-codex-stack");
@@ -15,6 +29,7 @@ const canonicalLocalCodexAtlasPath = path.join(canonicalLocalCodexRuntime, "atla
 const codexHistorySummaryPath = path.join(canonicalLocalCodexRuntime, "atlas", "codex-history-summary.json");
 const legacyLocalCodexAtlasPath = path.join(home, "__home_organized", "local-codex-stack", "atlas", "local-codex-lab.json");
 const localAiStatePath = path.join(home, "__home_organized", "runtime", "local-ai-control", "state.json");
+const localAiOsStatusPath = path.join(canonicalLocalCodexRuntime, "atlas", "local-ai-os-status.json");
 const agentHealthStatePath = path.join(home, "__home_organized", "runtime", "agent-health-gate", "state.json");
 const hostAuditOutputPath = path.join(canonicalLocalCodexRuntime, "host-audit-latest.json");
 const aiTelemetryExportPath = path.join(home, "__home_organized", "runtime", "ai-telemetry", "exports", "atlas.json");
@@ -22,15 +37,28 @@ const commercialReadinessPath = path.join(canonicalLocalCodexRuntime, "commercia
 const productIntelPath = path.join(canonicalLocalCodexRuntime, "product-intel.json");
 const productOperatingStandardPath = path.join(canonicalLocalCodexRuntime, "atlas", "product-operating-standard.json");
 const operationPolicySummaryPath = path.join(canonicalLocalCodexRuntime, "atlas", "operation-policy-summary.json");
+const localAgentPlatformPath = path.join(canonicalLocalCodexRuntime, "atlas", "local-agent-platform.json");
+const aiCompanyMissionControlPath = path.join(
+  canonicalLocalCodexRuntime,
+  "atlas",
+  "ai-company-mission-control.v1.json",
+);
+const codexAuditRuntimeLatestPath = process.env.CODEX_AUDIT_LATEST_PATH
+  || path.join(canonicalLocalCodexRuntime, "codex-audit-public", "latest.json");
+const codexAuditObsidianLatestPath = path.join(home, "Desktop", "Obsidian", "codex-audit", "latest.json");
+const codexAuditExporterPath = path.join(canonicalLocalCodexRuntime, "codex-audit", "export-status.json");
 const revenueAutopilotPath = path.join(canonicalLocalCodexRuntime, "atlas", "revenue-autopilot.json");
 const aiLabRegistryPath = path.join(rootDir, "data", "ai-lab-registry.json");
-const codexOrchestratorRoot = path.join(home, "codex-orchestrator");
 const codexOrchestratorRuntime = path.join(home, "__home_organized", "runtime", "codex-orchestrator");
 const codexOrchestratorArtifacts = path.join(home, "__home_organized", "artifacts", "codex-orchestrator");
 const sharedRunReportsRoot = path.join(canonicalLocalCodexRuntime, "run-reports");
-const codexEnqueueScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-enqueue");
-const codexRunReporterScript = path.join(codexOrchestratorRoot, "bin", "codex-agent-run-report");
-const codexBridgeFixCommand = "cd /home/goringich/codex-orchestrator && ./install.sh";
+const localAgentRunScript = path.join(home, ".local", "bin", "local-agent-run");
+const localAgentExecScript = path.join(home, ".local", "bin", "local-agent-exec");
+const engineeringControlPlanePath = path.join(canonicalLocalCodexRuntime, "engineering-control-plane.json");
+const projectTargetsPath = path.join(home, "__home_organized", "local-codex-stack", "configs", "targets.json");
+const operationPolicyScript = path.join(home, "__home_organized", "local-codex-stack", "scripts", "operation_policy.py");
+const codexBridgeFixCommand =
+  "ln -sf /home/goringich/__home_organized/scripts/local-agent-run /home/goringich/.local/bin/local-agent-run && ln -sf /home/goringich/__home_organized/scripts/local-agent-exec /home/goringich/.local/bin/local-agent-exec";
 
 const overrides = JSON.parse(fs.readFileSync(overridesPath, "utf8"));
 
@@ -117,6 +145,50 @@ function readJsonFirst(paths, fallback = null) {
     }
   }
   return { path: "", payload: fallback };
+}
+
+function readJsonCandidates(paths) {
+  return paths.flatMap((targetPath) => {
+    if (!fileExists(targetPath)) return [];
+    try {
+      return [{ path: targetPath, payload: JSON.parse(fs.readFileSync(targetPath, "utf8")) }];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function buildAdministration() {
+  const registry = readJsonFirst([administrationRegistryPath], { schema_version: "missing", surfaces: [] });
+  const payload = sanitizeSensitiveExportMetadata(registry.payload || {});
+  const surfaces = Array.isArray(payload.surfaces) ? payload.surfaces : [];
+  return {
+    status: registry.path ? "registered" : "missing",
+    schemaVersion: payload.schema_version || "missing",
+    sourceOfTruth: Array.isArray(payload.source_of_truth) ? payload.source_of_truth : [],
+    contract: payload.global_contract || {},
+    surfaces: surfaces.map((surface) => ({
+      id: String(surface?.id || ""),
+      title: String(surface?.title || "Unnamed admin surface"),
+      classification: String(surface?.classification || "unknown"),
+      ownership: String(surface?.ownership || "unknown"),
+      operatorRole: String(surface?.operator_role || ""),
+      nativeUi: String(surface?.native_ui || ""),
+      designReview: String(surface?.design_review || ""),
+      styleAdapter: String(surface?.style_adapter || ""),
+      atlasIntegration: String(surface?.atlas_integration || ""),
+      availability: String(surface?.availability || "available"),
+      capabilities: Array.isArray(surface?.capabilities) ? surface.capabilities.map((item) => String(item)) : [],
+      launch: {
+        mode: String(surface?.launch?.mode || "runbook"),
+        label: String(surface?.launch?.label || "Open guide"),
+        target: String(surface?.launch?.target || ""),
+      },
+      runbookTarget: String(surface?.runbook_target || ""),
+      sourcePaths: Array.isArray(surface?.source_paths) ? surface.source_paths.map((item) => String(item)) : [],
+    })).filter((surface) => surface.id),
+    source: statMeta(registry.path, payload.schema_version || ""),
+  };
 }
 
 function readJsonlFirst(paths) {
@@ -347,7 +419,11 @@ function readSharedRunReports(limit = 8) {
 }
 
 function buildCodexOrchestratorBridge() {
-  const available = fileExists(codexEnqueueScript) && fileExists(codexRunReporterScript);
+  const available =
+    fileExists(localAgentRunScript) &&
+    fileExists(localAgentExecScript) &&
+    fileExists(projectTargetsPath) &&
+    fileExists(operationPolicyScript);
   const latestRunReports = readSharedRunReports(10);
   const failedVerification = latestRunReports.filter((report) => report.failedVerificationCount > 0);
   const dirtyAfterRun = latestRunReports.filter((report) => report.dirtyAfterRun);
@@ -359,12 +435,15 @@ function buildCodexOrchestratorBridge() {
       status: "/api/codex-orchestrator/status",
       queue: "/api/codex-orchestrator/queue",
       recentRuns: "/api/codex-orchestrator/recent-runs",
+      dispatch: "/api/local-agent/dispatch",
       enqueue: "/api/codex-orchestrator/enqueue",
     },
     scripts: {
-      enqueue: codexEnqueueScript,
-      reporter: codexRunReporterScript,
+      prepare: localAgentRunScript,
+      dispatch: localAgentExecScript,
     },
+    projectRegistry: projectTargetsPath,
+    operationPolicy: operationPolicyScript,
     runtimeRoot: codexOrchestratorRuntime,
     reportRoot: sharedRunReportsRoot,
     queueCounts: codexQueueCounts(),
@@ -377,7 +456,7 @@ function buildCodexOrchestratorBridge() {
     nextExactAction:
       latestRunReports[0]?.nextAction ||
       (available
-        ? "Prepare in Atlas, enqueue through `/api/codex-orchestrator/enqueue`, run `codex-agent-run`, then refresh the Atlas snapshot."
+        ? "Prepare in Atlas and dispatch through `/api/local-agent/dispatch`; the governed local-agent run creates the report and queues the reviewed Codex handoff."
         : codexBridgeFixCommand),
     source: statMeta(sharedRunReportsRoot, ""),
   };
@@ -690,7 +769,11 @@ function summarizeRepo(repoEntry) {
 
 function buildLocalCodexLab() {
   const codexOrchestratorBridge = buildCodexOrchestratorBridge();
-  const lab = readJsonFirst([canonicalLocalCodexAtlasPath, legacyLocalCodexAtlasPath], {});
+  const lab = selectLocalCodexLabRecord(readJsonCandidates([canonicalLocalCodexAtlasPath, legacyLocalCodexAtlasPath]));
+  const engineeringControlPlane = readJsonFirst([engineeringControlPlanePath], {});
+  const serviceStatusPayload = engineeringControlPlane.payload?.service_status
+    || lab.payload?.service_status
+    || null;
   const aiLabRegistry = readJsonFirst([aiLabRegistryPath], {});
   const researchSummary = readJsonFirst(
     [
@@ -808,6 +891,7 @@ function buildLocalCodexLab() {
     generatedAt: lab.payload?.generated_at || new Date().toISOString(),
     hostHealth: lab.payload?.host_health || "unknown",
     source: statMeta(lab.path, lab.payload?.generated_at || ""),
+    serviceStatus: normalizeAtlasServiceStatus(serviceStatusPayload),
     modelRouting: {
       fast: lab.payload?.fast_model || "unknown",
       balanced: lab.payload?.balanced_model || "unknown",
@@ -1143,7 +1227,9 @@ function buildLocalCodexLab() {
 
 function buildLocalAiControl() {
   const state = readJsonFirst([localAiStatePath], {});
+  const terminalState = readJsonFirst([localAiOsStatusPath], {});
   const payload = state.payload ?? {};
+  const terminalPayload = terminalState.payload ?? {};
   const emptyCleanup = {
     keep: [],
     "keep-but-manual": [],
@@ -1172,6 +1258,17 @@ function buildLocalAiControl() {
     security: {
       summary: payload.openclaw_audit?.summary || { critical: 0, warn: 0, info: 0 },
       findings: payload.openclaw_audit?.findings || [],
+    },
+    terminalCompletion: {
+      contract: terminalPayload.terminal_completion_contract || {},
+      latestRun: terminalPayload.local_codex_stack_runs?.latest || {},
+      dormantComponents: terminalPayload.dormant_components || {
+        status: "missing",
+        component_count: 0,
+        decisions: { activate: 0, retire: 0, defer: 0 },
+        components: [],
+      },
+      source: statMeta(terminalState.path, terminalPayload.generated_at || ""),
     },
     source: statMeta(state.path, payload.generated_at || ""),
   };
@@ -1271,10 +1368,22 @@ function buildCodexHistory() {
 }
 
 function buildCommercialReadiness() {
+  const now = Date.now();
   const report = readJsonFirst([commercialReadinessPath], {});
   const productIntel = readJsonFirst([productIntelPath], {});
   const productOperatingStandard = readJsonFirst([productOperatingStandardPath], {});
   const revenueAutopilot = readJsonFirst([revenueAutopilotPath], {});
+  const safeProductOperatingStandard = productOperatingStandard.payload?.safe_to_expose === true
+    ? productOperatingStandard.payload
+    : null;
+  const firstMoneySummary = normalizeCommercialSummary(report.payload?.first_money_summary, now);
+  const commercialBilling = normalizeCommercialBilling(safeProductOperatingStandard?.commercial_billing);
+  const normalizedRevenueAutopilot = normalizeRevenueAutopilot(revenueAutopilot.payload, now);
+  const commercialLaunch = normalizeCommercialLaunchObservability({
+    summary: firstMoneySummary,
+    revenue: normalizedRevenueAutopilot,
+    billing: commercialBilling,
+  }, now);
   return {
     generatedAt: report.payload?.generated_at || new Date().toISOString(),
     overallStatus: report.payload?.overall_status || "unknown",
@@ -1298,7 +1407,7 @@ function buildCommercialReadiness() {
     monetizationPriorityPath: report.payload?.monetization_priority_path || productIntel.payload?.monetization_priority_path || "",
     firstMoneyContractPath: report.payload?.first_money_operating_contract_path || productIntel.payload?.first_money_operating_contract_path || "",
     firstMoney: report.payload?.first_money || { status: "missing", primary_offer: {}, readiness: { current_state: "missing", reasons: [] }, verified_blockers: [], owner_required_blockers: [], aggregate_funnel_counters: { status: "missing", counters: {} }, active_experiment: {}, next_exact_revenue_action: "" },
-    firstMoneySummary: report.payload?.first_money_summary || {},
+    firstMoneySummary,
     summary: {
       implemented: Number(report.payload?.summary?.implemented || 0),
       scaffolded: Number(report.payload?.summary?.scaffolded || 0),
@@ -1318,9 +1427,11 @@ function buildCommercialReadiness() {
     focusRepos: productIntel.payload?.focus_repos || [],
     source: statMeta(report.path, report.payload?.generated_at || ""),
     productIntelSource: statMeta(productIntel.path, productIntel.payload?.generated_at || ""),
-    productOperatingStandard: productOperatingStandard.payload?.safe_to_expose === true ? productOperatingStandard.payload : null,
+    productOperatingStandard: safeProductOperatingStandard,
     productOperatingStandardSource: statMeta(productOperatingStandard.path, productOperatingStandard.payload?.generated_at || ""),
-    revenueAutopilot: normalizeRevenueAutopilot(revenueAutopilot.payload),
+    commercialBilling,
+    commercialLaunch,
+    revenueAutopilot: normalizedRevenueAutopilot,
     revenueAutopilotSource: statMeta(revenueAutopilot.path, revenueAutopilot.payload?.generated_at || ""),
   };
 }
@@ -1337,6 +1448,42 @@ function buildOperationPolicy() {
     requiredChecks: payload.required_checks || [],
     evidenceFreshness: payload.evidence_freshness || "unknown",
     source: statMeta(record.path, payload.evaluated_at || ""),
+  };
+}
+
+function buildLocalAgentPlatform() {
+  const record = readJsonFirst([localAgentPlatformPath], {});
+  const payload = sanitizeSensitiveExportMetadata(record.payload || {});
+  return {
+    ...normalizeLocalAgentPlatform(payload),
+    sourceArtifact: statMeta(record.path, payload.generated_at || ""),
+    readOnly: true,
+    commandGateway: "codex-orchestrator-policy-boundary",
+  };
+}
+
+function buildAiCompanyMissionControl() {
+  const record = readJsonFirst([aiCompanyMissionControlPath], null);
+  if (!record.path || !record.payload) {
+    return unavailableAiCompanyMissionControl("source_missing");
+  }
+  const normalized = normalizeAiCompanyMissionControl(record.payload);
+  return {
+    ...normalized,
+    source: statMeta(record.path, normalized.generatedAt),
+  };
+}
+
+function buildCodexAudit() {
+  const latest = readJsonFirst(
+    [codexAuditRuntimeLatestPath, codexAuditObsidianLatestPath],
+    null,
+  );
+  const exporter = readJsonFirst([codexAuditExporterPath], null);
+  return {
+    ...normalizeCodexAudit(latest.payload, exporter.payload, Date.now()),
+    source: statMeta(latest.path, latest.payload?.generated_at || ""),
+    exporterSource: statMeta(exporter.path, exporter.payload?.observed_at || ""),
   };
 }
 
@@ -1528,7 +1675,11 @@ const aiTelemetry = buildAiTelemetry();
 const codexHistory = buildCodexHistory();
 const commercialReadiness = buildCommercialReadiness();
 const operationPolicy = buildOperationPolicy();
+const localAgentPlatform = buildLocalAgentPlatform();
+const aiCompany = buildAiCompanyMissionControl();
+const codexAudit = buildCodexAudit();
 const hostAudit = buildHostAudit(system, localAiControl);
+const administration = buildAdministration();
 
 const snapshot = {
   generatedAt: new Date().toISOString(),
@@ -1556,6 +1707,10 @@ const snapshot = {
   codexHistory,
   commercialReadiness,
   operationPolicy,
+  localAgentPlatform,
+  aiCompany,
+  codexAudit,
+  administration,
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
