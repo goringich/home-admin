@@ -8,6 +8,10 @@ import { fileURLToPath } from "node:url";
 import { getRemoteState, runRemoteAction } from "./remote-control.mjs";
 import { normalizeCommercialSummary } from "./commercial-summary.mjs";
 import { reconcileRecentRuns, safeProjectionText, sanitizeSharedRunReport } from "./codex-orchestrator-projection.mjs";
+import {
+  prepareGovernedAgentTask,
+  selectProjectTarget,
+} from "./atlas-agent-dispatch.mjs";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const distDir = path.join(rootDir, "dist");
@@ -289,14 +293,9 @@ function codexStatusPayload() {
   };
 }
 
-function dispatchAtlasAgentTask(payload) {
-  requireCodexBridge();
-  return dispatchGovernedAgentTask(payload, {
+function prepareAtlasAgentTask(payload) {
+  return prepareGovernedAgentTask(payload, {
     targetsPath: projectTargetsPath,
-    localAgentRunScript,
-    localAgentExecScript,
-    enforcePolicy: enforceAtlasDispatchPolicy,
-    execFileSync,
   });
 }
 
@@ -567,8 +566,8 @@ function buildAiLabPrepare(snapshot, task) {
     projectId: projectTarget.id,
     projectTitle: projectTarget.title,
     projectPath: projectTarget.path,
-    dispatchEndpoint: "/api/local-agent/dispatch",
-    compatibilityEnqueueEndpoint: "/api/codex-orchestrator/enqueue",
+    dispatchEndpoint: "/api/local-agent/prepare",
+    compatibilityEnqueueEndpoint: "",
     codexBridge: {
       status: bridge.status,
       available: bridge.available,
@@ -752,18 +751,23 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/api/codex-orchestrator/enqueue") {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk;
-    });
-    req.on("end", () => {
+  if (req.method === "POST" && url.pathname === "/api/local-agent/prepare") {
+    handleJsonMutation(req, res, (payload) => {
       try {
-        sendJson(res, 200, { ok: true, data: dispatchAtlasAgentTask(payload) });
+        sendJson(res, 200, { ok: true, data: prepareAtlasAgentTask(payload) });
       } catch (error) {
-        send(res, 400, `${error instanceof Error ? error.message : String(error)}\n`);
+        send(res, 400, `${error instanceof Error ? error.message : String(error)}
+`);
       }
     });
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    ["/api/local-agent/dispatch", "/api/codex-orchestrator/enqueue"].includes(url.pathname)
+  ) {
+    sendJson(res, 409, { ok: false, error: "atlas_prepare_only_use_governed_producer" });
     return;
   }
 

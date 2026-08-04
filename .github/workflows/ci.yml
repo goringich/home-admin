@@ -21,11 +21,13 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Tests
+      - name: Tests in isolated processes
         run: |
           mapfile -t tests < <(find scripts -maxdepth 1 -type f -name '*.test.mjs' | sort)
           test "${#tests[@]}" -gt 0
-          node --test "${tests[@]}"
+          for test_file in "${tests[@]}"; do
+            node --test "$test_file"
+          done
       - name: Lint and typecheck
         run: |
           npm run lint --if-present
