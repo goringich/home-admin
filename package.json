@@ -4,9 +4,10 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/commercial-summary.test.mjs scripts/codex-orchestrator-projection.test.mjs scripts/service-placement-projection.test.mjs scripts/device-fleet-store.test.mjs",
+    "test": "node --test scripts/commercial-summary.test.mjs scripts/codex-orchestrator-projection.test.mjs scripts/service-placement-projection.test.mjs scripts/device-fleet-store.test.mjs scripts/windows-agent-contract.test.mjs",
     "snapshot": "node scripts/build-snapshot.mjs",
-    "dev": "npm run snapshot && vite",
+    "dev": "npm run snapshot && node scripts/dev-stack.mjs",
+    "dev:ui": "vite",
     "build": "tsc -b && vite build",
     "test:ai-company-browser": "node scripts/ai-company-browser-smoke.mjs",
     "build:refresh": "npm run snapshot && npm run build",
