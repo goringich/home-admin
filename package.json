@@ -1,17 +1,18 @@
 {
   "name": "project-atlas",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/commercial-summary.test.mjs scripts/codex-orchestrator-projection.test.mjs scripts/service-placement-projection.test.mjs",
+    "test": "node --test scripts/commercial-summary.test.mjs scripts/codex-orchestrator-projection.test.mjs scripts/service-placement-projection.test.mjs scripts/device-fleet-store.test.mjs",
     "snapshot": "node scripts/build-snapshot.mjs",
     "dev": "npm run snapshot && vite",
     "build": "tsc -b && vite build",
     "test:ai-company-browser": "node scripts/ai-company-browser-smoke.mjs",
     "build:refresh": "npm run snapshot && npm run build",
     "preview": "vite preview",
-    "host": "node scripts/atlas-host.mjs"
+    "host": "node scripts/device-fleet-host.mjs",
+    "host:legacy": "node scripts/atlas-host.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",
