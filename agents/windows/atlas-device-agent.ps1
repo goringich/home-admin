@@ -240,7 +240,11 @@ function Get-AtlasTelemetry {
   $memoryFreeGb = [math]::Round([double]$os.FreePhysicalMemory / 1MB, 2)
   $memoryUsedGb = [math]::Round($memoryTotalGb - $memoryFreeGb, 2)
   $memoryPercent = if ($memoryTotalGb -gt 0) { [math]::Round(($memoryUsedGb / $memoryTotalGb) * 100, 1) } else { 0 }
-  $bootTime = [Management.ManagementDateTimeConverter]::ToDateTime([string]$os.LastBootUpTime)
+  $bootTime = if ($os.LastBootUpTime -is [DateTime]) {
+    [DateTime]$os.LastBootUpTime
+  } else {
+    [Management.ManagementDateTimeConverter]::ToDateTime([string]$os.LastBootUpTime)
+  }
   $uptimeSeconds = [math]::Max(0, [math]::Round(((Get-Date) - $bootTime).TotalSeconds))
 
   $disks = @()
