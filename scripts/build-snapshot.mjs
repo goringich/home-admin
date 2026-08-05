@@ -3,7 +3,18 @@ import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { normalizeRevenueAutopilot } from "./commercial-summary.mjs";
+import {
+  normalizeCommercialSummary,
+  normalizeRevenueAutopilot,
+} from "./commercial-summary.mjs";
+import { normalizeCommercialBilling } from "./commercial-billing.mjs";
+import { normalizeCommercialLaunchObservability } from "./commercial-launch-observability.mjs";
+import { normalizeLocalAgentPlatform } from "./local-agent-platform.mjs";
+import {
+  normalizeAiCompanyMissionControl,
+  unavailableAiCompanyMissionControl,
+} from "./ai-company-mission-control.mjs";
+import { normalizeCodexAudit } from "./codex-audit.mjs";
 import { reconcileRecentRuns, safeProjectionText, sanitizeSharedRunReport } from "./codex-orchestrator-projection.mjs";
 import { sanitizeServicePlacementProjection } from "./service-placement-projection.mjs";
 import {
@@ -1653,6 +1664,7 @@ const doneTasks = tasks.filter((task) => task.status === "done").length;
 const blockedTasks = tasks.filter((task) => task.status === "blocked").length;
 const activeTasks = tasks.filter((task) => task.status === "active").length;
 const reviewTasks = tasks.filter((task) => task.status === "review").length;
+const administration = buildAdministration();
 const system = systemSnapshot();
 const localCodexLab = buildLocalCodexLab();
 const localAiControl = buildLocalAiControl();
