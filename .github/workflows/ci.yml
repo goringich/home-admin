@@ -31,6 +31,7 @@ jobs:
             node:22-bookworm-slim \
             sh -euc '
               npm ci
+              test -n "$(find scripts -maxdepth 1 -type f -name "*.test.mjs" -print -quit)"
               find scripts -maxdepth 1 -type f -name "*.test.mjs" -print0 \
                 | sort -z \
                 | xargs -0 -r -n1 node --test
