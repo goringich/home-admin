@@ -3,63 +3,58 @@ name: home-admin-ci
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    if: >-
+      github.repository_owner == 'goringich' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, goringich-ci]
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-      - name: Install
-        run: npm ci
-      - name: Tests in isolated processes
+
+      - name: Run Node validation in an isolated container
         run: |
-          mapfile -t tests < <(find scripts -maxdepth 1 -type f -name '*.test.mjs' | sort)
-          test "${#tests[@]}" -gt 0
-          for test_file in "${tests[@]}"; do
-            node --test "$test_file"
-          done
-      - name: Lint and typecheck
-        run: |
-          npm run lint --if-present
-          npm run typecheck --if-present
-      - name: Build
-        run: npm run build
+          command -v docker
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp/ci-home \
+            -e npm_config_cache=/tmp/npm-cache \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            node:22-bookworm-slim \
+            sh -euc '
+              npm ci
+              test -n "$(find scripts -maxdepth 1 -type f -name "*.test.mjs" -print -quit)"
+              find scripts -maxdepth 1 -type f -name "*.test.mjs" -print0 \
+                | sort -z \
+                | xargs -0 -r -n1 node --test
+              npm run lint --if-present
+              npm run typecheck --if-present
+              npm run build
+            '
 
   windows-agent:
-    runs-on: windows-latest
+    if: >-
+      github.repository_owner == 'goringich' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, goringich-ci]
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - name: Parse Windows agent scripts
-        shell: pwsh
+
+      - name: Parse Windows agent scripts in PowerShell container
         run: |
-          $ErrorActionPreference = "Stop"
-          $files = @(
-            "agents/windows/atlas-device-agent.ps1",
-            "agents/windows/install-atlas-device-agent.ps1"
-          )
-          foreach ($file in $files) {
-            $tokens = $null
-            $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $file),
-              [ref]$tokens,
-              [ref]$errors
-            ) | Out-Null
-            if ($errors.Count -gt 0) {
-              $errors | ForEach-Object { Write-Error "${file}: $($_.Message)" }
-              throw "PowerShell parser rejected $file"
-            }
-            Write-Host "PASS: $file"
-          }
+          command -v docker
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace:ro" \
+            -w /workspace \
+            mcr.microsoft.com/powershell:7.4-ubuntu-22.04 \
+            pwsh -NoLogo -NoProfile -File scripts/ci-validate-windows-agent.ps1
