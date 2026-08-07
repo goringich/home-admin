@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test scripts/commercial-summary.test.mjs scripts/codex-orchestrator-projection.test.mjs scripts/service-placement-projection.test.mjs scripts/device-fleet-store.test.mjs scripts/windows-agent-contract.test.mjs scripts/build-administration-adapters.test.mjs scripts/build-snapshot-recovery.test.mjs",
-    "snapshot": "node scripts/build-snapshot-recovery.mjs",
+    "snapshot": "node scripts/build-snapshot.mjs",
     "snapshot:canonical": "node scripts/build-snapshot.mjs",
     "snapshot:recover": "node scripts/build-snapshot-recovery.mjs",
     "adapters": "node scripts/build-administration-adapters.mjs",
