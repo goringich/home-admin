@@ -1,0 +1,205 @@
+{
+  "schemaVersion": "2026-08-07.atlas-administration-adapters.v1",
+  "generatedAt": "2026-08-07T13:42:30.485Z",
+  "sourceRegistry": "git:/home/goringich/__home_organized@origin/master:local-codex-stack/configs/admin-surface-registry.json",
+  "sourceSchemaVersion": "2026-08-07.admin-surface-registry.v2",
+  "sourceMode": "canonical",
+  "sourceResolution": "git-ref",
+  "sourceWarning": "working tree registry is stale (2026-07-16.admin-surface-registry.v1); canonical git ref used",
+  "surfaces": [
+    {
+      "id": "project-atlas",
+      "title": "Project Atlas",
+      "classification": "system",
+      "ownerRepository": "goringich/home-admin",
+      "sourceOfTruth": "administration shell navigation; adapter rendering; sanitized cross-project projections; local mission-control state",
+      "integrationModes": [
+        "native-projection",
+        "local-source"
+      ],
+      "embedding": {
+        "default": "allowed",
+        "supported": true,
+        "reason": "Atlas owns its own shell and local routes."
+      },
+      "authBoundary": "local loopback service and existing Atlas mutation policy",
+      "mutationOwner": "goringich/home-admin",
+      "projectionAllowlist": [
+        "repository state",
+        "health",
+        "run summaries",
+        "adapter availability"
+      ],
+      "secretPolicy": "No credentials or private command bodies in snapshots.",
+      "fallbackMode": "local-source",
+      "migrationState": "canonical",
+      "availability": "registered",
+      "launch": {
+        "label": "Open Atlas",
+        "target": "http://127.0.0.1:4174/#/admin"
+      },
+      "runbookTarget": "/home/goringich/Desktop/project-atlas/README.md"
+    },
+    {
+      "id": "telegram-proxy-stack-admin",
+      "title": "Telegram Proxy Stack operator admin",
+      "classification": "infrastructure",
+      "ownerRepository": "goringich/telegram-proxy-stack",
+      "sourceOfTruth": "Windows enrollment; Windows agents; Windows telemetry; Windows cameras; Windows command queue and history; remote-access state; VPN operator workflows",
+      "integrationModes": [
+        "external",
+        "native-projection",
+        "proxied",
+        "embedded"
+      ],
+      "embedding": {
+        "default": "denied",
+        "supported": false,
+        "reason": "Telegram init-data, signed-link and browser security compatibility must be proven by a project-owned adapter before embedding is enabled."
+      },
+      "authBoundary": "ADMIN_HTTP_TOKEN, Telegram init-data, signed app links, optional password and owner-only mutation checks",
+      "mutationOwner": "goringich/telegram-proxy-stack",
+      "projectionAllowlist": [
+        "service availability",
+        "sanitized Windows online/stale/offline counts",
+        "sanitized VPN health rollup",
+        "release SHA and freshness"
+      ],
+      "secretPolicy": "Never project signed query parameters, Telegram init-data, tokens, cookies, device secrets, camera bytes, command payloads or VPN bodies.",
+      "fallbackMode": "external",
+      "migrationState": "windows-canonicalization-in-progress",
+      "availability": "registered",
+      "launch": {
+        "label": "Open Windows fleet",
+        "target": "https://2.26.250.194:8443/app/#windows-fleet"
+      },
+      "runbookTarget": "/home/goringich/Desktop/server/telegram-proxy-stack/docs/services/admin-http.md"
+    },
+    {
+      "id": "vpn-family-father",
+      "title": "Father VPN admin",
+      "classification": "infrastructure",
+      "ownerRepository": "goringich/telegram-proxy-stack",
+      "sourceOfTruth": "father VPN runtime state and issuance",
+      "integrationModes": [
+        "external",
+        "native-projection"
+      ],
+      "embedding": {
+        "default": "denied",
+        "supported": false,
+        "reason": "The central Telegram Proxy Stack hub is the supported operator entry."
+      },
+      "authBoundary": "runtime-owned authorization through the central hub",
+      "mutationOwner": "goringich/telegram-proxy-stack",
+      "projectionAllowlist": [
+        "availability",
+        "sanitized route health"
+      ],
+      "secretPolicy": "No client links, credentials or VPN bodies.",
+      "fallbackMode": "external",
+      "migrationState": "canonical-via-hub",
+      "availability": "registered",
+      "launch": {
+        "label": "Use central Reality hub",
+        "target": "https://2.26.250.194:8443/app/"
+      },
+      "runbookTarget": "/home/goringich/Desktop/server/telegram-proxy-stack/docs/services/reality-vpn-admin-mirror.md"
+    },
+    {
+      "id": "vpn-family-uncle-lesha",
+      "title": "Uncle Lesha VPN admin",
+      "classification": "infrastructure",
+      "ownerRepository": "goringich/telegram-proxy-stack",
+      "sourceOfTruth": "uncle Lesha VPN runtime state and issuance",
+      "integrationModes": [
+        "external",
+        "native-projection"
+      ],
+      "embedding": {
+        "default": "denied",
+        "supported": false,
+        "reason": "Use the central hub and fail closed while runtime health is stale."
+      },
+      "authBoundary": "runtime-owned authorization through the central hub",
+      "mutationOwner": "goringich/telegram-proxy-stack",
+      "projectionAllowlist": [
+        "availability",
+        "sanitized route health"
+      ],
+      "secretPolicy": "No client links, credentials or VPN bodies.",
+      "fallbackMode": "external",
+      "migrationState": "attention-live-health-required",
+      "availability": "attention: last documented incident reports SSH and admin HTTP unreachable; do not present as healthy without fresh live evidence",
+      "launch": {
+        "label": "Use central Reality hub",
+        "target": "https://2.26.250.194:8443/app/"
+      },
+      "runbookTarget": "/home/goringich/Desktop/server/telegram-proxy-stack/docs/services/vpn-admin-runtime-2-27-18-110.md"
+    },
+    {
+      "id": "elizabet-admin",
+      "title": "Elizabeth admin console",
+      "classification": "product",
+      "ownerRepository": "goringich/elizabet",
+      "sourceOfTruth": "Elizabeth product administration and mutations",
+      "integrationModes": [
+        "external",
+        "native-projection",
+        "embedded"
+      ],
+      "embedding": {
+        "default": "denied",
+        "supported": false,
+        "reason": "Enable only after product-owned CSP, frame and authentication compatibility is explicitly implemented."
+      },
+      "authBoundary": "Elizabeth TOTP, IP allowlist and product session controls",
+      "mutationOwner": "goringich/elizabet",
+      "projectionAllowlist": [
+        "launch readiness",
+        "aggregate lead/payment/support status",
+        "deployment freshness"
+      ],
+      "secretPolicy": "No customer PII, payment details, TOTP material, sessions or private records.",
+      "fallbackMode": "local-source",
+      "migrationState": "adapter-planned",
+      "availability": "registered",
+      "launch": {
+        "label": "Open admin console guide",
+        "target": "/home/goringich/Desktop/server/elizabet/docs/admin-console.md"
+      },
+      "runbookTarget": "/home/goringich/Desktop/server/elizabet/docs/admin-console.md"
+    },
+    {
+      "id": "otlichniy-ulov-admin",
+      "title": "Отличный улов admin",
+      "classification": "external-product",
+      "ownerRepository": "goringich/otlichniy-ulov",
+      "sourceOfTruth": "client-owned product administration",
+      "integrationModes": [
+        "external",
+        "local-source"
+      ],
+      "embedding": {
+        "default": "denied",
+        "supported": false,
+        "reason": "External commissioned product is excluded from the personal federated admin programme."
+      },
+      "authBoundary": "client product authorization",
+      "mutationOwner": "explicit isolated task only",
+      "projectionAllowlist": [
+        "project identity",
+        "runbook path"
+      ],
+      "secretPolicy": "No runtime, customer, order, payment or support data in personal-system projections.",
+      "fallbackMode": "local-source",
+      "migrationState": "excluded",
+      "availability": "registered",
+      "launch": {
+        "label": "Open admin panel guide",
+        "target": "/home/goringich/Desktop/otlichniy-ulov/docs/12-admin-panel.md"
+      },
+      "runbookTarget": "/home/goringich/Desktop/otlichniy-ulov/docs/12-admin-panel.md"
+    }
+  ]
+}
