@@ -30,8 +30,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           command -v docker
+          runner_uid="$(id -u)"
+          runner_gid="$(id -g)"
           docker run --rm \
-            --user "$(id -u):$(id -g)" \
+            --user "${runner_uid}:${runner_gid}" \
             --cap-drop=ALL \
             --security-opt=no-new-privileges \
             --pids-limit=1024 \
