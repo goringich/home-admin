@@ -1,5 +1,7 @@
 node_modules
 dist
 public/snapshot.json
+public/administration-adapters.json
+public/architecture-universe.json
 desktop-check.png
 mobile-check.png

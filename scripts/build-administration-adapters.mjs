@@ -1,17 +1,18 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..");
-const DEFAULT_CANONICAL = path.join(
-  os.homedir(),
-  "__home_organized",
+const DEFAULT_CANONICAL_REPO = path.join(os.homedir(), "__home_organized");
+const DEFAULT_CANONICAL_RELATIVE = path.join(
   "local-codex-stack",
   "configs",
   "admin-surface-registry.json",
 );
+const DEFAULT_CANONICAL = path.join(DEFAULT_CANONICAL_REPO, DEFAULT_CANONICAL_RELATIVE);
 const FALLBACK = path.join(ROOT, "data", "administration-adapter-overrides.json");
 const OUTPUT = path.join(ROOT, "public", "administration-adapters.json");
 
@@ -115,6 +116,83 @@ function validateManifest(manifest) {
   return manifest;
 }
 
+function isCanonicalV2(registry) {
+  return Boolean(registry && typeof registry === "object" && String(registry.schema_version || "").endsWith(".v2"));
+}
+
+function defaultGitShow(repoPath, gitRef, relativePath) {
+  return execFileSync(
+    "git",
+    ["-C", repoPath, "show", `${gitRef}:${relativePath}`],
+    {
+      encoding: "utf8",
+      env: {
+        HOME: os.homedir(),
+        LANG: "C.UTF-8",
+        PATH: "/usr/local/bin:/usr/bin:/bin",
+      },
+      shell: false,
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5_000,
+    },
+  );
+}
+
+function resolveCanonicalRegistry(options, canonicalPath) {
+  let staleLocalSchema = "";
+
+  if (fs.existsSync(canonicalPath)) {
+    const localRegistry = readJson(canonicalPath);
+    if (isCanonicalV2(localRegistry)) {
+      return {
+        registry: localRegistry,
+        source: canonicalPath,
+        sourceResolution: "working-tree",
+        staleLocalSchema: "",
+      };
+    }
+    staleLocalSchema = String(localRegistry?.schema_version || "missing");
+  }
+
+  const gitRecoveryEnabled = Object.prototype.hasOwnProperty.call(options, "canonicalRepoPath")
+    || canonicalPath === DEFAULT_CANONICAL;
+  if (!gitRecoveryEnabled) {
+    return { registry: null, staleLocalSchema, staleGitSchema: "" };
+  }
+
+  const canonicalRepoPath = options.canonicalRepoPath
+    || process.env.ATLAS_ADMIN_SURFACE_REPO
+    || DEFAULT_CANONICAL_REPO;
+  const canonicalGitRef = options.canonicalGitRef
+    || process.env.ATLAS_ADMIN_SURFACE_GIT_REF
+    || "origin/master";
+  const canonicalRelativePath = options.canonicalRelativePath || DEFAULT_CANONICAL_RELATIVE;
+  const gitShow = options.gitShow || defaultGitShow;
+
+  if (!fs.existsSync(canonicalRepoPath) && !options.gitShow) {
+    return { registry: null, staleLocalSchema, staleGitSchema: "" };
+  }
+
+  try {
+    const registry = JSON.parse(gitShow(canonicalRepoPath, canonicalGitRef, canonicalRelativePath));
+    if (isCanonicalV2(registry)) {
+      return {
+        registry,
+        source: `git:${canonicalRepoPath}@${canonicalGitRef}:${canonicalRelativePath}`,
+        sourceResolution: "git-ref",
+        staleLocalSchema,
+      };
+    }
+    return {
+      registry: null,
+      staleLocalSchema,
+      staleGitSchema: String(registry?.schema_version || "missing"),
+    };
+  } catch {
+    return { registry: null, staleLocalSchema, staleGitSchema: "unavailable" };
+  }
+}
+
 export function buildAdministrationManifest(options = {}) {
   const canonicalPath = options.canonicalPath
     || process.env.ATLAS_ADMIN_SURFACE_REGISTRY
@@ -122,28 +200,36 @@ export function buildAdministrationManifest(options = {}) {
   const fallbackPath = options.fallbackPath || FALLBACK;
   const outputPath = options.outputPath || OUTPUT;
 
+  const canonical = resolveCanonicalRegistry(options, canonicalPath);
   let manifest;
   let source;
-  if (fs.existsSync(canonicalPath)) {
-    const registry = readJson(canonicalPath);
-    if (!String(registry.schema_version || "").endsWith(".v2")) {
-      throw new Error(`canonical administration registry is stale: ${registry.schema_version || "missing"}`);
-    }
+
+  if (canonical.registry) {
+    const registry = canonical.registry;
     manifest = {
       schemaVersion: "2026-08-07.atlas-administration-adapters.v1",
       generatedAt: new Date().toISOString(),
-      sourceRegistry: canonicalPath,
+      sourceRegistry: canonical.source,
       sourceSchemaVersion: String(registry.schema_version),
       sourceMode: "canonical",
+      sourceResolution: canonical.sourceResolution,
+      sourceWarning: canonical.staleLocalSchema
+        ? `working tree registry is stale (${canonical.staleLocalSchema}); canonical git ref used`
+        : "",
       surfaces: (registry.surfaces || []).map(mapCanonicalSurface),
     };
-    source = canonicalPath;
+    source = canonical.source;
   } else {
     const fallback = readJson(fallbackPath);
+    const warnings = [];
+    if (canonical.staleLocalSchema) warnings.push(`working tree registry is stale (${canonical.staleLocalSchema})`);
+    if (canonical.staleGitSchema) warnings.push(`canonical git registry unavailable or stale (${canonical.staleGitSchema})`);
     manifest = {
       ...fallback,
       generatedAt: new Date().toISOString(),
       sourceMode: "fallback",
+      sourceResolution: "bundled-fallback",
+      sourceWarning: warnings.join("; "),
     };
     source = fallbackPath;
   }

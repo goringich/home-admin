@@ -42,7 +42,7 @@ test("keeps the previous projection available when refresh fails", () => {
 
 test("still rebuilds the snapshot from the previous projection after an unexpected refresh failure", () => {
   let rebuilds = 0;
-  rebuildSnapshotAfterProjectionRefresh({
+  const result = rebuildSnapshotAfterProjectionRefresh({
     refreshProjection() {
       throw new Error("refresh failed before the helper could normalize it");
     },
@@ -52,4 +52,25 @@ test("still rebuilds the snapshot from the previous projection after an unexpect
   });
 
   assert.equal(rebuilds, 1);
+  assert.equal(result.rebuilt, true);
+  assert.equal(result.status, "rebuilt");
+  assert.equal(result.projection.status, "stale_preserved");
+});
+
+test("preserves the last valid snapshot when a live rebuild fails", () => {
+  const result = rebuildSnapshotAfterProjectionRefresh({
+    refreshProjection() {
+      return { refreshed: true, status: "refreshed" };
+    },
+    rebuildSnapshot() {
+      throw new Error("runtime refresh failed after a valid snapshot already existed");
+    },
+  });
+
+  assert.deepEqual(result, {
+    rebuilt: false,
+    status: "stale_snapshot_preserved",
+    projection: { refreshed: true, status: "refreshed" },
+  });
+  assert.equal("error" in result, false);
 });
