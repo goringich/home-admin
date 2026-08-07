@@ -59,7 +59,8 @@ test("architecture composition has no external network or shell execution", () =
 test("fresh live overlay is bounded and stale-safe", () => {
   assert.match(liveOverlay, /LIVE_TTL_SECONDS = 900/);
   assert.match(liveOverlay, /architecture-live-census\.result\.v1/);
-  assert.match(liveOverlay, /status: "stale"/);
+  assert.match(liveOverlay, /"stale"/);
+  assert.match(liveOverlay, /ageSeconds > LIVE_TTL_SECONDS/);
   assert.match(liveOverlay, /repository_identity/);
   assert.doesNotMatch(liveOverlay, /readFileSync\([^\n]*\.env/);
 });
@@ -74,11 +75,14 @@ test("Architecture is a native Atlas route with two graph views", () => {
   assert.match(component, /Node inspector/);
 });
 
-test("normal Atlas build composes enriches runtime-expands and live-overlays", () => {
+test("normal Atlas flows preserve source-only snapshot and regenerate architecture", () => {
   assert.equal(
     packageJson.scripts.architecture,
     "node scripts/build-architecture-universe.mjs && node scripts/enrich-architecture-universe.mjs && node scripts/enrich-architecture-runtime-snapshot.mjs && node scripts/apply-architecture-live-census.mjs",
   );
-  assert.match(packageJson.scripts.snapshot, /npm run architecture/);
+  assert.equal(packageJson.scripts.snapshot, "node scripts/build-snapshot.mjs");
+  assert.match(packageJson.scripts.dev, /npm run architecture/);
+  assert.match(packageJson.scripts.predev\:ui || packageJson.scripts["predev:ui"], /npm run architecture/);
   assert.match(packageJson.scripts.prebuild, /npm run architecture/);
+  assert.match(packageJson.scripts["build:refresh"], /npm run architecture/);
 });
