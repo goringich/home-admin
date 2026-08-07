@@ -8,28 +8,41 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: home-admin-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
-    if: >-
-      github.repository_owner == 'goringich' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, Linux, X64, goringich-ci]
+    if: github.repository_owner == 'goringich'
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout
+      - name: Checkout exact source without persisted credentials
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
-      - name: Run Node validation in an isolated container
+      - name: Verify exact checkout
+        run: test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: Run Node validation in an isolated ephemeral container
         run: |
+          set -Eeuo pipefail
           command -v docker
           docker run --rm \
-            --user "$(id -u):$(id -g)" \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges \
+            --pids-limit=1024 \
+            --memory=6g \
+            --cpus=4 \
             -e HOME=/tmp/ci-home \
             -e npm_config_cache=/tmp/npm-cache \
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace \
             node:22-bookworm-slim \
             sh -euc '
+              mkdir -p "$HOME" "$npm_config_cache"
               npm ci
               test -n "$(find scripts -maxdepth 1 -type f -name "*.test.mjs" -print -quit)"
               find scripts -maxdepth 1 -type f -name "*.test.mjs" -print0 \
@@ -41,19 +54,27 @@ jobs:
             '
 
   windows-agent:
-    if: >-
-      github.repository_owner == 'goringich' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, Linux, X64, goringich-ci]
+    if: github.repository_owner == 'goringich'
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout exact source without persisted credentials
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
-      - name: Parse Windows agent scripts in PowerShell container
+      - name: Parse Windows agent scripts in bounded PowerShell container
         run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           command -v docker
           docker run --rm \
+            --network=none \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges \
+            --pids-limit=256 \
+            --memory=1g \
+            --cpus=2 \
             -v "${GITHUB_WORKSPACE}:/workspace:ro" \
             -w /workspace \
             mcr.microsoft.com/powershell:7.4-ubuntu-22.04 \
