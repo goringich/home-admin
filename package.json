@@ -1,16 +1,19 @@
 {
   "name": "project-atlas",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/commercial-summary.test.mjs scripts/codex-orchestrator-projection.test.mjs scripts/service-placement-projection.test.mjs scripts/device-fleet-store.test.mjs scripts/windows-agent-contract.test.mjs",
+    "test": "node --test scripts/commercial-summary.test.mjs scripts/codex-orchestrator-projection.test.mjs scripts/service-placement-projection.test.mjs scripts/device-fleet-store.test.mjs scripts/windows-agent-contract.test.mjs scripts/build-administration-adapters.test.mjs",
     "snapshot": "node scripts/build-snapshot.mjs",
-    "dev": "npm run snapshot && node scripts/dev-stack.mjs",
+    "adapters": "node scripts/build-administration-adapters.mjs",
+    "dev": "npm run snapshot && npm run adapters && node scripts/dev-stack.mjs",
+    "predev:ui": "npm run adapters",
     "dev:ui": "vite",
+    "prebuild": "npm run adapters",
     "build": "tsc -b && vite build",
     "test:ai-company-browser": "node scripts/ai-company-browser-smoke.mjs",
-    "build:refresh": "npm run snapshot && npm run build",
+    "build:refresh": "npm run snapshot && npm run adapters && npm run build",
     "preview": "vite preview",
     "host": "node scripts/device-fleet-host.mjs",
     "host:legacy": "node scripts/atlas-host.mjs"
