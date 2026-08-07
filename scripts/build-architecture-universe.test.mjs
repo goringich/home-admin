@@ -82,7 +82,7 @@ test("normal Atlas flows preserve source-only snapshot and regenerate architectu
   );
   assert.equal(packageJson.scripts.snapshot, "node scripts/build-snapshot.mjs");
   assert.match(packageJson.scripts.dev, /npm run architecture/);
-  assert.match(packageJson.scripts.predev\:ui || packageJson.scripts["predev:ui"], /npm run architecture/);
+  assert.match(packageJson.scripts["predev:ui"], /npm run architecture/);
   assert.match(packageJson.scripts.prebuild, /npm run architecture/);
   assert.match(packageJson.scripts["build:refresh"], /npm run architecture/);
 });
