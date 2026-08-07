@@ -1,0 +1,12 @@
+{
+  "schema_version": "2026-08-07.atlas-architecture-workspace.v1",
+  "route": "#/architecture",
+  "mode": "native_atlas_workspace",
+  "authority": "read_only_visualization",
+  "source_owner": "goringich/__home_organized",
+  "projection": "public/architecture-universe.json",
+  "views": ["system_universe", "layer_map"],
+  "standalone_observatory": "debug_only",
+  "mutation_allowed": false,
+  "external_network_required": false
+}
