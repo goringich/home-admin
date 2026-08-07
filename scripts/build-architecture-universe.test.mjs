@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const builder = fs.readFileSync(path.join(root, "scripts", "build-architecture-universe.mjs"), "utf8");
 const enricher = fs.readFileSync(path.join(root, "scripts", "enrich-architecture-universe.mjs"), "utf8");
+const liveOverlay = fs.readFileSync(path.join(root, "scripts", "apply-architecture-live-census.mjs"), "utf8");
 const component = fs.readFileSync(path.join(root, "src", "ArchitectureWorkspace.tsx"), "utf8");
 const main = fs.readFileSync(path.join(root, "src", "main.tsx"), "utf8");
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -34,12 +35,20 @@ test("architecture universe composes every canonical census class", () => {
 });
 
 test("architecture composition has no external network or shell execution", () => {
-  for (const source of [builder, enricher]) {
+  for (const source of [builder, enricher, liveOverlay]) {
     assert.doesNotMatch(source, /fetch\s*\(/);
     assert.doesNotMatch(source, /https?:\/\//);
     assert.doesNotMatch(source, /exec(File|Sync|\s*\()/);
     assert.doesNotMatch(source, /child_process/);
   }
+});
+
+test("fresh live overlay is bounded and stale-safe", () => {
+  assert.match(liveOverlay, /LIVE_TTL_SECONDS = 900/);
+  assert.match(liveOverlay, /architecture-live-census\.result\.v1/);
+  assert.match(liveOverlay, /status: "stale"/);
+  assert.match(liveOverlay, /repository_identity/);
+  assert.doesNotMatch(liveOverlay, /readFileSync\([^\n]*\.env/);
 });
 
 test("Architecture is a native Atlas route with two graph views", () => {
@@ -52,10 +61,10 @@ test("Architecture is a native Atlas route with two graph views", () => {
   assert.match(component, /Node inspector/);
 });
 
-test("normal Atlas build refreshes and enriches the architecture projection", () => {
+test("normal Atlas build refreshes enriches and live-overlays the architecture projection", () => {
   assert.equal(
     packageJson.scripts.architecture,
-    "node scripts/build-architecture-universe.mjs && node scripts/enrich-architecture-universe.mjs",
+    "node scripts/build-architecture-universe.mjs && node scripts/enrich-architecture-universe.mjs && node scripts/apply-architecture-live-census.mjs",
   );
   assert.match(packageJson.scripts.snapshot, /npm run architecture/);
   assert.match(packageJson.scripts.prebuild, /npm run architecture/);
