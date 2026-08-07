@@ -1,0 +1,171 @@
+:root { --arch-glow: var(--color-accent); }
+
+.architecture-launcher {
+  position: fixed;
+  left: 1rem;
+  bottom: 6.8rem;
+  z-index: 70;
+  width: calc(var(--sidebar-width) - 2rem);
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .75rem .9rem;
+  border: 1px solid var(--color-border-soft);
+  border-radius: .85rem;
+  background: linear-gradient(135deg, var(--color-accent-soft), var(--color-surface-2));
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  backdrop-filter: blur(18px);
+}
+.architecture-launcher strong { font-size: .82rem; letter-spacing: .02em; }
+.architecture-launcher small { color: var(--color-text-muted); display: block; margin-top: .1rem; }
+.architecture-launcher-glyph { font-family: var(--font-mono); color: var(--color-accent-strong); }
+
+.architecture-atlas-shell { --architecture-inspector-width: 22rem; }
+.architecture-main-frame { min-width: 0; }
+.architecture-topbar { gap: 1rem; }
+.architecture-mode-switch,
+.architecture-zoom,
+.architecture-filter-row { display: flex; align-items: center; gap: .4rem; }
+.architecture-mode-switch button,
+.architecture-zoom button,
+.architecture-filter-row button {
+  border: 1px solid var(--color-border-soft);
+  background: var(--color-surface-inset);
+  color: var(--color-text-secondary);
+  border-radius: .7rem;
+  padding: .5rem .7rem;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.architecture-mode-switch button:hover,
+.architecture-zoom button:hover,
+.architecture-filter-row button:hover { border-color: var(--color-border-strong); color: var(--color-text-primary); }
+.architecture-mode-switch .architecture-mode-active,
+.architecture-filter-row .architecture-filter-active { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent-strong); }
+.architecture-zoom strong { min-width: 3.4rem; text-align: center; font: 600 .78rem var(--font-mono); }
+
+.architecture-workspace { display: grid; gap: 1rem; max-width: none; }
+.architecture-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(28rem, .9fr);
+  gap: 1.25rem;
+  padding: 1.5rem;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 80% 0%, var(--color-accent-soft), transparent 34%),
+    linear-gradient(135deg, var(--color-surface-1), var(--color-surface-3));
+  box-shadow: var(--shadow-1);
+}
+.architecture-hero h1 { margin: .25rem 0 .65rem; font-size: clamp(1.65rem, 2.6vw, 2.8rem); line-height: 1.02; }
+.architecture-hero p { margin: 0; max-width: 62rem; color: var(--color-text-secondary); }
+.architecture-coverage-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; align-content: center; }
+.architecture-coverage-grid > div { padding: .85rem; border-radius: .9rem; border: 1px solid var(--color-border-soft); background: var(--color-surface-inset); }
+.architecture-coverage-grid strong { display: block; font: 700 1.45rem var(--font-mono); }
+.architecture-coverage-grid span { color: var(--color-text-muted); font-size: .76rem; }
+.architecture-coverage-grid .architecture-metric-warn { border-color: color-mix(in srgb, var(--color-warning) 55%, transparent); background: var(--color-warning-soft); }
+
+.architecture-controls { display: grid; grid-template-columns: minmax(16rem, 32rem) 1fr auto; gap: .8rem; align-items: center; }
+.architecture-controls input {
+  width: 100%;
+  border: 1px solid var(--color-border-soft);
+  border-radius: .8rem;
+  background: var(--color-surface-inset);
+  color: var(--color-text-primary);
+  padding: .75rem .9rem;
+  outline: none;
+}
+.architecture-controls input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-focus-ring); }
+.architecture-filter-row { overflow-x: auto; padding-bottom: .15rem; }
+.architecture-filter-row button { white-space: nowrap; font-size: .76rem; }
+.architecture-result-count { color: var(--color-text-muted); font: 500 .72rem var(--font-mono); white-space: nowrap; }
+
+.architecture-stage { display: grid; grid-template-columns: minmax(0, 1fr) var(--architecture-inspector-width); gap: 1rem; min-height: 68vh; }
+.architecture-graph-panel,
+.architecture-inspector {
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--color-surface-1), var(--color-surface-inset));
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.architecture-graph-panel { position: relative; min-width: 0; }
+.architecture-inspector { padding: 1.1rem; overflow: auto; }
+.architecture-inspector h2 { margin: .35rem 0 .55rem; font-size: 1.25rem; }
+.architecture-inspector p { color: var(--color-text-secondary); font-size: .86rem; line-height: 1.55; }
+.architecture-inspector-tip { margin-top: 1rem; padding: .85rem; border-radius: .8rem; background: var(--color-accent-soft); color: var(--color-text-secondary); font-size: .8rem; }
+.architecture-facts { display: grid; gap: .4rem; margin-top: 1rem; }
+.architecture-facts > div { display: grid; grid-template-columns: 5.4rem minmax(0,1fr); gap: .6rem; align-items: baseline; padding: .45rem 0; border-bottom: 1px solid var(--color-border-soft); }
+.architecture-facts span { color: var(--color-text-muted); font: 500 .68rem var(--font-mono); text-transform: uppercase; }
+.architecture-facts strong { overflow-wrap: anywhere; font-size: .78rem; }
+.architecture-text-warn { color: var(--color-warning); }
+.architecture-connection-list { margin-top: 1.2rem; display: grid; gap: .4rem; }
+.architecture-connection-list button { display: grid; gap: .15rem; text-align: left; padding: .55rem .65rem; border: 1px solid var(--color-border-soft); border-radius: .65rem; background: var(--color-surface-inset); color: var(--color-text-primary); cursor: pointer; }
+.architecture-connection-list button:hover { border-color: var(--color-accent); }
+.architecture-connection-list span { color: var(--color-text-muted); font: 500 .62rem var(--font-mono); text-transform: uppercase; }
+.architecture-connection-list strong { font-size: .75rem; }
+
+.architecture-canvas { display: block; width: 100%; height: 100%; min-height: 68vh; background:
+  radial-gradient(circle at 50% 46%, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 36%),
+  linear-gradient(180deg, color-mix(in srgb, var(--color-bg-canvas) 90%, transparent), var(--color-bg-app)); }
+.architecture-orbit { fill: none; stroke: var(--color-border-soft); stroke-width: 1; stroke-dasharray: 4 10; opacity: .62; }
+.orbit-0 { stroke: color-mix(in srgb, var(--color-accent) 55%, transparent); opacity: .9; }
+.orbit-1 { stroke: color-mix(in srgb, var(--color-info) 42%, transparent); }
+.architecture-edge { stroke: color-mix(in srgb, var(--color-text-muted) 22%, transparent); stroke-width: 1; vector-effect: non-scaling-stroke; transition: var(--transition-fast); }
+.architecture-edge-active { stroke: var(--color-accent); stroke-width: 2.2; opacity: .95; }
+.architecture-node { cursor: pointer; outline: none; }
+.architecture-node-halo { fill: color-mix(in srgb, var(--color-accent) 8%, transparent); stroke: transparent; }
+.architecture-node-dot { fill: var(--color-muted); stroke: color-mix(in srgb, var(--color-muted) 70%, white); stroke-width: 1.5; vector-effect: non-scaling-stroke; transition: var(--transition-fast); }
+.architecture-node:hover .architecture-node-dot { stroke: var(--color-text-primary); stroke-width: 2.3; }
+.architecture-node-label { fill: var(--color-text-secondary); font: 600 13px var(--font-sans); paint-order: stroke; stroke: var(--color-bg-app); stroke-width: 5px; stroke-linejoin: round; pointer-events: none; }
+.architecture-node-authority .architecture-node-dot { fill: var(--color-accent-strong); stroke: var(--color-text-primary); }
+.architecture-node-authority .architecture-node-halo { fill: var(--color-accent-soft); }
+.architecture-node-product .architecture-node-dot { fill: var(--color-success); }
+.architecture-node-tech .architecture-node-dot { fill: var(--color-info); }
+.architecture-node-repo .architecture-node-dot { fill: color-mix(in srgb, var(--color-accent) 45%, var(--color-muted)); }
+.architecture-node-satellite .architecture-node-dot { fill: color-mix(in srgb, var(--color-info) 62%, var(--color-accent)); }
+.architecture-node-gap .architecture-node-halo { fill: var(--color-warning-soft); }
+.architecture-node-gap .architecture-node-dot { stroke: var(--color-warning); stroke-dasharray: 3 2; }
+.architecture-node-archive { opacity: .42; }
+.architecture-node-selected .architecture-node-halo { fill: var(--color-accent-soft); stroke: var(--color-accent); stroke-width: 2; }
+.architecture-node-selected .architecture-node-dot { stroke: white; stroke-width: 3; }
+.architecture-node-connected .architecture-node-halo { fill: var(--color-info-soft); }
+
+.architecture-layer-canvas { min-height: 72vh; }
+.architecture-layer-band { fill: color-mix(in srgb, var(--color-surface-2) 68%, transparent); stroke: var(--color-border-soft); }
+.architecture-layer-label { fill: var(--color-text-muted); font: 700 12px var(--font-mono); }
+.architecture-layer-node { fill: var(--color-surface-2); stroke: var(--color-border-strong); stroke-width: 1; }
+.architecture-node-authority .architecture-layer-node { fill: var(--color-accent-soft); stroke: var(--color-accent); }
+.architecture-node-product .architecture-layer-node { fill: var(--color-success-soft); stroke: var(--color-success); }
+.architecture-node-tech .architecture-layer-node { fill: var(--color-info-soft); stroke: var(--color-info); }
+.architecture-node-gap .architecture-layer-node { stroke: var(--color-warning); stroke-dasharray: 4 3; }
+.architecture-layer-node-label { fill: var(--color-text-primary); font: 600 9px var(--font-sans); pointer-events: none; }
+
+.architecture-legend { position: absolute; left: 1rem; bottom: 1rem; display: flex; flex-wrap: wrap; gap: .55rem; padding: .55rem .65rem; border: 1px solid var(--color-border-soft); border-radius: .75rem; background: color-mix(in srgb, var(--color-bg-app) 78%, transparent); backdrop-filter: blur(14px); }
+.architecture-legend span { display: flex; gap: .35rem; align-items: center; color: var(--color-text-muted); font-size: .68rem; }
+.architecture-legend i { width: .55rem; height: .55rem; border-radius: 50%; background: var(--color-muted); }
+.architecture-legend .legend-authority { background: var(--color-accent-strong); }
+.architecture-legend .legend-product { background: var(--color-success); }
+.architecture-legend .legend-tech { background: var(--color-info); }
+.architecture-legend .legend-repo { background: color-mix(in srgb, var(--color-accent) 45%, var(--color-muted)); }
+.architecture-legend .legend-gap { background: var(--color-warning); }
+.architecture-source-line { color: var(--color-text-muted); font: 500 .68rem var(--font-mono); padding: .25rem .2rem 1rem; }
+
+@media (max-width: 1180px) {
+  .architecture-hero { grid-template-columns: 1fr; }
+  .architecture-stage { grid-template-columns: 1fr; }
+  .architecture-inspector { min-height: 18rem; }
+  .architecture-controls { grid-template-columns: 1fr; }
+  .architecture-launcher { width: 3rem; height: 3rem; padding: 0; justify-content: center; left: .75rem; bottom: 5.2rem; }
+  .architecture-launcher-copy { display: none; }
+}
+
+@media (max-width: 760px) {
+  .architecture-coverage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .architecture-mode-switch { order: 3; width: 100%; }
+  .architecture-mode-switch button { flex: 1; }
+  .architecture-zoom { display: none; }
+  .architecture-canvas { min-height: 60vh; }
+}
