@@ -4,8 +4,10 @@
   "version": "0.3.0",
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/commercial-summary.test.mjs scripts/codex-orchestrator-projection.test.mjs scripts/service-placement-projection.test.mjs scripts/device-fleet-store.test.mjs scripts/windows-agent-contract.test.mjs scripts/build-administration-adapters.test.mjs",
+    "test": "node --test scripts/commercial-summary.test.mjs scripts/codex-orchestrator-projection.test.mjs scripts/service-placement-projection.test.mjs scripts/device-fleet-store.test.mjs scripts/windows-agent-contract.test.mjs scripts/build-administration-adapters.test.mjs scripts/build-snapshot-recovery.test.mjs scripts/atlas-host-runtime.test.mjs",
     "snapshot": "node scripts/build-snapshot.mjs",
+    "snapshot:canonical": "node scripts/build-snapshot.mjs",
+    "snapshot:recover": "node scripts/build-snapshot-recovery.mjs",
     "adapters": "node scripts/build-administration-adapters.mjs",
     "dev": "npm run snapshot && npm run adapters && node scripts/dev-stack.mjs",
     "predev:ui": "npm run adapters",
@@ -15,8 +17,8 @@
     "test:ai-company-browser": "node scripts/ai-company-browser-smoke.mjs",
     "build:refresh": "npm run snapshot && npm run adapters && npm run build",
     "preview": "vite preview",
-    "host": "node scripts/device-fleet-host.mjs",
-    "host:legacy": "node scripts/atlas-host.mjs"
+    "host": "NODE_OPTIONS=--import=./scripts/atlas-host-preload.mjs node scripts/atlas-resilient-host.mjs",
+    "host:legacy": "NODE_OPTIONS=--import=./scripts/atlas-host-preload.mjs node scripts/atlas-host.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",
