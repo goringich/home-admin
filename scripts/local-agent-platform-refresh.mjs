@@ -49,10 +49,27 @@ export function rebuildSnapshotAfterProjectionRefresh({
   rebuildSnapshot,
   refreshProjection = refreshLocalAgentPlatformProjection,
 }) {
+  let projection = { refreshed: false, status: "stale_preserved" };
   try {
-    refreshProjection();
+    projection = refreshProjection() || projection;
   } catch {
     // Projection freshness is advisory; the last sanitized artifact remains valid evidence.
   }
-  rebuildSnapshot();
+
+  try {
+    rebuildSnapshot();
+    return {
+      rebuilt: true,
+      status: "rebuilt",
+      projection,
+    };
+  } catch {
+    // The always-on Atlas host must keep serving the last parseable snapshot.
+    // Cold-start absence is still surfaced by the caller when it attempts to read the file.
+    return {
+      rebuilt: false,
+      status: "stale_snapshot_preserved",
+      projection,
+    };
+  }
 }
