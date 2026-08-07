@@ -1,0 +1,106 @@
+{
+  "schemaVersion": "2026-08-07.atlas-administration-adapters.v1",
+  "sourceRegistry": "goringich/__home_organized/local-codex-stack/configs/admin-surface-registry.json",
+  "surfaces": [
+    {
+      "id": "telegram-proxy-stack-admin",
+      "title": "Telegram Proxy Stack",
+      "classification": "infrastructure",
+      "ownerRepository": "goringich/telegram-proxy-stack",
+      "sourceOfTruth": "VPN operations and canonical Windows fleet control",
+      "integrationModes": ["external", "native-projection", "proxied", "embedded"],
+      "embedding": {
+        "default": "denied",
+        "supported": false,
+        "reason": "Telegram init-data, signed-link and frame compatibility must be implemented by the owner repository before embedding is enabled."
+      },
+      "authBoundary": "Telegram init-data, signed app link, optional password and owner-only mutations",
+      "mutationOwner": "goringich/telegram-proxy-stack",
+      "projectionAllowlist": ["service availability", "Windows online/stale/offline counts", "VPN health rollup", "release freshness"],
+      "secretPolicy": "Never project signed URLs, tokens, cookies, device secrets, camera bytes, private commands or VPN bodies.",
+      "fallbackMode": "external",
+      "migrationState": "windows-canonicalization-in-progress",
+      "availability": "registered",
+      "launch": {
+        "label": "Open Windows fleet",
+        "target": "https://2.26.250.194:8443/app/#windows-fleet"
+      },
+      "runbookTarget": "/home/goringich/Desktop/server/telegram-proxy-stack/docs/services/admin-http.md"
+    },
+    {
+      "id": "elizabet-admin",
+      "title": "Elizabeth admin",
+      "classification": "product",
+      "ownerRepository": "goringich/elizabet",
+      "sourceOfTruth": "Elizabeth product administration",
+      "integrationModes": ["external", "native-projection", "embedded"],
+      "embedding": {
+        "default": "denied",
+        "supported": false,
+        "reason": "Product-owned CSP, frame and authentication compatibility has not been enabled."
+      },
+      "authBoundary": "Elizabeth TOTP, IP allowlist and product session controls",
+      "mutationOwner": "goringich/elizabet",
+      "projectionAllowlist": ["launch readiness", "aggregate lead/payment/support status", "deployment freshness"],
+      "secretPolicy": "No customer PII, payment details, TOTP material or sessions.",
+      "fallbackMode": "local-source",
+      "migrationState": "adapter-planned",
+      "availability": "registered",
+      "launch": {
+        "label": "Open admin guide",
+        "target": "/home/goringich/Desktop/server/elizabet/docs/admin-console.md"
+      },
+      "runbookTarget": "/home/goringich/Desktop/server/elizabet/docs/admin-console.md"
+    },
+    {
+      "id": "project-atlas",
+      "title": "Project Atlas",
+      "classification": "system",
+      "ownerRepository": "goringich/home-admin",
+      "sourceOfTruth": "Federated administration shell and sanitized cross-project projections",
+      "integrationModes": ["native-projection", "local-source"],
+      "embedding": {
+        "default": "allowed",
+        "supported": true,
+        "reason": "Atlas owns its local shell."
+      },
+      "authBoundary": "Atlas loopback and governed mutation policy",
+      "mutationOwner": "goringich/home-admin",
+      "projectionAllowlist": ["repository state", "adapter availability", "health", "run summaries"],
+      "secretPolicy": "No credentials or private command bodies in snapshots.",
+      "fallbackMode": "local-source",
+      "migrationState": "canonical",
+      "availability": "registered",
+      "launch": {
+        "label": "Open overview",
+        "target": "http://127.0.0.1:4174/#/overview"
+      },
+      "runbookTarget": "/home/goringich/Desktop/project-atlas/README.md"
+    },
+    {
+      "id": "otlichniy-ulov-admin",
+      "title": "Отличный улов admin",
+      "classification": "external-product",
+      "ownerRepository": "goringich/otlichniy-ulov",
+      "sourceOfTruth": "Client-owned product administration",
+      "integrationModes": ["external", "local-source"],
+      "embedding": {
+        "default": "denied",
+        "supported": false,
+        "reason": "External commissioned product is excluded from the personal federated administration programme."
+      },
+      "authBoundary": "Client product authorization",
+      "mutationOwner": "explicit isolated task only",
+      "projectionAllowlist": ["project identity", "runbook path"],
+      "secretPolicy": "No runtime, customer, order, payment or support data.",
+      "fallbackMode": "local-source",
+      "migrationState": "excluded",
+      "availability": "excluded",
+      "launch": {
+        "label": "Open admin guide",
+        "target": "/home/goringich/Desktop/otlichniy-ulov/docs/12-admin-panel.md"
+      },
+      "runbookTarget": "/home/goringich/Desktop/otlichniy-ulov/docs/12-admin-panel.md"
+    }
+  ]
+}
