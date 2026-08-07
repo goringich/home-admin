@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test scripts/commercial-summary.test.mjs scripts/codex-orchestrator-projection.test.mjs scripts/service-placement-projection.test.mjs scripts/device-fleet-store.test.mjs scripts/windows-agent-contract.test.mjs scripts/build-administration-adapters.test.mjs scripts/build-architecture-universe.test.mjs",
-    "architecture": "node scripts/build-architecture-universe.mjs",
+    "architecture": "node scripts/build-architecture-universe.mjs && node scripts/enrich-architecture-universe.mjs",
     "snapshot": "node scripts/build-snapshot.mjs && npm run architecture",
     "adapters": "node scripts/build-administration-adapters.mjs",
     "dev": "npm run snapshot && npm run adapters && node scripts/dev-stack.mjs",
