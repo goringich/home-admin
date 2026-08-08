@@ -1,0 +1,63 @@
+name: Remediate Atlas Dependencies Once
+
+on:
+  push:
+    branches:
+      - chatgpt/atlas-architecture-universe-v1-20260807
+    paths:
+      - .github/workflows/remediate-deps-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  remediate:
+    if: github.repository_owner == 'goringich'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_PARENT_SHA: ddf1d041a2ff63cd2c9ce1c0a5f77beecc4f2765
+    steps:
+      - name: Checkout exact branch without persisted credentials
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: chatgpt/atlas-architecture-universe-v1-20260807
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify one-shot branch ancestry
+        run: |
+          set -Eeuo pipefail
+          parent="$(git rev-parse HEAD^)"
+          [[ "$parent" == "$EXPECTED_PARENT_SHA" ]] || {
+            echo "branch moved before remediation: expected parent $EXPECTED_PARENT_SHA, got $parent" >&2
+            exit 1
+          }
+
+      - name: Apply non-force lockfile-only remediation and verify
+        run: |
+          set -Eeuo pipefail
+          npm ci --ignore-scripts >/dev/null
+          npm audit fix --package-lock-only --ignore-scripts
+          changed="$(git diff --name-only)"
+          [[ "$changed" == 'package-lock.json' ]] || {
+            echo "unexpected changed files: $changed" >&2
+            exit 1
+          }
+          git diff --check
+          npm ci --ignore-scripts >/dev/null
+          npm audit --audit-level=low
+          npm test
+          npm run build
+          [[ "$(git diff --name-only)" == 'package-lock.json' ]]
+
+      - name: Commit exact verified lockfile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git commit -m 'chore(deps): remediate Atlas dependency advisories'
+          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" push origin HEAD:chatgpt/atlas-architecture-universe-v1-20260807
