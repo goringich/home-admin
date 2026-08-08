@@ -4,6 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { rebuildSnapshotWithColdStartRecovery } from "./atlas-host-preload.mjs";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 
@@ -37,4 +38,45 @@ test("legacy host call site remains protected by the preload compatibility bridg
 
   assert.match(hostSource, /rebuildSnapshotAfterProjectionRefresh\s*\(/);
   assert.match(preloadSource, /globalThis\.rebuildSnapshotAfterProjectionRefresh\s*=/);
+});
+
+test("legacy host writes a recovery snapshot when the canonical cold-start build fails", () => {
+  let snapshotPresent = false;
+  let recoveryCalls = 0;
+
+  const result = rebuildSnapshotWithColdStartRecovery({
+    rebuildSnapshot: () => {
+      throw new Error("canonical snapshot failed");
+    },
+    refreshProjection: () => ({ refreshed: false, status: "stale_preserved" }),
+    snapshotExists: () => snapshotPresent,
+    recoverSnapshot: () => {
+      recoveryCalls += 1;
+      snapshotPresent = true;
+    },
+  });
+
+  assert.equal(recoveryCalls, 1);
+  assert.equal(result.rebuilt, false);
+  assert.equal(result.recovered, true);
+  assert.equal(result.status, "recovery_snapshot_written");
+});
+
+test("legacy host preserves a stale snapshot without unnecessary recovery", () => {
+  let recoveryCalls = 0;
+
+  const result = rebuildSnapshotWithColdStartRecovery({
+    rebuildSnapshot: () => {
+      throw new Error("canonical snapshot failed");
+    },
+    refreshProjection: () => ({ refreshed: false, status: "stale_preserved" }),
+    snapshotExists: () => true,
+    recoverSnapshot: () => {
+      recoveryCalls += 1;
+    },
+  });
+
+  assert.equal(recoveryCalls, 0);
+  assert.equal(result.rebuilt, false);
+  assert.equal(result.status, "stale_snapshot_preserved");
 });
