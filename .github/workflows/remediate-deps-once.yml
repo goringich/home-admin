@@ -16,14 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      EXPECTED_PARENT_SHA: ddf1d041a2ff63cd2c9ce1c0a5f77beecc4f2765
+      EXPECTED_PARENT_SHA: 543e05a1f080092f76b8c75fdaebc3fba1260f07
     steps:
-      - name: Checkout exact branch without persisted credentials
+      - name: Checkout exact branch with scoped push credential
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: chatgpt/atlas-architecture-universe-v1-20260807
           fetch-depth: 2
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Verify one-shot branch ancestry
         run: |
@@ -52,12 +52,10 @@ jobs:
           [[ "$(git diff --name-only)" == 'package-lock.json' ]]
 
       - name: Commit exact verified lockfile
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add package-lock.json
           git commit -m 'chore(deps): remediate Atlas dependency advisories'
-          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" push origin HEAD:chatgpt/atlas-architecture-universe-v1-20260807
+          git push origin HEAD:chatgpt/atlas-architecture-universe-v1-20260807
